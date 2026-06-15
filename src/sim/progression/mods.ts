@@ -1,0 +1,21 @@
+// Per-run modifier layer (T18). Upgrades mutate these; weapon/movement systems
+// read them on top of immutable content defs. Keeps content data-driven while
+// the build accumulates within a run.
+
+export interface RunMods {
+  damageMult: number;
+  fireRateMult: number; // cooldown divided by this
+  projectileCount: number; // total projectiles per shot (1 = base)
+  spreadArc: number; // total fan angle when projectileCount > 1 (radians)
+  critChanceAdd: number;
+}
+
+export function defaultMods(): RunMods {
+  return {
+    damageMult: 1,
+    fireRateMult: 1,
+    projectileCount: 1,
+    spreadArc: 0.26,
+    critChanceAdd: 0,
+  };
+}

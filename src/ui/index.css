@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+/* Mirrors docs/art-direction.md palette. Render-side source: render/art/palette.ts */
+@theme {
+  --color-umber: #2a1712;
+  --color-rust: #5b2b1d;
+  --color-iron: #8f3f24;
+  --color-dust: #c46a2b;
+  --color-brass: #d8b46a;
+
+  --color-pit: #070504;
+  --color-line: #241814;
+  --color-sun: #f0c879;
+  --color-bone: #f4e4d4; /* paper — body text legibility */
+
+  --color-gold: #ffd23f;
+  --color-cyan: #32d7ff;
+  --color-bleed: #ff3b30;
+  --color-toxic: #83f04f;
+  --color-elite: #d84cff;
+
+  /* legacy alias kept so existing classes resolve; maps to Mars dust */
+  --color-ember: #c46a2b;
+
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
