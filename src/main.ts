@@ -9,6 +9,13 @@ import { EnemyView } from './render/enemy-view';
 import { ProjectileView } from './render/projectile-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
+import { Effects } from './render/effects';
+import { AudioBus } from './audio/audio';
+import { budgetAt } from './sim/director/wave-director';
+import { gloryFor } from './sim/run';
+import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
+import { SaveManager } from './save/save-manager';
+import type { PermanentView } from './ui/store';
 import { ARENA_RADIUS } from './sim/constants';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
@@ -46,24 +53,84 @@ async function boot(parent: HTMLElement): Promise<void> {
     return;
   }
 
+  // Load the saved profile (or a fresh default) before building the run so
+  // persisted settings + owned permanent upgrades apply from the first frame.
+  const save = new SaveManager();
+  await save.load();
+
   const scene = new Scene();
   const camera = createCamera(window.innerWidth / window.innerHeight);
   buildArena(scene);
 
-  const world = new World(seed);
+  const world = new World(seed, save.current.permanentUpgrades);
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene);
   const projectileView = new ProjectileView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
+  const effects = new Effects(scene);
+  const audio = new AudioBus();
+  audio.masterVolume = save.current.settings.masterVolume;
+
   const input = new Input();
   input.attach();
+
+  // AudioContext needs a user gesture to start (autoplay policy).
+  const resumeAudio = (): void => audio.resume();
+  window.addEventListener('keydown', resumeAudio, { once: true });
+  window.addEventListener('pointerdown', resumeAudio, { once: true });
   const overlay = new DevOverlay(parent);
   uiActions.setScreen('arena');
 
   // Bridge upgrade picks from the React draft screen into the sim.
   uiActions.setChooseUpgrade((i) => world.choose(i));
   let draftShownFor = -1; // de-dupe store pushes while a draft is open
+  let endShown = false; // de-dupe the game-over transition
+  let lastGlory = 0; // glory earned on the most recent run (for the panel)
+
+  // Build the meta slice (Glory + permanent upgrades) from the saved profile.
+  const pushMeta = (): void => {
+    const glory = save.current.currencies.martianGlory;
+    const owned = save.current.permanentUpgrades;
+    const permanents: PermanentView[] = PERMANENT_UPGRADES.map((u) => {
+      const lvl = owned[u.id] ?? 0;
+      return {
+        id: u.id,
+        name: u.name,
+        description: u.description,
+        branch: u.branch,
+        cost: u.cost,
+        owned: lvl,
+        maxLevel: u.maxLevel,
+        affordable: lvl < u.maxLevel && glory >= u.cost,
+      };
+    });
+    uiActions.setMeta({ glory, lastEarned: lastGlory, permanents });
+  };
+  pushMeta();
+
+  // Bridge: buy a permanent upgrade with Martian Glory (T26). Next run applies it.
+  uiActions.setBuyPermanent((id) => {
+    const def = permanentById(id);
+    if (!def) return;
+    const lvl = save.current.permanentUpgrades[id] ?? 0;
+    if (lvl >= def.maxLevel || save.current.currencies.martianGlory < def.cost) return;
+    save.mutate((p) => {
+      p.currencies.martianGlory -= def.cost;
+      p.permanentUpgrades[id] = lvl + 1;
+    });
+    world.setPermanents(save.current.permanentUpgrades);
+    pushMeta();
+  });
+
+  // Bridge restart from the game-over screen → reset the run in place (V15).
+  uiActions.setRestartRun(() => {
+    world.setPermanents(save.current.permanentUpgrades); // apply any purchases
+    world.reset();
+    endShown = false;
+    uiActions.setResult(null);
+    uiActions.setScreen('arena');
+  });
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -104,6 +171,23 @@ async function boot(parent: HTMLElement): Promise<void> {
       lastT = now;
       fps = fps * 0.9 + (1000 / Math.max(frameMs, 0.001)) * 0.1;
 
+      // Drain sim FX events accumulated across this frame's fixed steps.
+      const fxEvents = world.fx.events;
+      if (fxEvents.length) {
+        effects.consume(fxEvents);
+        for (const e of fxEvents) audio.play(e.kind);
+        world.fx.clear();
+      }
+      const fxDt = Math.min(frameMs / 1000, 0.05);
+      effects.sprintTrail(
+        world.player.pos.x,
+        world.player.pos.z,
+        world.player.sprint.active,
+        fxDt,
+        false,
+      );
+      effects.update(fxDt);
+
       playerView.sync(world.player, alpha);
       enemyView.sync(world.enemies, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
@@ -128,7 +212,33 @@ async function boot(parent: HTMLElement): Promise<void> {
         elapsed: world.elapsed,
         level: world.player.level,
         xp01: world.player.xp / world.player.xpToNext,
+        countdown: world.countdown,
       });
+
+      // Death → award Martian Glory (T26), record the run, show the game-over
+      // screen with the result. Pushed once (V20).
+      if (world.ended && world.result && !endShown) {
+        endShown = true;
+        const r = world.result;
+        lastGlory = gloryFor(r);
+        save.mutate((p) => {
+          p.currencies.martianGlory += lastGlory;
+          p.records.bestTimeSec = Math.max(p.records.bestTimeSec, r.durationSec);
+          p.records.bestLevel = Math.max(p.records.bestLevel, r.level);
+          p.records.mostKills = Math.max(p.records.mostKills, r.kills);
+          p.runHistory.unshift({
+            at: Date.now(),
+            durationSec: r.durationSec,
+            level: r.level,
+            kills: r.kills,
+          });
+          p.runHistory = p.runHistory.slice(0, 50);
+        });
+        void save.flush();
+        pushMeta();
+        uiActions.setResult(r);
+        uiActions.setScreen('gameover');
+      }
 
       // Draft slice: push once per opened draft (draftId distinguishes back-to-
       // back level-ups at the same level); clear when it closes.
@@ -156,7 +266,9 @@ async function boot(parent: HTMLElement): Promise<void> {
         simMs,
         renderMs,
         enemies: world.enemies.count,
+        maxEnemies: budgetAt(world.elapsed).maxConcurrentEnemies,
         projectiles: world.weaponSystem.projectiles.count,
+        particles: effects.count,
         drawCalls: renderer.info.render.drawCalls,
         tier,
         seed,
@@ -168,10 +280,17 @@ async function boot(parent: HTMLElement): Promise<void> {
 
   document.addEventListener('visibilitychange', () => {
     loop.setTimeScale(document.hidden ? 0 : 1);
+    if (document.hidden) void save.flush(); // persist on tab hide (V15)
   });
+  window.addEventListener('beforeunload', () => void save.flush());
 
   // Dev hook for e2e / debugging invisible sim state (execution rule 11). Temp.
-  (window as unknown as { __MARS__: unknown }).__MARS__ = { world };
+  (window as unknown as { __MARS__: unknown }).__MARS__ = {
+    world,
+    effects,
+    save,
+    refreshMeta: pushMeta,
+  };
 }
 
 void boot(app);

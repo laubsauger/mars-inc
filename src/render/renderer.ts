@@ -16,6 +16,7 @@ export async function createRenderer(
   const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, tier.pixelRatioCap));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = tier.shadows;
   await renderer.init();
   return renderer;
 }

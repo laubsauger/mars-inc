@@ -31,8 +31,10 @@ test('enemies spawn through gates and converge on the player (T11-T13)', async (
         const dz = w.enemies.posZ[i] - w.player.pos.z;
         min = Math.min(min, Math.hypot(dx, dz));
       }
-      return min < 4;
+      // Spawn at the rim (~r 33). Crossing deep inside proves seek steering,
+      // independent of the auto-weapon thinning the closest ones (range ~16).
+      return min < 14;
     },
-    { timeout: 10000 },
+    { timeout: 12000 },
   );
 });

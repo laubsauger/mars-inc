@@ -14,6 +14,12 @@ export interface UpgradeContext {
   mods: RunMods;
 }
 
+/** A gate on another upgrade: requires (or forbids) it at >= minLevel. */
+export interface Requirement {
+  id: string;
+  minLevel?: number;
+}
+
 export interface UpgradeDefinition {
   id: string;
   name: string;
@@ -24,6 +30,10 @@ export interface UpgradeDefinition {
   baseWeight: number;
   /** Extra weight per matching tag already taken (synergy bias, §9.4). */
   synergyWeight: number;
+  /** Must ALL be satisfied before this can appear (§9.4 prerequisites). */
+  prerequisites?: readonly Requirement[];
+  /** If ANY is satisfied, this is excluded (mutually-exclusive builds). */
+  exclusions?: readonly Requirement[];
   apply: (ctx: UpgradeContext) => void;
 }
 
@@ -34,12 +44,21 @@ export function taken(levels: UpgradeLevels, id: string): number {
   return levels[id] ?? 0;
 }
 
-/** Upgrades still selectable (under maxLevel). */
+function reqMet(levels: UpgradeLevels, r: Requirement): boolean {
+  return taken(levels, r.id) >= (r.minLevel ?? 1);
+}
+
+/** Selectable = under maxLevel, all prerequisites met, no exclusion triggered. */
 export function available(
   registry: readonly UpgradeDefinition[],
   levels: UpgradeLevels,
 ): UpgradeDefinition[] {
-  return registry.filter((u) => taken(levels, u.id) < u.maxLevel);
+  return registry.filter((u) => {
+    if (taken(levels, u.id) >= u.maxLevel) return false;
+    if (u.prerequisites && !u.prerequisites.every((r) => reqMet(levels, r))) return false;
+    if (u.exclusions && u.exclusions.some((r) => reqMet(levels, r))) return false;
+    return true;
+  });
 }
 
 /** Count how many owned upgrades carry a given tag (for synergy weighting). */

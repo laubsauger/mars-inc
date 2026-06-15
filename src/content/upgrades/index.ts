@@ -109,4 +109,50 @@ export const UPGRADES: UpgradeDefinition[] = [
       player.health = Math.min(player.maxHealth, player.health + 25);
     },
   },
+  // Gated evolution: unlocked only after investing in multishot (§9.4 prereq).
+  {
+    id: 'shotgun-clause',
+    name: 'Shotgun Clause',
+    description: 'Wide barrage: +2 projectiles, tighter fan.',
+    tags: ['multishot', 'damage'],
+    rarity: 'rare',
+    maxLevel: 2,
+    baseWeight: 5,
+    synergyWeight: 3,
+    prerequisites: [{ id: 'split-shipment', minLevel: 2 }],
+    apply: ({ mods }) => {
+      mods.projectileCount += 2;
+      mods.spreadArc *= 0.7;
+    },
+  },
+  // Mutually-exclusive movement tradeoff vs. heavy-stance damage.
+  {
+    id: 'glass-runner',
+    name: 'Glass Runner Waiver',
+    description: '+25% move speed, but no health upgrades.',
+    tags: ['movement'],
+    rarity: 'uncommon',
+    maxLevel: 1,
+    baseWeight: 5,
+    synergyWeight: 2,
+    exclusions: [{ id: 'iron-stance' }],
+    apply: ({ player }) => {
+      player.stats.moveSpeed *= 1.25;
+    },
+  },
+  {
+    id: 'iron-stance',
+    name: 'Iron Stance Mandate',
+    description: '+50 max health, but no speed upgrades.',
+    tags: ['defense'],
+    rarity: 'uncommon',
+    maxLevel: 1,
+    baseWeight: 5,
+    synergyWeight: 2,
+    exclusions: [{ id: 'glass-runner' }],
+    apply: ({ player }) => {
+      player.maxHealth += 50;
+      player.health += 50;
+    },
+  },
 ];

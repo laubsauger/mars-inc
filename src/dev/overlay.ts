@@ -8,7 +8,9 @@ export interface OverlayMetrics {
   simMs: number;
   renderMs: number;
   enemies: number;
+  maxEnemies: number;
   projectiles: number;
+  particles: number;
   drawCalls: number;
   tier: QualityTier;
   seed: number;
@@ -50,7 +52,7 @@ export class DevOverlay {
       `MARS PIT  tier:${m.tier}  seed:${m.seed}`,
       `fps ${m.fps.toFixed(0).padStart(4)}  frame ${m.frameMs.toFixed(2)}ms`,
       `sim ${m.simMs.toFixed(2)}ms  render ${m.renderMs.toFixed(2)}ms`,
-      `enemies ${m.enemies}  proj ${m.projectiles}  draws ${m.drawCalls}`,
+      `enemies ${m.enemies}/${m.maxEnemies}  proj ${m.projectiles}  fx ${m.particles}  draws ${m.drawCalls}`,
     ].join('\n');
   }
 }

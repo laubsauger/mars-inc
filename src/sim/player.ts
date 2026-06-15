@@ -17,7 +17,7 @@ import { xpRequired } from '../content/balance/xp-curve';
 
 // Mara Vex, Human Scrapper — balanced (§22).
 export const MARA_STATS: MovementStats = {
-  moveSpeed: 11,
+  moveSpeed: 8, // slower base; speed upgrades + sprint earn the mobility back
   acceleration: 14,
   deceleration: 22,
   turnResponsiveness: 1,
@@ -50,6 +50,9 @@ export interface Player {
 }
 
 export function createPlayer(stats: MovementStats = MARA_STATS): Player {
+  // Clone stats: upgrades mutate player.stats in-run; must never touch the
+  // shared MARA_STATS constant (would leak across runs).
+  const own = { ...stats };
   return {
     pos: { x: 0, z: 0 },
     prevPos: { x: 0, z: 0 },
@@ -59,14 +62,39 @@ export function createPlayer(stats: MovementStats = MARA_STATS): Player {
     maxHealth: 100,
     invuln: 0,
     aim: { x: 0, z: 0, has: false },
-    stats,
-    sprint: newSprintState(stats),
+    stats: own,
+    sprint: newSprintState(own),
     level: 1,
     xp: 0,
     xpToNext: xpRequired(1),
     pickupRadius: 1.6,
     magnetRadius: 5,
   };
+}
+
+/** Reset a player to a fresh-run baseline in place (T22 restart, no reload).
+ *  Mutates the existing object so render views holding the reference stay valid. */
+export function resetPlayer(p: Player, stats: MovementStats = MARA_STATS): void {
+  p.pos.x = 0;
+  p.pos.z = 0;
+  p.prevPos.x = 0;
+  p.prevPos.z = 0;
+  p.vel.x = 0;
+  p.vel.z = 0;
+  p.facing = 0;
+  p.health = 100;
+  p.maxHealth = 100;
+  p.invuln = 0;
+  p.aim.x = 0;
+  p.aim.z = 0;
+  p.aim.has = false;
+  p.stats = { ...stats }; // clone — upgrades mutate this, not the shared constant
+  p.sprint = newSprintState(p.stats);
+  p.level = 1;
+  p.xp = 0;
+  p.xpToNext = xpRequired(1);
+  p.pickupRadius = 1.6;
+  p.magnetRadius = 5;
 }
 
 /** Advance the player one fixed step. */

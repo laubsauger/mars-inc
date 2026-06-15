@@ -6,6 +6,7 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { Unsupported } from './screens/Unsupported';
 import { UpgradeScreen } from './screens/UpgradeScreen';
+import { GameOverScreen } from './screens/GameOverScreen';
 import { Hud } from './Hud';
 import { useUiStore } from './store';
 import './index.css';
@@ -22,6 +23,8 @@ function App() {
           <UpgradeScreen />
         </>
       );
+    case 'gameover':
+      return <GameOverScreen />;
     case 'boot':
       return null;
   }

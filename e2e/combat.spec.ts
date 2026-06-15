@@ -5,6 +5,7 @@ type Hook = {
     enemies: { count: number };
     weaponSystem: { projectiles: { count: number } };
     player: { aim: { x: number; z: number; has: boolean } };
+    stats: { kills: number };
   };
 };
 
@@ -35,9 +36,13 @@ test('mouse-aimed weapon fires projectiles and kills enemies (T14/T15)', async (
     { timeout: 5000 },
   );
 
-  // Let combat run; some enemies die (count rises then weapon thins them).
-  await page.waitForTimeout(6000);
+  // Let combat run; the weapon racks up kills (cumulative — robust vs. the
+  // instantaneous projectile count, which dips to 0 between shots).
+  await page.waitForFunction(
+    () => (window as unknown as { __MARS__: Hook }).__MARS__.world.stats.kills > 0,
+    { timeout: 15000 },
+  );
   const after = await hook(page);
+  expect(after.world.stats.kills).toBeGreaterThan(0);
   expect(after.world.enemies.count).toBeGreaterThan(0); // still spawning
-  expect(after.world.weaponSystem.projectiles.count).toBeGreaterThan(0);
 });

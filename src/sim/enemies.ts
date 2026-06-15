@@ -18,6 +18,8 @@ export interface EnemyType {
   separationWeight: number;
   /** Render variant index for instancing/color. */
   variant: number;
+  /** Threat cost the wave director spends to field one (§8.3). */
+  threat: number;
 }
 
 export const MAX_ENEMIES = 2000;
@@ -114,18 +116,34 @@ export const RUST_MITE: EnemyType = {
   id: 'rust-mite',
   radius: 0.5,
   maxHealth: 6,
-  speed: 6.5,
+  speed: 4.2, // tier-1 fodder: well under player base so early kiting reads clearly
   separationWeight: 1.0,
   variant: 0,
+  threat: 1,
 };
 
 export const DEBT_HOUND: EnemyType = {
   id: 'debt-hound',
   radius: 0.7,
   maxHealth: 14,
-  speed: 9,
+  speed: 6.8, // faster pressure unit, still kiteable at player base speed
   separationWeight: 1.2,
   variant: 1,
+  threat: 4,
+};
+
+// Gatekeeper of Phobos — slice boss (T33 down-payment, art/mechanics → T33/T37).
+// Big, slow, high-HP damage sponge that shares the instanced crowd pool (V6):
+// one mesh, per-instance color (eliteMagenta) + radius scale. Placeholder until
+// the full boss kit lands.
+export const BOSS_GATEKEEPER: EnemyType = {
+  id: 'gatekeeper-of-phobos',
+  radius: 2.4,
+  maxHealth: 1500,
+  speed: 2.4,
+  separationWeight: 0.3,
+  variant: 2,
+  threat: 250,
 };
 
 export interface SteerWeights {

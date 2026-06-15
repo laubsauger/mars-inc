@@ -19,3 +19,8 @@ export function defaultMods(): RunMods {
     critChanceAdd: 0,
   };
 }
+
+/** Reset a mod layer to defaults in place (T22 restart — keep the reference). */
+export function resetMods(m: RunMods): void {
+  Object.assign(m, defaultMods());
+}

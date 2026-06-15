@@ -17,8 +17,9 @@ import { EnemyState, MAX_ENEMIES } from '../sim/enemies';
 import { COL } from './art/palette';
 
 // Color blocking, not line noise (art doc pillar 1). Rust Mite = rust body,
-// Debt Hound = dark iron. Telegraph = hard sun highlight so spawns read.
-const VARIANT_COLORS = [COL.oxidizedIron, COL.oldRust];
+// Debt Hound = dark iron, Gatekeeper boss = elite magenta. Telegraph = hard sun
+// highlight so spawns read. Boss reads via the magenta + its radius scale.
+const VARIANT_COLORS = [COL.oxidizedIron, COL.oldRust, COL.eliteMagenta];
 const TELEGRAPH_COLOR = COL.sunHigh;
 
 export class EnemyView {

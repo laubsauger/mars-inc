@@ -6,6 +6,7 @@ import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
 import { SpatialHash } from '../spatial-hash';
 import { createPlayer } from '../player';
 import { defaultMods } from '../progression/mods';
+import { FxQueue } from '../fx';
 import { Rng } from '../../core/rng';
 
 function rebuild(hash: SpatialHash, enemies: EnemyPool): void {
@@ -16,11 +17,12 @@ function rebuild(hash: SpatialHash, enemies: EnemyPool): void {
 function run(ws: WeaponSystem, player: ReturnType<typeof createPlayer>, enemies: EnemyPool) {
   const hash = new SpatialHash(2);
   const mods = defaultMods();
+  const fx = new FxQueue();
   const rng = new Rng(1);
   let killed = 0;
   for (let t = 0; t < 600 && enemies.count > 0; t++) {
     rebuild(hash, enemies);
-    ws.step(player, enemies, hash, mods, rng, 1 / 60);
+    ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
     killed += ws.kills.length;
   }
   return killed;
@@ -66,10 +68,11 @@ describe('WeaponSystem (T14 fire + collide + kill)', () => {
 
     const hash = new SpatialHash(2);
     const mods = defaultMods();
+    const fx = new FxQueue();
     const rng = new Rng(1);
     for (let t = 0; t < 120; t++) {
       rebuild(hash, enemies);
-      ws.step(player, enemies, hash, mods, rng, 1 / 60);
+      ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
     }
     // No active target → no shot lands; telegraph enemy survives.
     expect(enemies.count).toBe(1);
@@ -83,10 +86,11 @@ describe('WeaponSystem (T14 fire + collide + kill)', () => {
     ws.add(equip(contractualSidearm));
     const hash = new SpatialHash(2);
     const mods = defaultMods();
+    const fx = new FxQueue();
     const rng = new Rng(1);
     for (let t = 0; t < 600; t++) {
       rebuild(hash, enemies);
-      ws.step(player, enemies, hash, mods, rng, 1 / 60);
+      ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
     }
     // Lifetime expiry recycles slots — never unbounded growth.
     expect(ws.projectiles.count).toBeLessThan(10);

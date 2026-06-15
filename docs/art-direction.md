@@ -67,6 +67,8 @@ Visual pillars:
    - Thick outer outlines for player, bosses, gates, projectiles, and readable pickups.
    - Thinner interior edge marks only where they clarify shape at top-down scale.
    - Avoid dense line noise on small enemies; use color blocking plus one bold mark.
+   - Use shadows/contact darkening as grounding, not realism. Every elevated prop,
+     character, and pickup should feel planted on the arena floor from the fixed camera.
 
 2. **Painted Rust, Not Smooth Metal**
    - Every hero surface gets hand-painted value islands: rust freckles, chipped paint,
@@ -87,6 +89,10 @@ Visual pillars:
    - Hits must read immediately at combat scale. The player should be able to tell
      whether a projectile hit, pierced, crit, staggered, or glanced from the effect
      profile alone.
+   - Health state should be readable without forcing the player to stare at small UI:
+     the player gets a persistent world-space health plate, bosses get explicit bars,
+     and mobs show damage through flashes, cracks, color shifts, and optional brief
+     health chips rather than permanent clutter.
    - Use saturated accent colors for combat state: plasma yellow, shield cyan, bleed red,
      poison green, elite magenta. Keep arena base lower contrast so gameplay wins.
    - FX should be pooled and capped per `SPEC.md`; no bespoke light spam.
@@ -155,6 +161,7 @@ Arena floor atlas:
 - pale dust pass on top-facing areas
 - faded sponsor stencil pass
 - radial crowd-wear marks around center
+- subtle baked contact grime under walls, posts, gates, and persistent machinery
 
 Gate atlas:
 
@@ -169,6 +176,7 @@ Character/enemy atlas:
 - one shared ink ramp strip for shadow bands
 - small decal sheet: eyes, teeth, spikes, bolts, bandages, labels
 - enemy color variants via instance color, not unique materials
+- damage-state overlays: cracked armor, bleeding cuts, exposed glow, panic eye
 
 Projectile/effect atlas:
 
@@ -210,6 +218,122 @@ Gatekeeper of Phobos:
 - boss built from a gate mechanism, ceremonial crown ring, and industrial crusher arms.
 - top-down read: huge circular body with four rotating gate-shield quadrants.
 - humor note: behaves like a sacred emperor, branded like a municipal toll machine.
+
+## Weapon Visual Briefs
+
+Weapon art should make the firing profile obvious before numbers are involved. A player
+should be able to recognize the weapon family from silhouette, muzzle effect, projectile
+shape, and impact language.
+
+Contractual Sidearm:
+
+- silhouette: stubby corporate-issued pistol, tiny barrel, oversized warning tag.
+- projectile: small yellow-white bolt with black ink rim and a fast streak.
+- impact: sharp tick, tiny spark spray, minimal blood unless the shot kills.
+- joke texture: "Property of HR" scratched off the grip.
+
+Rust Devil Minigun:
+
+- silhouette: industrial drill/mining barrel cluster, rattling feed belt, heat vents.
+- projectile: dense brass/yellow tracers with intermittent red-hot rounds.
+- impact: repeated chipping sparks and short blood stitch marks along the hit side.
+- evolution read: barrel glow ramps from orange to white, but never obscures enemies.
+
+Breach Clause Launcher:
+
+- silhouette: tube launcher made from a gate piston and legal seal stamps.
+- projectile: heavy arcing shell with blinking magenta/yellow hazard lights.
+- impact: big comic shock ring, dust wall, radial scrap shards, larger blood fan on
+  biological hits.
+
+Acid/chemical weapon family:
+
+- silhouette: pressurized tank, hose, cracked glass gauge, green warning labels.
+- projectile: slower globs or streams, not clean lasers.
+- impact: sticky splash decals, sizzling edge, green mist; keep blood red visible when
+  mixed so damage type does not erase enemy material.
+
+Shield/tech weapon family:
+
+- silhouette: cyan coils, old survey equipment, exposed capacitors.
+- projectile: clean cyan polygons or snapping arcs.
+- impact: angular shield shards, blue-white contact flash, fewer organic splats unless
+  health damage is actually dealt.
+
+## HUD And Menu Direction
+
+HUD and menus are part of the same world: arena broadcast graphics built by a hostile
+colony bureaucracy. They should be sharp, inked, and utilitarian rather than fantasy
+parchment or generic sci-fi glass.
+
+Implementation boundaries:
+
+- React/Tailwind is for menus, screens, HUD panels, upgrade drafts, settings, and post-run
+  pages only.
+- World-space combat indicators over entities should be render-owned and pooled/instanced
+  where repeated. Do not create DOM health bars per enemy.
+- HUD widgets should subscribe to narrow primitive Zustand slices as required by
+  `SPEC.md`; visual polish cannot introduce broad rerender behavior.
+
+Player world-space health:
+
+- Add a compact health plate above or slightly behind the character, readable from the
+  fixed camera. It should feel like an arena medical telemetry tag, not a floating MMO
+  nameplate.
+- Shape: black ink backplate with chipped red fill, small brass end caps, white scratch
+  ticks at 25/50/75 percent.
+- Low health: red fill pulses and the backplate cracks; avoid full-screen red haze unless
+  accessibility settings allow it.
+- Sprint charges remain separate from health. Cyan sprint pips/trails should not compete
+  with red health readability.
+
+Enemy health indication:
+
+- Regular mobs: avoid permanent bars by default. Use hit flashes, outline pulses,
+  damage-state textures, scale/pose wobble, and brief chip bars that appear only after a
+  recent hit if testing proves readability needs them.
+- Elites: use a short-lived segmented bar or icon badge above the enemy, pooled in render,
+  with color-coded armor/shield/health segments.
+- Bosses: use a persistent screen-space boss bar plus boss-specific world read, such as
+  damaged gate quadrants, cracked armor plates, exposed glowing machinery, and sponsor
+  signage failing as phases advance.
+- Health visuals must follow authoritative sim health; do not infer health from color
+  state alone.
+
+Screen HUD style:
+
+- Health: red/orange chipped industrial gauge, black outline, high contrast.
+- XP: cyan/gold crystal meter with small contract-stamp level badge.
+- Weapon/status readout: stamped labels, tiny illustrated weapon silhouette, heat/reload
+  meters as hazard-striped strips.
+- Timer/wave/director: broadcast scoreboard language, like "Round Liability" or "Gate
+  Budget", but keep the actual value labels clear.
+- Damage numbers, if added, should be sparse and aggregated. Use crit/starburst numbers
+  only for meaningful spikes; avoid constant number rain.
+
+Menus:
+
+- Main menu should look like a fight-night terminal at the entrance to the Rust Crown:
+  black ink frames, rusted brass UI rails, red dust, sponsor stamps, ticket/contract
+  motifs.
+- First screen should still be the usable game menu from `SPEC.md`, not a marketing hero.
+- Menu items can use hostile bureaucratic microcopy in subtitles, but primary labels
+  must stay clear: Enter Pit, Warrior, Arsenal, Glory Tree, Challenges, Records,
+  Settings, Credits.
+- Upgrade draft cards should look like stamped arena contracts: bold title, weapon/mobility
+  icon, effect text, exclusion/prereq tags, and a small fake legal clause. Do not let
+  flavor copy bury the mechanical effect.
+- Post-game stats should read like a broadcast invoice: kills, damage, time survived,
+  glory owed, fees avoided, sponsor approval.
+
+UI asset needs:
+
+- inked panel borders and corner bolts
+- health/XP/heat fill textures
+- small monochrome weapon family icons
+- contract stamps and warning labels
+- boss bar frame and phase pips
+- scalable button and card treatments using Tailwind tokens, not extra ad-hoc CSS files
 
 ## Effects Plan
 
@@ -254,8 +378,12 @@ Lowest-conflict order:
    verified. Do not fake this with broad fallback materials.
 4. Add procedural placeholder textures for floor/gate/player/enemy atlases. Keep them in
    render/content ownership, not sim.
-5. Add pooled particle/effect renderer only after `T16` event shape is stable.
-6. Add accessibility controls to reduce flashes/shake before making high-intensity FX
+5. Polish grounding shadows: enable tier-controlled shadow maps, tune directional shadow
+   camera/size, and add baked/contact darkening where real-time shadows are too soft or
+   expensive. Low/medium tiers may use baked contact marks, but gameplay threat must stay
+   identical.
+6. Add pooled particle/effect renderer only after `T16` event shape is stable.
+7. Add accessibility controls to reduce flashes/shake before making high-intensity FX
    default (`T36`).
 
 Effect data needed from gameplay events:

@@ -69,6 +69,18 @@ function LevelXp() {
   );
 }
 
+function Countdown() {
+  const countdown = useUiStore((s) => s.hud.countdown);
+  if (countdown <= 0) return null;
+  return (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <div className="font-mono text-8xl font-bold tracking-widest text-ember drop-shadow-[0_0_20px_rgba(196,106,43,0.6)]">
+        {Math.ceil(countdown)}
+      </div>
+    </div>
+  );
+}
+
 function PausedOverlay() {
   const paused = useUiStore((s) => s.hud.paused);
   if (!paused) return null;
@@ -86,6 +98,7 @@ export function Hud() {
       <SprintPips />
       <Timer />
       <LevelXp />
+      <Countdown />
       <PausedOverlay />
     </>
   );

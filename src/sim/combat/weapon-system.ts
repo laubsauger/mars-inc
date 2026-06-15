@@ -15,6 +15,7 @@ import { ProjectilePool } from './projectiles';
 import { type WeaponInstance, type WeaponDamageSpec } from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
 import type { RunMods } from '../progression/mods';
+import type { FxQueue } from '../fx';
 
 export interface KillEvent {
   x: number;
@@ -29,10 +30,20 @@ export class WeaponSystem {
   readonly weapons: WeaponInstance[] = [];
   /** On-kill events this step (XP drops consume these at T17). */
   readonly kills: KillEvent[] = [];
+  /** Damage applied to enemy health this step (T22 run stats, V20). */
+  damageThisStep = 0;
   private query: number[] = [];
 
   add(w: WeaponInstance): void {
     this.weapons.push(w);
+  }
+
+  /** Reset to a fresh-run baseline in place (T22 restart, no reload). */
+  reset(): void {
+    this.weapons.length = 0;
+    this.projectiles.count = 0;
+    this.kills.length = 0;
+    this.damageThisStep = 0;
   }
 
   step(
@@ -42,14 +53,23 @@ export class WeaponSystem {
     mods: RunMods,
     rng: Rng,
     dt: number,
+    fx: FxQueue,
   ): void {
     this.kills.length = 0;
-    this.fire(player, enemies, mods, rng, dt);
-    this.advanceProjectiles(enemies, hash, rng, dt);
-    compactDead(enemies, this.kills);
+    this.damageThisStep = 0;
+    this.fire(player, enemies, mods, rng, dt, fx);
+    this.advanceProjectiles(enemies, hash, rng, dt, fx);
+    compactDead(enemies, this.kills, fx);
   }
 
-  private fire(player: Player, enemies: EnemyPool, mods: RunMods, rng: Rng, dt: number): void {
+  private fire(
+    player: Player,
+    enemies: EnemyPool,
+    mods: RunMods,
+    rng: Rng,
+    dt: number,
+    fx: FxQueue,
+  ): void {
     for (const w of this.weapons) {
       w.cooldownLeft -= dt;
       if (w.cooldownLeft > 0) continue;
@@ -89,6 +109,9 @@ export class WeaponSystem {
         );
       }
 
+      // Muzzle FX once per shot at the muzzle, aimed along fire direction.
+      fx.push('muzzle', player.pos.x + aim.x * muzzle, player.pos.z + aim.z * muzzle, aim.x, aim.z);
+
       player.facing = Math.atan2(-aim.x, -aim.z); // match player-view nose convention
       player.vel = applyRecoil(
         player.vel,
@@ -102,7 +125,13 @@ export class WeaponSystem {
     }
   }
 
-  private advanceProjectiles(enemies: EnemyPool, hash: SpatialHash, rng: Rng, dt: number): void {
+  private advanceProjectiles(
+    enemies: EnemyPool,
+    hash: SpatialHash,
+    rng: Rng,
+    dt: number,
+    fx: FxQueue,
+  ): void {
     const pr = this.projectiles;
     for (let i = pr.count - 1; i >= 0; i--) {
       pr.prevX[i] = pr.posX[i]!;
@@ -136,7 +165,11 @@ export class WeaponSystem {
           });
           const out = computeOutgoing(packet, rng);
           const mit = applyMitigation(out.amount, 0, 0); // enemies: no armor/shield yet
+          // Count effective damage (clamp to remaining health, no overkill) for
+          // run stats — must match what the sim actually removed (V20).
+          this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
           enemies.health[e]! -= mit.toHealth;
+          fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
 
           if (pr.pierce[i]! <= 0) {
             dead = true;
@@ -151,8 +184,9 @@ export class WeaponSystem {
   }
 }
 
-/** Returns a unit aim direction (x,z) for the weapon, or null if no target. */
-function resolveAim(
+/** Returns a unit aim direction (x,z) for the weapon, or null if no target.
+ *  Exported for target-selection unit tests (T30, V19). */
+export function resolveAim(
   w: WeaponInstance,
   player: Player,
   enemies: EnemyPool,
@@ -235,11 +269,15 @@ function aimAt(player: Player, enemies: EnemyPool, e: number): { x: number; z: n
   return { x: dx / l, z: dz / l };
 }
 
-/** Swap-remove all dead enemies, emitting on-kill events (V5 pooling). */
-function compactDead(enemies: EnemyPool, kills: KillEvent[]): void {
+/** Swap-remove all dead enemies, emitting on-kill events (V5 pooling) + death FX. */
+function compactDead(enemies: EnemyPool, kills: KillEvent[], fx: FxQueue): void {
   for (let i = enemies.count - 1; i >= 0; i--) {
     if (enemies.health[i]! <= 0) {
-      kills.push({ x: enemies.posX[i]!, z: enemies.posZ[i]!, variant: enemies.variant[i]! });
+      const x = enemies.posX[i]!;
+      const z = enemies.posZ[i]!;
+      const variant = enemies.variant[i]!;
+      kills.push({ x, z, variant });
+      fx.push('death', x, z, 0, 0, variant);
       enemies.kill(i);
     }
   }

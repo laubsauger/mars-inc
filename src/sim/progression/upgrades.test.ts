@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { rollDraft, applyUpgrade, available, taken, type UpgradeLevels } from './upgrades';
+import {
+  rollDraft,
+  applyUpgrade,
+  available,
+  taken,
+  type UpgradeDefinition,
+  type UpgradeLevels,
+} from './upgrades';
 import { defaultMods } from './mods';
 import { createPlayer } from '../player';
 import { UPGRADES } from '../../content/upgrades/index';
 import { Rng } from '../../core/rng';
+
+function byId(id: string): UpgradeDefinition {
+  return UPGRADES.find((u) => u.id === id)!;
+}
 
 describe('rollDraft (V11 pool never empty, no invalid combo)', () => {
   it('returns 3 distinct options from a fresh pool', () => {
@@ -38,6 +49,48 @@ describe('rollDraft (V11 pool never empty, no invalid combo)', () => {
   it('non-empty while any upgrade remains under maxLevel', () => {
     const draft = rollDraft(UPGRADES, {}, new Rng(7));
     expect(draft.length).toBeGreaterThan(0);
+  });
+});
+
+describe('prerequisites + exclusions (T19, V11 no invalid combo)', () => {
+  it('a prereq-gated upgrade is hidden until its requirement is met', () => {
+    const ids = available(UPGRADES, {}).map((u) => u.id);
+    expect(ids).not.toContain('shotgun-clause'); // needs split-shipment >= 2
+
+    const ok = available(UPGRADES, { 'split-shipment': 2 }).map((u) => u.id);
+    expect(ok).toContain('shotgun-clause');
+  });
+
+  it('prereq not satisfied at lower level', () => {
+    const ids = available(UPGRADES, { 'split-shipment': 1 }).map((u) => u.id);
+    expect(ids).not.toContain('shotgun-clause');
+  });
+
+  it('taking one of a mutually-exclusive pair removes the other', () => {
+    const beforeIds = available(UPGRADES, {}).map((u) => u.id);
+    expect(beforeIds).toContain('glass-runner');
+    expect(beforeIds).toContain('iron-stance');
+
+    const afterIds = available(UPGRADES, { 'glass-runner': 1 }).map((u) => u.id);
+    expect(afterIds).not.toContain('iron-stance');
+  });
+
+  it('rollDraft never offers an excluded or unmet-prereq upgrade', () => {
+    const levels: UpgradeLevels = { 'glass-runner': 1 };
+    for (let s = 0; s < 60; s++) {
+      const draft = rollDraft(UPGRADES, levels, new Rng(s));
+      expect(draft.find((d) => d.id === 'iron-stance')).toBeUndefined();
+      expect(draft.find((d) => d.id === 'shotgun-clause')).toBeUndefined();
+    }
+  });
+
+  it('applying the gated upgrade works once unlocked', () => {
+    const levels: UpgradeLevels = { 'split-shipment': 2 };
+    const mods = defaultMods();
+    mods.projectileCount = 3; // from split-shipment x2
+    applyUpgrade(byId('shotgun-clause'), { player: createPlayer(), mods }, levels);
+    expect(mods.projectileCount).toBe(5);
+    expect(taken(levels, 'shotgun-clause')).toBe(1);
   });
 });
 
