@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterPit } from './helpers';
 
 type Hook = {
   world: {
@@ -11,9 +12,7 @@ test('enemies spawn through gates and converge on the player (T11-T13)', async (
   await page.goto('/');
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15000 });
-  await page.waitForFunction(() => !!(window as unknown as { __MARS__?: unknown }).__MARS__, {
-    timeout: 15000,
-  });
+  await enterPit(page);
 
   // Let the spawner run; enemies stream in.
   await page.waitForFunction(

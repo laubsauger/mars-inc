@@ -38,12 +38,13 @@ export interface RunResult {
 }
 
 /**
- * Martian Glory awarded for a run (T26, §9.5). Earned from survival time, kills,
- * and level reached. Modest amounts — progression unlocks possibilities, not raw
- * power. Pure & deterministic from the result.
+ * Martian Glory awarded for a run (T26, §9.5). Rewards how FAR you got, not just
+ * showing up: depth (level) scales quadratically while time/kills are small drips
+ * — a tier-1 death pays a pittance, a deep run pays real money. Progression
+ * unlocks possibilities, not raw power. Pure & deterministic from the result.
  */
 export function gloryFor(result: RunResult): number {
-  return Math.floor(result.durationSec * 0.5 + result.kills * 0.4 + result.level * 3);
+  return Math.floor(result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6);
 }
 
 /** Pure projection of accumulated stats into the result summary (V20). */

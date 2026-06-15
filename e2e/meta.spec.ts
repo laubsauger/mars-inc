@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterPit } from './helpers';
 
 type Hook = {
   world: { player: { health: number; maxHealth: number }; result: unknown; reset: () => void };
@@ -12,9 +13,7 @@ type Hook = {
 test('die → earn Glory → buy permanent → next run applies it (T26)', async ({ page }) => {
   await page.goto('/');
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
-  await page.waitForFunction(() => !!(window as unknown as { __MARS__?: Hook }).__MARS__?.save, {
-    timeout: 15000,
-  });
+  await enterPit(page);
 
   // Kill the player via the dev hook to end the run deterministically.
   await page.evaluate(() => {

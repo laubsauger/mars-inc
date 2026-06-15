@@ -61,8 +61,10 @@ export function computeAdaptation(b: AdaptInput): Adaptation {
 /** Budget as a function of elapsed run seconds. Tunable curve (§8.3). */
 export function budgetAt(elapsed: number): SpawnBudget {
   return {
-    threatPoints: 1.5 + elapsed * 0.18,
-    maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(18 + elapsed * 2.6)),
+    // Gentler opening: less threat/sec and a lower concurrent floor early so the
+    // first minute breathes; still ramps to a heavy late game (monotonic).
+    threatPoints: 1.0 + elapsed * 0.12,
+    maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(8 + elapsed * 2.1)),
     eliteBudget: Math.floor(elapsed / 30),
     rangedBudget: 0,
     hazardBudget: 0,

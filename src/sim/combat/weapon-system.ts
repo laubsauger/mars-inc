@@ -58,7 +58,7 @@ export class WeaponSystem {
     this.kills.length = 0;
     this.damageThisStep = 0;
     this.fire(player, enemies, mods, rng, dt, fx);
-    this.advanceProjectiles(enemies, hash, rng, dt, fx);
+    this.advanceProjectiles(enemies, hash, mods, rng, dt, fx);
     compactDead(enemies, this.kills, fx);
   }
 
@@ -90,6 +90,7 @@ export class WeaponSystem {
       const muzzle = player.stats.collisionRadius + 0.3;
       const aimAngle = Math.atan2(aim.x, aim.z);
       const shots = Math.max(1, mods.projectileCount);
+      const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
       // Fan multishot evenly across spreadArc; single shot gets random jitter.
       for (let s = 0; s < shots; s++) {
         const fan = shots > 1 ? (s / (shots - 1) - 0.5) * mods.spreadArc : 0;
@@ -104,7 +105,7 @@ export class WeaponSystem {
           dz * p.speed,
           p.radius,
           p.lifetime,
-          p.pierce,
+          pierce,
           dmg,
         );
       }

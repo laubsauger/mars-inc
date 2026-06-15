@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Unsupported } from './screens/Unsupported';
 import { UpgradeScreen } from './screens/UpgradeScreen';
 import { GameOverScreen } from './screens/GameOverScreen';
+import { MainMenu } from './screens/MainMenu';
 import { Hud } from './Hud';
 import { useUiStore } from './store';
 import './index.css';
@@ -16,6 +17,8 @@ function App() {
   switch (screen) {
     case 'unsupported':
       return <Unsupported />;
+    case 'menu':
+      return <MainMenu />;
     case 'arena':
       return (
         <>

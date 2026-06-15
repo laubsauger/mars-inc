@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterPit } from './helpers';
 
 type Hook = {
   world: {
@@ -16,9 +17,7 @@ test('XP collection levels up and opens a frozen upgrade draft (T17/T18)', async
   await page.goto('/');
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15000 });
-  await page.waitForFunction(() => !!(window as unknown as { __MARS__?: unknown }).__MARS__, {
-    timeout: 15000,
-  });
+  await enterPit(page);
 
   // Force a level-up deterministically via the dev hook (XP plumbing is e2e-opaque).
   await page.evaluate(() => {

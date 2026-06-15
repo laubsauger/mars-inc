@@ -74,6 +74,7 @@ function GloryPanel() {
 export function GameOverScreen() {
   const result = useUiStore((s) => s.result);
   const restart = useUiStore((s) => s.restartRun);
+  const toMenu = useUiStore((s) => s.toMenu);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -109,13 +110,21 @@ export function GameOverScreen() {
 
       <GloryPanel />
 
-      <button
-        onClick={restart}
-        className="rounded-md border-2 border-rust bg-umber/90 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:border-gold focus:border-gold focus:outline-none"
-      >
-        RESTART
-      </button>
-      <div className="mt-4 text-xs text-bone/50">click or press Enter</div>
+      <div className="flex gap-4">
+        <button
+          onClick={restart}
+          className="rounded-md border-2 border-gold bg-ember/20 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:bg-ember/30 focus:outline-none"
+        >
+          RESTART
+        </button>
+        <button
+          onClick={toMenu}
+          className="rounded-md border-2 border-rust bg-umber/90 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:border-gold focus:outline-none"
+        >
+          MENU
+        </button>
+      </div>
+      <div className="mt-4 text-xs text-bone/50">Enter to restart</div>
     </div>
   );
 }

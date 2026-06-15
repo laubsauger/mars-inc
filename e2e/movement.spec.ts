@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterPit } from './helpers';
 
 type MarsHook = { world: { player: { pos: { x: number; z: number } } } };
 
@@ -13,9 +14,7 @@ test('WASD moves the player on x,z (T6)', async ({ page }) => {
   await page.goto('/');
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15000 });
-  await page.waitForFunction(() => !!(window as unknown as { __MARS__?: unknown }).__MARS__, {
-    timeout: 15000,
-  });
+  await enterPit(page);
 
   const start = await playerPos(page);
   expect(start).not.toBeNull();

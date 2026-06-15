@@ -80,7 +80,31 @@ async function boot(parent: HTMLElement): Promise<void> {
   window.addEventListener('keydown', resumeAudio, { once: true });
   window.addEventListener('pointerdown', resumeAudio, { once: true });
   const overlay = new DevOverlay(parent);
-  uiActions.setScreen('arena');
+
+  // Push records/settings to the menu from the saved profile.
+  const pushProfile = (): void => {
+    const r = save.current.records;
+    uiActions.setProfile({
+      bestTimeSec: r.bestTimeSec,
+      bestLevel: r.bestLevel,
+      mostKills: r.mostKills,
+      runCount: save.current.runHistory.length,
+      masterVolume: save.current.settings.masterVolume,
+    });
+  };
+  pushProfile();
+
+  // Boot lands on the main menu over the rendered empty arena (§13.4).
+  // Dev shortcut: `?play` (in dev builds) skips the menu and drops straight into
+  // a run — fast iteration with hot reload, no clicking through the menu.
+  const autostart = import.meta.env.DEV && new URLSearchParams(location.search).has('play');
+  if (autostart) {
+    world.start();
+    uiActions.setScreen('arena');
+  } else {
+    uiActions.setScreen('menu');
+    uiActions.setMenuView('root');
+  }
 
   // Bridge upgrade picks from the React draft screen into the sim.
   uiActions.setChooseUpgrade((i) => world.choose(i));
@@ -123,13 +147,40 @@ async function boot(parent: HTMLElement): Promise<void> {
     pushMeta();
   });
 
-  // Bridge restart from the game-over screen → reset the run in place (V15).
-  uiActions.setRestartRun(() => {
-    world.setPermanents(save.current.permanentUpgrades); // apply any purchases
-    world.reset();
+  // Enter the pit from the menu → start a fresh run (applies owned permanents).
+  uiActions.setEnterPit(() => {
+    world.setPermanents(save.current.permanentUpgrades);
+    world.start();
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
+  });
+
+  // Return to the menu from game-over → idle the sim, refresh records.
+  uiActions.setToMenu(() => {
+    world.reset();
+    endShown = false;
+    uiActions.setResult(null);
+    pushProfile();
+    uiActions.setMenuView('root');
+    uiActions.setScreen('menu');
+  });
+
+  // Bridge restart from the game-over screen → start a fresh run in place (V15).
+  uiActions.setRestartRun(() => {
+    world.setPermanents(save.current.permanentUpgrades); // apply any purchases
+    world.start();
+    endShown = false;
+    uiActions.setResult(null);
+    uiActions.setScreen('arena');
+  });
+
+  // Live master-volume control from the settings panel (persists + applies).
+  uiActions.setMasterVolumeBridge((v) => {
+    audio.masterVolume = v;
+    audio.resume();
+    save.updateSettings({ masterVolume: v });
+    pushProfile();
   });
 
   window.addEventListener('resize', () => {
@@ -144,6 +195,12 @@ async function boot(parent: HTMLElement): Promise<void> {
 
   const loop = createLoop({
     step(dt) {
+      // Sim only runs while a run is active (menu/game-over idle the world).
+      if (!world.started) {
+        input.sample(); // keep edge-triggers (pause) from piling up
+        simMs = 0;
+        return;
+      }
       const snap = input.sample();
       // Render layer owns the camera → resolve the ground aim point here.
       if (snap.mouseInside) {
@@ -236,6 +293,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         });
         void save.flush();
         pushMeta();
+        pushProfile();
         uiActions.setResult(r);
         uiActions.setScreen('gameover');
       }

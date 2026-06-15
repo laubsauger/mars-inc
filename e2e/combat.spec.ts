@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { enterPit } from './helpers';
 
 type Hook = {
   world: {
@@ -17,9 +18,7 @@ test('mouse-aimed weapon fires projectiles and kills enemies (T14/T15)', async (
   await page.goto('/');
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15000 });
-  await page.waitForFunction(() => !!(window as unknown as { __MARS__?: unknown }).__MARS__, {
-    timeout: 15000,
-  });
+  await enterPit(page);
 
   // Move the mouse over the arena → ground aim resolves.
   const box = (await page.locator('canvas').boundingBox())!;

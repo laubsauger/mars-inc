@@ -21,7 +21,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     name: 'Reinforced Plating',
     description: '+20 starting max health per level.',
     branch: 'biology',
-    cost: 40,
+    cost: 90,
     maxLevel: 5,
     apply: (p, level) => {
       const bonus = 20 * level;
@@ -34,7 +34,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     name: 'Jump-Start Contract',
     description: '+1 sprint charge per level.',
     branch: 'mobility',
-    cost: 60,
+    cost: 140,
     maxLevel: 2,
     apply: (p, level) => {
       p.stats.sprintCharges += level;

@@ -63,6 +63,7 @@ V17: threat sim identical across quality tiers; only visuals degrade.
 V18: weapon evolution gated by combo requirements, ⊥ level-5 alone.
 V19: ∀ core math system (damage/upgrade-stack/xp/spawn-budget/drop/prestige/target-select/status-timing/evo-req) → unit test.
 V20: post-game stats accurately describe run (counts/damage/time match sim events).
+V21: build effects/triggers/conditionals/status (T38/T39) resolve via the V3 pipeline in fixed order, pooled (V5), deterministic under seed (V16). ⊥ an upgrade bypassing the pipeline or adding nondeterminism.
 
 ## §T TASKS
 
@@ -84,8 +85,8 @@ T14|x|weapon: targeting modes (default mouse-aim + ground cursor; nearest/lowest
 T15|x|centralized damage pipeline (computeOutgoing base..element + applyMitigation armor/shield); all weapons route through it|V3,§I.data
 T16|x|sim→render FX queue + pooled effects (muzzle star / impact ring / death dust / cyan sprint trail, additive cards, ⊥ per-shot light) + capped-voice synth audio. follows docs/art-direction.md Effects Plan|V5,V6
 T17|x|XP shards (pooled) + magnet/pickup collection + level curve from balance data + leveling. art refs: `docs/art-direction.md` XP shard/HUD style|V13,§I.curve
-T18|x|3-choice draft overlay (freezes sim) + run-mod layer + 8 upgrades (dmg/fire-rate/multishot/sprint-cd/crit/speed/magnet/hp) + synergy-weighted roll. art refs: `docs/art-direction.md` upgrade draft cards|V11,§I.data
-T19|x|UpgradeDefinition apply + tag synergy weighting + prerequisites/exclusions (gated evolution + mutually-exclusive pair) + tests|V11,§I.data
+T18|x|3-choice draft overlay (freezes sim) + run-mod layer + 8 upgrades (dmg/fire-rate/multishot/sprint-cd/crit/speed/magnet/hp) + synergy-weighted roll. SHALLOW PLACEHOLDER → real depth in T38-T41. art refs: `docs/art-direction.md` upgrade draft cards|V11,§I.data
+T19|x|UpgradeDefinition apply + tag synergy weighting + prerequisites/exclusions (gated evolution + mutually-exclusive pair) + tests. effect model still flat → T38|V11,§I.data
 T20|x|run state: 3s countdown (HUD), timer, budgeted WaveDirector (threat accrual + concurrent cap + gate telegraph, bounded bank) replacing placeholder spawner, pause. enemy threat costs|V8,§I.data
 T21|x|adaptive director: computeAdaptation(build) → bounded pace + hound-bias (offense accelerates schedule, multishot → tankier mix). composition not per-enemy stats; hard-clamped, cap still honored|V12
 T22|x|player death + result calc + restart (no reload) + menu transition|V15,V20
@@ -93,17 +94,27 @@ T23|x|post-game stats page (counts/damage/derived). art refs: `docs/art-directio
 T24|x|save: versioned PlayerProfile schema + normalizeProfile (forward-compat, ⊥ throw) + IndexedDB store + localStorage boot pointer + SaveManager (debounced flush, load-fallback) + settings persist. e2e: survives refresh|V14,§I.save
 T25|x|versioned migration runner (chained, loop-guarded) + corruption recovery (quarantine bad data, fresh default, ⊥ crash) + export/import text + rolling timestamped backups (pruned)|V14
 T26|x|award Martian Glory on death (gloryFor) + records/runHistory + 2 permanent upgrades (data) applied at run start + buy panel on game-over → next run applies. closes the §25 meta loop|V15,§I.save
-T27|.|main menu (8 items) + Warrior select. art refs: `docs/art-direction.md` HUD/menu direction|§I.menu
+T27|x|main menu over live arena (8 signage items) + Warrior(Mara Vex)/Records/Settings(volume) live, Arsenal/GloryTree/Challenges coming-soon, Credits. run starts on Enter-the-Pit (world.started gated at driver, step() stays headless), game-over → Restart/Menu. dev `?play` autostart. art refs: `docs/art-direction.md` HUD/menu direction|§I.menu
 T28|x|determinism: seeded RNG threaded through sim|V16
 T29|x|headless sim tests: bounded counts, runs terminate, boss spawns, pool ⊥ empty, dmg bands|V8,V19
 T30|~|unit tests: damage/upgrade-stack/xp/spawn-budget/drop/target-select/status/evo-req|V19
 T31|.|Playwright: boot→menu→run→move→pause→upgrade→death→restart→save persist→no-WebGPU unsupported screen→viewport→focus-loss|V15
-T32|.|perf benchmark scenes 500/1k/2k enemies + projectile storm + crowd; record sim/render/draws/alloc|V5,V17
+T32|x|perf benchmark scenes 500/1k/2k enemies + projectile storm + crowd; record sim/render/draws/alloc (sim+alloc headless; render/draws → T31 GPU bench)|V5,V17
 T33|.|slice content: arena Rust Crown, char Mara Vex, 6 weapons, 8 enemies, boss Gatekeeper of Phobos, 34 upgrades. art refs: `docs/art-direction.md` model/weapon/humor briefs|§I.data,V18
 T34|.|weapon evolution combo gating (e.g. Rust Devil Minigun). art refs: `docs/art-direction.md` weapon evolution read|V18
 T35|.|small Arsenal + Mobility permanent branches + Glory Tree UI. art refs: `docs/art-direction.md` menu/contract UI direction|§I.menu,§I.save
 T36|.|accessibility pass (rebind/controller/shake/flash/colorblind/UI scale/volumes/focus pause). art refs: `docs/art-direction.md` flash/shake/health readability notes|§C
 T37|~|art direction (Martian Pulp Brutalism, `docs/art-direction.md`). DONE: render-side art tokens (`render/art/palette.ts`) + recolor all views to palette + in-world enemy naming. TODO: TSL toon/ink material, atlases, pooled particles (after T16), contact/grounding shadow polish, reactive arena, accent discipline.|§C
+
+# DEPTH DEBT — progression is a SHALLOW PLACEHOLDER (T18/T19/T26 = thin vertical slice).
+# Current: 1 weapon, flat RunMods (dmg/fireRate/multishot/spread/crit), 3 rarities used, ~10
+# linear upgrades, no triggers/conditionals/status/projectile-behaviors, no build directions.
+# Target: a deep build system where many distinct archetypes + directions emerge. Open scope.
+T38|.|BUILD-DEPTH ENGINE — replace flat RunMods with a rich effect/modifier model. Per-tag scalars; CONDITIONAL modifiers (scale by enemies-on-screen, target distance, ramp-while-firing, low-hp, recent-crit); TRIGGER hooks (on-hit/crit/kill/overkill/sprint/reload/every-Nth-shot/low-hp/wave-clear) firing pooled effects; PROJECTILE-BEHAVIOR flags (pierce/ricochet/chain/fork/homing/orbit/boomerang/explode-on-expire/seek). Evaluated per-shot/per-hit through the V3 pipeline. ⊥ flat global mults only.|V3,V11,§I.data
+T39|.|STATUS EFFECTS — burn(DoT)/chill(slow)/shock(chain)/corrode(armor-shred)/infection(spread-on-death)/mark(amplify). Pooled per-enemy status component, ticked in pipeline order (status step, §5.4). Application chance + stacks + duration are upgrade outputs. ⊥ bespoke per-weapon status code.|V3,V5,§I.data
+T40|.|UPGRADE CATALOG DEPTH — replace shallow T18 set. Wide catalog across ALL 6 rarities (common/uncommon/rare/legendary/corrupted/prototype) producing DISTINCT directions: ballistic-crit, rotary heat/recoil-mobility, explosive cluster/chain, drone swarm, energy beam-geometry, orbital strike, infection/spore, shield/overkill, glass-cannon, bruiser/tank, summoner, economy/greed. Curses (corrupted: big upside + real downside), capstones (legendary), experimental (prototype). Anti-synergy/exclusivity webs. Diverging scaling (additive vs mult vs threshold-unlock). ≥80 upgrades.|V11,§I.data
+T41|.|DRAFT DEPTH — rarity-weighted pools by level+luck; reroll/banish/lock/skip-for-currency; omen & curse offers; evolution offers surfaced in draft; synergy highlight + build-direction hints; rarity presentation per `docs/art-direction.md`.|V11,§13.5
+T42|.|WEAPON-FAMILY MECHANICS DEPTH — give the 6 families distinct identity systems (rotary spin-up+heat+recoil-mobility; explosive min-safe-distance+chain; drone formation/interception; energy overheat/refraction; orbital telegraph-strike) so weapons PLAY differently, not stat reskins. Ties T33/T34.|§I.data,V18
 
 ## §B BUGS
 

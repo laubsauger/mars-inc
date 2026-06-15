@@ -116,7 +116,7 @@ export const RUST_MITE: EnemyType = {
   id: 'rust-mite',
   radius: 0.5,
   maxHealth: 6,
-  speed: 4.2, // tier-1 fodder: well under player base so early kiting reads clearly
+  speed: 3.6, // tier-1 fodder: well under player base so early kiting reads clearly
   separationWeight: 1.0,
   variant: 0,
   threat: 1,

@@ -24,10 +24,14 @@ export class ProjectileView {
       color: COL.kineticGold,
       blending: AdditiveBlending,
       depthWrite: false,
+      // Glowing plasma bolts read as light, not solid geometry — don't let the
+      // raised gate plates (or any opaque prop) occlude them. Draw on top.
+      depthTest: false,
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    this.mesh.renderOrder = 10; // after opaque scene, with the additive overlay
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     scene.add(this.mesh);

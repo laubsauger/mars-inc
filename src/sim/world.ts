@@ -55,6 +55,8 @@ export class World {
   readonly director: WaveDirector;
   /** Pre-combat countdown (T20). Player can move; no spawns; timer held at 0. */
   countdown = COUNTDOWN_SECONDS;
+  /** False until the player enters the pit from the menu (T27). Sim idles. */
+  started = false;
   input: InputSnapshot = ZERO_INPUT;
   paused = false;
 
@@ -94,6 +96,14 @@ export class World {
 
   get alive(): boolean {
     return this.player.health > 0;
+  }
+
+  /** Begin combat from the menu: fresh run, countdown starts (T27). The driver
+   *  (main loop) only calls step() while `started`; step() itself stays runnable
+   *  headless so sim tests can drive a world directly without the menu gate. */
+  start(): void {
+    this.reset();
+    this.started = true;
   }
 
   step(dt: number): void {
@@ -169,6 +179,7 @@ export class World {
     this.draft = [];
     this.pendingLevelUps = 0;
     this.countdown = COUNTDOWN_SECONDS;
+    this.started = false;
     for (const k of Object.keys(this.upgradeLevels)) delete this.upgradeLevels[k];
 
     resetPlayer(this.player);
