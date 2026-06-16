@@ -1,0 +1,21 @@
+# pnpm 10+ reads settings here (the package.json "pnpm" field is no longer read).
+
+# Allow esbuild to run its install script (vite's bundler needs its native
+# binary). pnpm 10+ otherwise refuses to run dependency build scripts.
+allowBuilds:
+  esbuild: true
+
+# Pin the whole @typescript-eslint scope to 8.61.0 — the 8.61.1 release is within
+# the CI supply-chain minimumReleaseAge cutoff, so we hold one patch back until it
+# ages out. Playwright is pinned to 1.60.0 in package.json devDependencies.
+overrides:
+  '@typescript-eslint/eslint-plugin': 8.61.0
+  '@typescript-eslint/parser': 8.61.0
+  '@typescript-eslint/project-service': 8.61.0
+  '@typescript-eslint/scope-manager': 8.61.0
+  '@typescript-eslint/tsconfig-utils': 8.61.0
+  '@typescript-eslint/type-utils': 8.61.0
+  '@typescript-eslint/types': 8.61.0
+  '@typescript-eslint/typescript-estree': 8.61.0
+  '@typescript-eslint/utils': 8.61.0
+  '@typescript-eslint/visitor-keys': 8.61.0
