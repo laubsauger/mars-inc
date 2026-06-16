@@ -42,6 +42,52 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
       p.sprint.charges += level;
     },
   },
+  // ── Mobility ──────────────────────────────────────────────────────────────
+  {
+    id: 'fleet-footed',
+    name: 'Fleet-Footed Clause',
+    description: '+5% base move speed per level.',
+    branch: 'mobility',
+    cost: 80,
+    maxLevel: 4,
+    apply: (p, level) => {
+      p.stats.moveSpeed *= 1 + 0.05 * level;
+    },
+  },
+  // ── Arsenal (unlock POSSIBILITIES over raw power, §9.5) ────────────────────
+  {
+    id: 'house-odds',
+    name: 'House Odds',
+    description: '+1 draft reroll each run per level.',
+    branch: 'arsenal',
+    cost: 110,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.bonusRerolls += level;
+    },
+  },
+  {
+    id: 'blacklist-rights',
+    name: 'Blacklist Rights',
+    description: '+1 draft banish each run per level.',
+    branch: 'arsenal',
+    cost: 110,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.bonusBanishes += level;
+    },
+  },
+  {
+    id: 'lucky-streak',
+    name: 'Lucky Streak',
+    description: 'Better odds of rare upgrades (+luck) per level.',
+    branch: 'arsenal',
+    cost: 130,
+    maxLevel: 3,
+    apply: (p, level) => {
+      p.luck += level;
+    },
+  },
 ];
 
 export function permanentById(id: string): PermanentUpgrade | undefined {

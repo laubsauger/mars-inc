@@ -9,7 +9,6 @@ import { ARENA_RADIUS } from './constants';
 
 const STEER_DIVISOR = 3; // re-steer each enemy every 3rd tick → ~20Hz
 const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
-const CONTACT_DAMAGE = 6;
 
 export class EnemySystem {
   readonly pool: EnemyPool;
@@ -69,11 +68,12 @@ export class EnemySystem {
         p.velZ[i] = v.z;
       }
 
-      // Integrate.
+      // Integrate (chill slows movement — status effect, T39).
+      const chill = p.chillMult[i]!;
       p.prevX[i] = p.posX[i]!;
       p.prevZ[i] = p.posZ[i]!;
-      p.posX[i]! += p.velX[i]! * dt;
-      p.posZ[i]! += p.velZ[i]! * dt;
+      p.posX[i]! += p.velX[i]! * chill * dt;
+      p.posZ[i]! += p.velZ[i]! * chill * dt;
 
       // Keep inside the arena.
       const d = Math.hypot(p.posX[i]!, p.posZ[i]!);
@@ -86,7 +86,7 @@ export class EnemySystem {
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
       const rr = p.radius[i]! + player.stats.collisionRadius;
-      if (dx * dx + dz * dz <= rr * rr) hitPlayer(player, CONTACT_DAMAGE);
+      if (dx * dx + dz * dz <= rr * rr) hitPlayer(player, p.contactDmg[i]!);
     }
   }
 }

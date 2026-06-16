@@ -31,8 +31,14 @@ export interface WeaponDefinition {
   targeting: TargetingRule;
   range: number;
   cooldown: number;
-  spread: number; // radians of random fire spread
+  spread: number; // radians of random fire spread (single shot jitter)
   recoil: number; // impulse force on the player
+  /** Innate pellets per shot (shotgun-style); default 1. Stacks with multishot. */
+  pellets?: number;
+  /** Fan width (radians) when firing multiple pellets; default = run-mod spreadArc. */
+  spreadArc?: number;
+  /** Explosive blast radius dealt on impact (V3-routed AoE); 0/absent = none. */
+  explosiveRadius?: number;
   projectile: ProjectileSpec;
   damage: WeaponDamageSpec;
   visualProfile: string;

@@ -4,7 +4,17 @@
 // maxConcurrentEnemies, and the bank is clamped so it can't hoard).
 
 import type { EnemyPool } from '../enemies';
-import { RUST_MITE, DEBT_HOUND, BOSS_GATEKEEPER, type EnemyType } from '../enemies';
+import {
+  RUST_MITE,
+  DEBT_HOUND,
+  BOSS_GATEKEEPER,
+  SEVERANCE_LOBBER,
+  REPO_MARSHAL,
+  FORECLOSURE_MORTAR,
+  RIOT_SHOTGUNNER,
+  AUDIT_BRUTE,
+  type EnemyType,
+} from '../enemies';
 import type { Rng } from '../../core/rng';
 import { ARENA_RADIUS, GATE_COUNT } from '../constants';
 
@@ -93,6 +103,27 @@ export class WaveDirector {
   }
 
   private pickType(rng: Rng, elapsed: number, houndBias: number): EnemyType {
+    // Severance Lobbers (ranged) start trickling in after ~45s. Gated by time so
+    // the early-game rng stream is untouched (determinism stays stable, V16).
+    // Audit Brutes (melee wall) start showing up around 40s.
+    if (elapsed > 40 && rng.next() < Math.min(0.12, (elapsed - 40) * 0.003)) {
+      return AUDIT_BRUTE;
+    }
+    if (elapsed > 45 && rng.next() < Math.min(0.18, (elapsed - 45) * 0.004)) {
+      return SEVERANCE_LOBBER;
+    }
+    // Riot Shotgunners (close burst) push the player to keep distance.
+    if (elapsed > 50 && rng.next() < Math.min(0.14, (elapsed - 50) * 0.003)) {
+      return RIOT_SHOTGUNNER;
+    }
+    // Repossession Marshals (gun) trickle in a bit later than the lobbers.
+    if (elapsed > 60 && rng.next() < Math.min(0.15, (elapsed - 60) * 0.003)) {
+      return REPO_MARSHAL;
+    }
+    // Foreclosure Mortars (long-range artillery) are a rare late-game zoner.
+    if (elapsed > 75 && rng.next() < Math.min(0.08, (elapsed - 75) * 0.002)) {
+      return FORECLOSURE_MORTAR;
+    }
     // Debt Hounds start appearing after ~25s, with rising probability + build bias.
     if (elapsed > 25) {
       const p = Math.min(0.5, (elapsed - 25) * 0.01 + houndBias);

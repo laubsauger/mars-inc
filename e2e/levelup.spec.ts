@@ -41,8 +41,8 @@ test('XP collection levels up and opens a frozen upgrade draft (T17/T18)', async
   const lvl = (await hook(page)).world.player.level;
   expect(lvl).toBeGreaterThanOrEqual(2);
 
-  // Pick the first card → draft closes, sim resumes.
-  await page.getByRole('button').first().click();
+  // Pick the first option (keyboard 1) → draft closes, sim resumes.
+  await page.keyboard.press('1');
   await page.waitForFunction(
     () => (window as unknown as { __MARS__: Hook }).__MARS__.world.leveling === false,
     { timeout: 5000 },

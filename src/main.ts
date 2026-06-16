@@ -7,6 +7,8 @@ import { buildArena } from './render/arena';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { ProjectileView } from './render/projectile-view';
+import { EnemyProjectileView } from './render/enemy-projectile-view';
+import { HazardView } from './render/hazard-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { Effects } from './render/effects';
@@ -66,6 +68,8 @@ async function boot(parent: HTMLElement): Promise<void> {
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene);
   const projectileView = new ProjectileView(scene);
+  const enemyProjectileView = new EnemyProjectileView(scene);
+  const hazardView = new HazardView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
   const effects = new Effects(scene);
@@ -106,8 +110,11 @@ async function boot(parent: HTMLElement): Promise<void> {
     uiActions.setMenuView('root');
   }
 
-  // Bridge upgrade picks from the React draft screen into the sim.
+  // Bridge upgrade picks + draft actions from the React draft screen into the sim.
   uiActions.setChooseUpgrade((i) => world.choose(i));
+  uiActions.setRerollDraft((ids) => world.reroll(ids));
+  uiActions.setBanishOption((i) => world.banish(i));
+  uiActions.setSkipDraft(() => world.skipDraft());
   let draftShownFor = -1; // de-dupe store pushes while a draft is open
   let endShown = false; // de-dupe the game-over transition
   let lastGlory = 0; // glory earned on the most recent run (for the panel)
@@ -248,6 +255,8 @@ async function boot(parent: HTMLElement): Promise<void> {
       playerView.sync(world.player, alpha);
       enemyView.sync(world.enemies, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
+      enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
+      hazardView.sync(world.enemyAttacks.hazards);
       shardView.sync(world.shards, alpha);
       cursorView.sync(world.player);
 
@@ -305,6 +314,8 @@ async function boot(parent: HTMLElement): Promise<void> {
         uiActions.setDraft({
           open: true,
           level: world.player.level,
+          rerollsLeft: world.rerollsLeft,
+          banishesLeft: world.banishesLeft,
           options: world.draft.map((d) => ({
             id: d.id,
             name: d.name,
@@ -315,7 +326,13 @@ async function boot(parent: HTMLElement): Promise<void> {
         });
       } else if (!world.leveling && draftShownFor !== -1) {
         draftShownFor = -1;
-        uiActions.setDraft({ open: false, level: world.player.level, options: [] });
+        uiActions.setDraft({
+          open: false,
+          level: world.player.level,
+          options: [],
+          rerollsLeft: 0,
+          banishesLeft: 0,
+        });
       }
 
       const metrics: OverlayMetrics = {

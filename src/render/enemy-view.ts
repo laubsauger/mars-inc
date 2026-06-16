@@ -19,7 +19,17 @@ import { COL } from './art/palette';
 // Color blocking, not line noise (art doc pillar 1). Rust Mite = rust body,
 // Debt Hound = dark iron, Gatekeeper boss = elite magenta. Telegraph = hard sun
 // highlight so spawns read. Boss reads via the magenta + its radius scale.
-const VARIANT_COLORS = [COL.oxidizedIron, COL.oldRust, COL.eliteMagenta];
+// Mite, Hound, Gatekeeper(boss), Lobber, Marshal, Mortar, Shotgunner, Brute.
+const VARIANT_COLORS = [
+  COL.oxidizedIron,
+  COL.oldRust,
+  COL.eliteMagenta,
+  COL.toxicGreen,
+  COL.brass,
+  COL.healthRed,
+  COL.kineticGold,
+  COL.warmLine,
+];
 const TELEGRAPH_COLOR = COL.sunHigh;
 
 export class EnemyView {
@@ -59,7 +69,21 @@ export class EnemyView {
         pool.state[i] === EnemyState.Telegraph
           ? TELEGRAPH_COLOR
           : (VARIANT_COLORS[pool.variant[i]!] ?? VARIANT_COLORS[0]!);
-      this.colorAttr.setXYZ(i, c.r, c.g, c.b);
+      // Status tint (T39): burn → hot ember, chill → cyan. Blend over base color
+      // so the effect reads at a glance without a separate material.
+      let cr = c.r;
+      let cg = c.g;
+      let cb = c.b;
+      if (pool.burnTime[i]! > 0) {
+        cr = cr * 0.4 + 1.0 * 0.6;
+        cg = cg * 0.4 + 0.45 * 0.6;
+        cb = cb * 0.4;
+      } else if (pool.chillTime[i]! > 0) {
+        cr = cr * 0.5 + 0.2 * 0.5;
+        cg = cg * 0.5 + 0.85 * 0.5;
+        cb = cb * 0.5 + 1.0 * 0.5;
+      }
+      this.colorAttr.setXYZ(i, cr, cg, cb);
     }
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;

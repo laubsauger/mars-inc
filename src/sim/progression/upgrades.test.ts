@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   rollDraft,
+  rarityWeight,
   applyUpgrade,
   available,
   taken,
@@ -8,6 +9,7 @@ import {
   type UpgradeLevels,
 } from './upgrades';
 import { defaultMods } from './mods';
+import { BuildEffects } from './effects';
 import { createPlayer } from '../player';
 import { UPGRADES } from '../../content/upgrades/index';
 import { Rng } from '../../core/rng';
@@ -52,6 +54,31 @@ describe('rollDraft (V11 pool never empty, no invalid combo)', () => {
   });
 });
 
+describe('rarity weighting (T41)', () => {
+  it('rarer tiers get more likely as level + luck rise', () => {
+    expect(rarityWeight('legendary', 30, 5)).toBeGreaterThan(rarityWeight('legendary', 1, 0));
+    expect(rarityWeight('common', 30, 5)).toBeGreaterThan(rarityWeight('legendary', 30, 5));
+  });
+
+  it('banished upgrades are filtered out of the pool', () => {
+    const banished = new Set([UPGRADES[0]!.id]);
+    const ids = available(UPGRADES, {}, banished).map((u) => u.id);
+    expect(ids).not.toContain(UPGRADES[0]!.id);
+  });
+
+  it('rollDraft never offers banished ids', () => {
+    const banished = new Set([UPGRADES[0]!.id]);
+    for (let s = 0; s < 40; s++) {
+      const draft = rollDraft(UPGRADES, {}, new Rng(s), { level: 10, luck: 2, banished });
+      expect(draft.find((d) => d.id === UPGRADES[0]!.id)).toBeUndefined();
+    }
+  });
+
+  it('count param limits how many options are rolled', () => {
+    expect(rollDraft(UPGRADES, {}, new Rng(1), { count: 2 })).toHaveLength(2);
+  });
+});
+
 describe('prerequisites + exclusions (T19, V11 no invalid combo)', () => {
   it('a prereq-gated upgrade is hidden until its requirement is met', () => {
     const ids = available(UPGRADES, {}).map((u) => u.id);
@@ -88,7 +115,11 @@ describe('prerequisites + exclusions (T19, V11 no invalid combo)', () => {
     const levels: UpgradeLevels = { 'split-shipment': 2 };
     const mods = defaultMods();
     mods.projectileCount = 3; // from split-shipment x2
-    applyUpgrade(byId('shotgun-clause'), { player: createPlayer(), mods }, levels);
+    applyUpgrade(
+      byId('shotgun-clause'),
+      { player: createPlayer(), mods, effects: new BuildEffects() },
+      levels,
+    );
     expect(mods.projectileCount).toBe(5);
     expect(taken(levels, 'shotgun-clause')).toBe(1);
   });
@@ -100,7 +131,7 @@ describe('applyUpgrade (T18 effects + level tracking)', () => {
     const mods = defaultMods();
     const player = createPlayer();
     const dmg = UPGRADES.find((u) => u.id === 'overcharge')!;
-    applyUpgrade(dmg, { player, mods }, levels);
+    applyUpgrade(dmg, { player, mods, effects: new BuildEffects() }, levels);
     expect(taken(levels, 'overcharge')).toBe(1);
     expect(mods.damageMult).toBeCloseTo(1.25, 6);
   });
@@ -110,8 +141,8 @@ describe('applyUpgrade (T18 effects + level tracking)', () => {
     const mods = defaultMods();
     const player = createPlayer();
     const ms = UPGRADES.find((u) => u.id === 'split-shipment')!;
-    applyUpgrade(ms, { player, mods }, levels);
-    applyUpgrade(ms, { player, mods }, levels);
+    applyUpgrade(ms, { player, mods, effects: new BuildEffects() }, levels);
+    applyUpgrade(ms, { player, mods, effects: new BuildEffects() }, levels);
     expect(mods.projectileCount).toBe(3); // 1 + 2
     expect(available(UPGRADES, levels).find((u) => u.id === 'split-shipment')).toBeDefined();
   });

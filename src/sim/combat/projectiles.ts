@@ -26,6 +26,8 @@ export class ProjectilePool {
   readonly dmgMult: Float32Array;
   readonly critChance: Float32Array;
   readonly critMult: Float32Array;
+  /** Explosive blast radius; 0 = non-explosive (T33). */
+  readonly blast: Float32Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -43,6 +45,7 @@ export class ProjectilePool {
     this.dmgMult = new Float32Array(capacity);
     this.critChance = new Float32Array(capacity);
     this.critMult = new Float32Array(capacity);
+    this.blast = new Float32Array(capacity);
   }
 
   spawn(
@@ -54,6 +57,7 @@ export class ProjectilePool {
     lifetime: number,
     pierce: number,
     dmg: WeaponDamageSpec,
+    blast = 0,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -71,6 +75,7 @@ export class ProjectilePool {
     this.dmgMult[i] = dmg.multiplier;
     this.critChance[i] = dmg.critChance;
     this.critMult[i] = dmg.critMultiplier;
+    this.blast[i] = blast;
     return i;
   }
 
@@ -91,6 +96,7 @@ export class ProjectilePool {
       this.dmgMult[i] = this.dmgMult[last]!;
       this.critChance[i] = this.critChance[last]!;
       this.critMult[i] = this.critMult[last]!;
+      this.blast[i] = this.blast[last]!;
     }
   }
 }

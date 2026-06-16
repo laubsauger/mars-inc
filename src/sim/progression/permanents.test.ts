@@ -69,4 +69,19 @@ describe('applyPermanents (T26 applied to next run)', () => {
     applyPermanents(p, { 'does-not-exist': 3 });
     expect(p.maxHealth).toBe(maxHp);
   });
+
+  it('Arsenal/Mobility branches grant draft resources, luck, speed (T35)', () => {
+    const p = createPlayer();
+    const baseSpeed = p.stats.moveSpeed;
+    applyPermanents(p, {
+      'house-odds': 2,
+      'blacklist-rights': 1,
+      'lucky-streak': 3,
+      'fleet-footed': 2,
+    });
+    expect(p.bonusRerolls).toBe(2);
+    expect(p.bonusBanishes).toBe(1);
+    expect(p.luck).toBe(3);
+    expect(p.stats.moveSpeed).toBeCloseTo(baseSpeed * 1.1, 5); // +5%/level × 2
+  });
 });

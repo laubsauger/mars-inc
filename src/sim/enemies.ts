@@ -10,6 +10,33 @@ export const enum EnemyState {
   Active = 1,
 }
 
+/**
+ * Ranged-attack profile (T33). Absent = melee/contact only (default). The enemy
+ * attack system reads this per enemy via its variant. Extensible by `kind` so
+ * future enemy guns (`gun`) drop in beside the lobbed grenade (`lob`) without a
+ * rewrite — see [[ranged-enemy-framework]].
+ */
+export type EnemyAttack =
+  | {
+      kind: 'lob'; // arc a grenade/molotov to the player's ground point; cooks off
+      range: number; // max distance to start an attack
+      cooldown: number; // seconds between attacks
+      windup: number; // telegraph before release (enemy braces)
+      speed: number; // projectile ground speed
+      fuse: number; // ground cook-off time once landed (telegraph ring)
+      blastRadius: number;
+      damage: number;
+    }
+  | {
+      kind: 'gun'; // straight fast projectile(s)
+      range: number;
+      cooldown: number;
+      speed: number;
+      damage: number;
+      spread: number;
+      burst?: number; // pellets per volley (default 1 = single aimed round)
+    };
+
 export interface EnemyType {
   id: string;
   radius: number;
@@ -18,9 +45,16 @@ export interface EnemyType {
   separationWeight: number;
   /** Render variant index for instancing/color. */
   variant: number;
+  /** Optional ranged attack; absent = melee/contact only. */
+  attack?: EnemyAttack;
+  /** Contact (melee) damage on touch; defaults to DEFAULT_CONTACT_DAMAGE. */
+  contactDamage?: number;
   /** Threat cost the wave director spends to field one (§8.3). */
   threat: number;
 }
+
+/** Touch damage when an enemy reaches the player, unless its type overrides it. */
+export const DEFAULT_CONTACT_DAMAGE = 6;
 
 export const MAX_ENEMIES = 2000;
 
@@ -44,6 +78,17 @@ export class EnemyPool {
   readonly stateTimer: Float32Array;
   /** Per-enemy steering phase so updates stagger across ticks (low-freq). */
   readonly steerPhase: Uint8Array;
+  /** Ranged-attack cooldown remaining (s); 0 = ready (T33). */
+  readonly attackCd: Float32Array;
+  /** Per-enemy contact (melee) damage (T33). */
+  readonly contactDmg: Float32Array;
+  // Status effects (T39): per-enemy remaining-time + potency. 0 time = inactive.
+  readonly burnTime: Float32Array; // burn DoT remaining (s)
+  readonly burnDps: Float32Array; // burn damage per second
+  readonly chillTime: Float32Array; // slow remaining (s)
+  readonly chillMult: Float32Array; // movement multiplier (1 = none, <1 = slowed)
+  readonly markTime: Float32Array; // mark remaining (s)
+  readonly markMult: Float32Array; // status-damage amplifier (1 = none, >1 = amplified)
 
   constructor(capacity: number = MAX_ENEMIES) {
     this.capacity = capacity;
@@ -61,6 +106,14 @@ export class EnemyPool {
     this.state = new Uint8Array(capacity);
     this.stateTimer = new Float32Array(capacity);
     this.steerPhase = new Uint8Array(capacity);
+    this.attackCd = new Float32Array(capacity);
+    this.burnTime = new Float32Array(capacity);
+    this.burnDps = new Float32Array(capacity);
+    this.chillTime = new Float32Array(capacity);
+    this.chillMult = new Float32Array(capacity);
+    this.markTime = new Float32Array(capacity);
+    this.markMult = new Float32Array(capacity);
+    this.contactDmg = new Float32Array(capacity);
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
@@ -81,6 +134,14 @@ export class EnemyPool {
     this.state[i] = EnemyState.Telegraph;
     this.stateTimer[i] = telegraph;
     this.steerPhase[i] = phase & 0xff;
+    this.attackCd[i] = 0;
+    this.contactDmg[i] = type.contactDamage ?? DEFAULT_CONTACT_DAMAGE;
+    this.burnTime[i] = 0;
+    this.burnDps[i] = 0;
+    this.chillTime[i] = 0;
+    this.chillMult[i] = 1;
+    this.markTime[i] = 0;
+    this.markMult[i] = 1;
     return i;
   }
 
@@ -102,6 +163,14 @@ export class EnemyPool {
       this.state[i] = this.state[last]!;
       this.stateTimer[i] = this.stateTimer[last]!;
       this.steerPhase[i] = this.steerPhase[last]!;
+      this.attackCd[i] = this.attackCd[last]!;
+      this.contactDmg[i] = this.contactDmg[last]!;
+      this.burnTime[i] = this.burnTime[last]!;
+      this.burnDps[i] = this.burnDps[last]!;
+      this.chillTime[i] = this.chillTime[last]!;
+      this.chillMult[i] = this.chillMult[last]!;
+      this.markTime[i] = this.markTime[last]!;
+      this.markMult[i] = this.markMult[last]!;
     }
   }
 
@@ -145,6 +214,123 @@ export const BOSS_GATEKEEPER: EnemyType = {
   variant: 2,
   threat: 250,
 };
+
+// Severance Lobber — first ranged class (T33). Hangs back (slow) and lobs a
+// liability writ that cooks off on the ground, telegraphing its blast radius
+// before it goes off. The general ranged framework also carries the future
+// `gun` kind — see [[ranged-enemy-framework]].
+export const SEVERANCE_LOBBER: EnemyType = {
+  id: 'severance-lobber',
+  radius: 0.6,
+  maxHealth: 20,
+  speed: 2.8,
+  separationWeight: 0.9,
+  variant: 3,
+  threat: 6,
+  attack: {
+    kind: 'lob',
+    range: 22,
+    cooldown: 3.6,
+    windup: 0.45,
+    speed: 14,
+    fuse: 1.0,
+    blastRadius: 3.4,
+    damage: 18,
+  },
+};
+
+// Repossession Marshal — first gun enemy (T33). Fires straight rounds from range
+// on a tight cooldown; lower per-hit damage than the lob but relentless, forcing
+// the player to break line of sight / keep moving. Exercises the `gun` path of
+// the ranged framework — see [[ranged-enemy-framework]].
+export const REPO_MARSHAL: EnemyType = {
+  id: 'repo-marshal',
+  radius: 0.6,
+  maxHealth: 16,
+  speed: 3.2,
+  separationWeight: 0.9,
+  variant: 4,
+  threat: 8,
+  attack: {
+    kind: 'gun',
+    range: 26,
+    cooldown: 1.8,
+    speed: 30,
+    damage: 8,
+    spread: 0.12,
+  },
+};
+
+// Foreclosure Mortar — long-range artillery zoner (T33). Slow and fragile-ish but
+// lobs a heavy, wide, slow-fusing shell from across the arena: it denies space
+// rather than chasing. Forces movement even when nothing is close.
+export const FORECLOSURE_MORTAR: EnemyType = {
+  id: 'foreclosure-mortar',
+  radius: 0.7,
+  maxHealth: 28,
+  speed: 2.0,
+  separationWeight: 0.8,
+  variant: 5,
+  threat: 12,
+  attack: {
+    kind: 'lob',
+    range: 32,
+    cooldown: 5.0,
+    windup: 0.6,
+    speed: 10,
+    fuse: 1.4,
+    blastRadius: 5.0,
+    damage: 26,
+  },
+};
+
+// Riot Shotgunner — close-range burst (T33). Fires a shotgun spray of pellets;
+// brutal up close, harmless at distance — the counter is to keep it at range.
+export const RIOT_SHOTGUNNER: EnemyType = {
+  id: 'riot-shotgunner',
+  radius: 0.6,
+  maxHealth: 18,
+  speed: 4.2,
+  separationWeight: 0.9,
+  variant: 6,
+  threat: 9,
+  attack: {
+    kind: 'gun',
+    range: 14,
+    cooldown: 2.4,
+    speed: 26,
+    damage: 5,
+    spread: 0.5,
+    burst: 5,
+  },
+};
+
+// Audit Brute — slow melee wall (T33). High HP, big body, and a punishing touch:
+// it can't be ignored or bodyblocked casually. The melee counterweight to the
+// ranged classes; rewards kiting and burst damage.
+export const AUDIT_BRUTE: EnemyType = {
+  id: 'audit-brute',
+  radius: 1.1,
+  maxHealth: 90,
+  speed: 2.6,
+  separationWeight: 0.5,
+  variant: 7,
+  threat: 16,
+  contactDamage: 16,
+};
+
+/** Variant index → enemy type, so SoA-pooled enemies recover their def (and
+ *  attack profile) at runtime without storing it per instance. */
+export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
+  RUST_MITE,
+  DEBT_HOUND,
+  BOSS_GATEKEEPER,
+  SEVERANCE_LOBBER,
+  REPO_MARSHAL,
+  FORECLOSURE_MORTAR,
+  RIOT_SHOTGUNNER,
+  AUDIT_BRUTE,
+];
 
 export interface SteerWeights {
   seek: number;

@@ -29,7 +29,7 @@ describe('perf benchmark scenes (T32)', () => {
     }
 
     // Surface the numbers for `pnpm test` / manual perf tracking.
-    // eslint-disable-next-line no-console
+
     console.log('\n' + formatReport(rows) + '\n');
   });
 

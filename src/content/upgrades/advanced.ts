@@ -1,0 +1,123 @@
+// Engine-showcase upgrades (T38). These prove the conditional + trigger engine
+// produces real build directions; the full catalog across 6 rarities is T40.
+// Kept in a separate registry from the base set so content (T33/T40) and the
+// engine (T38) evolve without stepping on each other.
+
+import type { UpgradeDefinition } from '../../sim/progression/upgrades';
+
+export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
+  // CONDITIONAL — risk build: huge damage while near death (corrupted curse vibe).
+  {
+    id: 'last-contract',
+    name: 'Last Contract',
+    description: '+60% damage while below 35% health.',
+    tags: ['risk', 'damage'],
+    rarity: 'corrupted',
+    maxLevel: 1,
+    baseWeight: 3,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.addConditional((c) => (c.hpFrac < 0.35 ? { damageMult: 1.6 } : {})),
+  },
+  // CONDITIONAL — ramp build: reward sustained fire (rotary/beam direction).
+  {
+    id: 'overdraft-engine',
+    name: 'Overdraft Engine',
+    description: '+5% damage per second of sustained fire (max +50%).',
+    tags: ['ramp', 'damage', 'heat'],
+    rarity: 'rare',
+    maxLevel: 2,
+    baseWeight: 4,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.addConditional((c) => ({ damageMult: 1 + Math.min(0.5, c.firingRampSec * 0.05) })),
+  },
+  // CONDITIONAL — crowd build: crit harder against swarms.
+  {
+    id: 'crowd-clause',
+    name: 'Crowd Control Clause',
+    description: '+15% crit chance when 12+ enemies are present.',
+    tags: ['crit', 'crowd'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 5,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.addConditional((c) => (c.enemiesOnScreen >= 12 ? { critAdd: 0.15 } : {})),
+  },
+  // TRIGGER — on-kill shockwave (executioner / explosive direction).
+  {
+    id: 'severance-package',
+    name: 'Severance Package',
+    description: 'Kills detonate a small shockwave (5 dmg, 2.4m).',
+    tags: ['explosive', 'overkill'],
+    rarity: 'rare',
+    maxLevel: 3,
+    baseWeight: 4,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.on('kill', (ctx) => {
+        ctx.dealArea(ctx.x, ctx.z, 2.4, 5);
+        ctx.fx.push('impact', ctx.x, ctx.z);
+      }),
+  },
+  // STATUS — on-hit burn (DoT direction, T39).
+  {
+    id: 'incendiary-rounds',
+    name: 'Incendiary Rounds',
+    description: 'Hits set enemies on fire (3 dmg/s for 3s).',
+    tags: ['burn', 'status'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 5,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.on('hit', (ctx) => ctx.applyStatus(ctx.targetIndex, 'burn', { duration: 3, dps: 3 })),
+  },
+  // STATUS — on-hit chill (control direction, T39).
+  {
+    id: 'cryo-rounds',
+    name: 'Cryo Rounds',
+    description: 'Hits chill enemies (40% slow for 2s).',
+    tags: ['chill', 'status', 'control'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 5,
+    synergyWeight: 2,
+    apply: ({ effects }) =>
+      effects.on('hit', (ctx) =>
+        ctx.applyStatus(ctx.targetIndex, 'chill', { duration: 2, slowMult: 0.6 }),
+      ),
+  },
+  // STATUS — on-crit mark amplifies subsequent DoT (crit+status synergy, T39).
+  {
+    id: 'focusing-optics',
+    name: 'Focusing Optics',
+    description: 'Critical hits mark enemies: +50% status damage for 4s.',
+    tags: ['mark', 'crit', 'status'],
+    rarity: 'rare',
+    maxLevel: 1,
+    baseWeight: 4,
+    synergyWeight: 3,
+    apply: ({ effects }) =>
+      effects.on('crit', (ctx) =>
+        ctx.applyStatus(ctx.targetIndex, 'mark', { duration: 4, amplify: 1.5 }),
+      ),
+  },
+  // TRIGGER (legendary capstone) — overkill erupts a damaging nova.
+  {
+    id: 'hostile-takeover',
+    name: 'Hostile Takeover',
+    description: 'Overkilling an enemy erupts a damaging nova (4.5m).',
+    tags: ['overkill', 'explosive'],
+    rarity: 'legendary',
+    maxLevel: 1,
+    baseWeight: 2,
+    synergyWeight: 3,
+    apply: ({ effects }) =>
+      effects.on('overkill', (ctx) => {
+        ctx.dealArea(ctx.x, ctx.z, 4.5, 8 + ctx.magnitude * 0.5);
+        ctx.fx.push('death', ctx.x, ctx.z, 0, 0, ctx.variant);
+      }),
+  },
+];

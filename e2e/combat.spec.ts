@@ -35,13 +35,21 @@ test('mouse-aimed weapon fires projectiles and kills enemies (T14/T15)', async (
     { timeout: 5000 },
   );
 
-  // Let combat run; the weapon racks up kills (cumulative — robust vs. the
-  // instantaneous projectile count, which dips to 0 between shots).
-  await page.waitForFunction(
-    () => (window as unknown as { __MARS__: Hook }).__MARS__.world.stats.kills > 0,
-    { timeout: 15000 },
-  );
+  // Sweep the aim around the player so projectiles cross whichever gate stream
+  // arrives first, then wait for the weapon to rack up kills (cumulative — robust
+  // vs. the instantaneous projectile count which dips to 0 between shots).
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  let killed = false;
+  for (let i = 0; i < 40 && !killed; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    await page.mouse.move(cx + Math.cos(a) * 160, cy + Math.sin(a) * 160);
+    await page.waitForTimeout(500);
+    killed = await page.evaluate(
+      () => (window as unknown as { __MARS__: Hook }).__MARS__.world.stats.kills > 0,
+    );
+  }
+  expect(killed).toBe(true);
   const after = await hook(page);
-  expect(after.world.stats.kills).toBeGreaterThan(0);
   expect(after.world.enemies.count).toBeGreaterThan(0); // still spawning
 });

@@ -47,6 +47,11 @@ export interface Player {
   xpToNext: number;
   pickupRadius: number;
   magnetRadius: number;
+  /** Raises the odds of rarer upgrades in the draft (T41). */
+  luck: number;
+  /** Extra per-run draft rerolls / banishes granted by permanents (T35). */
+  bonusRerolls: number;
+  bonusBanishes: number;
 }
 
 export function createPlayer(stats: MovementStats = MARA_STATS): Player {
@@ -69,6 +74,9 @@ export function createPlayer(stats: MovementStats = MARA_STATS): Player {
     xpToNext: xpRequired(1),
     pickupRadius: 1.6,
     magnetRadius: 5,
+    luck: 0,
+    bonusRerolls: 0,
+    bonusBanishes: 0,
   };
 }
 
@@ -95,6 +103,9 @@ export function resetPlayer(p: Player, stats: MovementStats = MARA_STATS): void 
   p.xpToNext = xpRequired(1);
   p.pickupRadius = 1.6;
   p.magnetRadius = 5;
+  p.luck = 0;
+  p.bonusRerolls = 0;
+  p.bonusBanishes = 0;
 }
 
 /** Advance the player one fixed step. */

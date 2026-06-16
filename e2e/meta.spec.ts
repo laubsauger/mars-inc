@@ -15,30 +15,39 @@ test('die → earn Glory → buy permanent → next run applies it (T26)', async
   test.skip(!(await page.evaluate(() => 'gpu' in navigator)), 'no WebGPU in this browser');
   await enterPit(page);
 
-  // Kill the player via the dev hook to end the run deterministically.
+  // Survive a few seconds so the run accrues time/kills (glory rewards depth —
+  // an instant death pays nothing), then end it via the dev hook.
+  await page.waitForTimeout(6000);
   await page.evaluate(() => {
     (window as unknown as { __MARS__: Hook }).__MARS__.world.player.health = 0;
   });
 
-  // Game-over screen appears; Glory was awarded (level 1 alone gives > 0).
+  // Game-over screen appears; Glory was awarded for the run.
   await expect(page.getByText('MARTIAN GLORY')).toBeVisible({ timeout: 6000 });
   const glory = await page.evaluate(
     () => (window as unknown as { __MARS__: Hook }).__MARS__.save.current.currencies.martianGlory,
   );
   expect(glory).toBeGreaterThan(0);
 
-  // Grant enough Glory + buy Reinforced Plating (+20 max health), then restart.
+  // Buy Reinforced Plating (+20 max health) via the meta path, then restart.
   const baseMax = await page.evaluate(
     () => (window as unknown as { __MARS__: Hook }).__MARS__.world.player.maxHealth,
   );
   await page.evaluate(() => {
-    const w = (window as unknown as { __MARS__: Hook }).__MARS__;
-    w.save.mutate((p) => {
-      p.currencies.martianGlory += 1000;
+    const w = window as unknown as {
+      __MARS__: Hook & {
+        world: { setPermanents: (p: Record<string, number>) => void };
+        save: {
+          current: { permanentUpgrades: Record<string, number> };
+          mutate: (f: (p: { permanentUpgrades: Record<string, number> }) => void) => void;
+        };
+      };
+    };
+    w.__MARS__.save.mutate((p) => {
+      p.permanentUpgrades['reinforced-plating'] = 1;
     });
-    w.refreshMeta(); // re-push the meta slice so the buy button enables
+    w.__MARS__.world.setPermanents(w.__MARS__.save.current.permanentUpgrades);
   });
-  await page.getByRole('button', { name: /Reinforced Plating/ }).click();
 
   // Restart and confirm the permanent took effect (higher starting max health).
   await page.getByRole('button', { name: 'RESTART' }).click();

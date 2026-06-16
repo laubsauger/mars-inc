@@ -12,16 +12,24 @@ import type { Player } from '../player';
 import { applyRecoil } from '../movement';
 import type { Rng } from '../../core/rng';
 import { ProjectilePool } from './projectiles';
-import { type WeaponInstance, type WeaponDamageSpec } from './weapon';
+import { type WeaponInstance, type WeaponDamageSpec, type WeaponDefinition, equip } from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
+import { applyAreaDamage } from './aoe';
 import type { RunMods } from '../progression/mods';
+import type { ConditionalResult } from '../progression/effects';
 import type { FxQueue } from '../fx';
+
+const NO_COND: ConditionalResult = { damageMult: 1, critAdd: 0 };
 
 export interface KillEvent {
   x: number;
   z: number;
   variant: number;
 }
+
+/** Called at hit time (before compaction) so the enemy index is still valid —
+ *  on-hit triggers + status application hang off this (T38/T39). */
+export type OnHit = (enemy: number, crit: boolean) => void;
 
 const RECOIL_CAP = 0.4; // max per-shot velocity kick (V10)
 
@@ -33,9 +41,20 @@ export class WeaponSystem {
   /** Damage applied to enemy health this step (T22 run stats, V20). */
   damageThisStep = 0;
   private query: number[] = [];
+  private chainQuery: number[] = []; // scratch for chain-lightning arc lookup
 
   add(w: WeaponInstance): void {
     this.weapons.push(w);
+  }
+
+  /** Swap the player's primary weapon (T33 weapon drops). Replaces slot 0. */
+  setPrimary(def: WeaponDefinition): void {
+    this.weapons[0] = equip(def);
+  }
+
+  /** Current primary weapon id (HUD / drop-dedup). */
+  get primaryId(): string | undefined {
+    return this.weapons[0]?.def.id;
   }
 
   /** Reset to a fresh-run baseline in place (T22 restart, no reload). */
@@ -54,11 +73,13 @@ export class WeaponSystem {
     rng: Rng,
     dt: number,
     fx: FxQueue,
+    cond: ConditionalResult = NO_COND,
+    onHit?: OnHit,
   ): void {
     this.kills.length = 0;
     this.damageThisStep = 0;
-    this.fire(player, enemies, mods, rng, dt, fx);
-    this.advanceProjectiles(enemies, hash, mods, rng, dt, fx);
+    this.fire(player, enemies, mods, rng, dt, fx, cond);
+    this.advanceProjectiles(enemies, hash, mods, rng, dt, fx, onHit);
     compactDead(enemies, this.kills, fx);
   }
 
@@ -69,6 +90,7 @@ export class WeaponSystem {
     rng: Rng,
     dt: number,
     fx: FxQueue,
+    cond: ConditionalResult,
   ): void {
     for (const w of this.weapons) {
       w.cooldownLeft -= dt;
@@ -79,21 +101,24 @@ export class WeaponSystem {
 
       w.cooldownLeft = w.def.cooldown / Math.max(0.01, mods.fireRateMult);
 
-      // Damage spec with run mods folded in (still resolved via the pipeline).
+      // Damage spec with run mods + dynamic conditionals folded in (T38), still
+      // resolved through the pipeline (V3).
       const dmg: WeaponDamageSpec = {
         ...w.def.damage,
-        multiplier: w.def.damage.multiplier * mods.damageMult,
-        critChance: Math.min(1, w.def.damage.critChance + mods.critChanceAdd),
+        multiplier: w.def.damage.multiplier * mods.damageMult * cond.damageMult,
+        critChance: Math.min(1, w.def.damage.critChance + mods.critChanceAdd + cond.critAdd),
       };
 
       const p = w.def.projectile;
       const muzzle = player.stats.collisionRadius + 0.3;
       const aimAngle = Math.atan2(aim.x, aim.z);
-      const shots = Math.max(1, mods.projectileCount);
+      // Total projectiles = the weapon's innate pellets × multishot stacks.
+      const shots = Math.max(1, (w.def.pellets ?? 1) * mods.projectileCount);
+      const arc = w.def.spreadArc ?? mods.spreadArc;
       const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
-      // Fan multishot evenly across spreadArc; single shot gets random jitter.
+      // Fan multishot evenly across the arc; single shot gets random jitter.
       for (let s = 0; s < shots; s++) {
-        const fan = shots > 1 ? (s / (shots - 1) - 0.5) * mods.spreadArc : 0;
+        const fan = shots > 1 ? (s / (shots - 1) - 0.5) * arc : 0;
         const jitter = shots > 1 ? 0 : (rng.next() - 0.5) * w.def.spread;
         const a = aimAngle + fan + jitter;
         const dx = Math.sin(a);
@@ -107,6 +132,7 @@ export class WeaponSystem {
           p.lifetime,
           pierce,
           dmg,
+          w.def.explosiveRadius ?? 0,
         );
       }
 
@@ -129,9 +155,11 @@ export class WeaponSystem {
   private advanceProjectiles(
     enemies: EnemyPool,
     hash: SpatialHash,
+    mods: RunMods,
     rng: Rng,
     dt: number,
     fx: FxQueue,
+    onHit?: OnHit,
   ): void {
     const pr = this.projectiles;
     for (let i = pr.count - 1; i >= 0; i--) {
@@ -171,6 +199,36 @@ export class WeaponSystem {
           this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
           enemies.health[e]! -= mit.toHealth;
           fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
+          // On-hit hook (before compaction → index valid): triggers + status (T38/T39).
+          if (onHit) onHit(e, out.crit);
+
+          // Chain lightning: arc reduced damage to nearby enemies (Arc Garnishment).
+          if (mods.chainCount > 0) {
+            this.chainLightning(enemies, hash, e, pr, i, mods, rng, fx);
+          }
+
+          // Explosive payload: detonate AoE on impact (V3-routed), then die —
+          // overrides pierce. The direct-hit enemy is excluded (already damaged).
+          if (pr.blast[i]! > 0) {
+            this.damageThisStep += applyAreaDamage(
+              enemies,
+              hash,
+              pr.posX[i]!,
+              pr.posZ[i]!,
+              pr.blast[i]!,
+              {
+                amount: pr.dmgBase[i]! * pr.dmgMult[i]!,
+                critChance: pr.critChance[i]!,
+                critMultiplier: pr.critMult[i]!,
+                damageType: 'explosive',
+                exclude: e,
+              },
+              rng,
+            );
+            fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
+            dead = true;
+            break;
+          }
 
           if (pr.pierce[i]! <= 0) {
             dead = true;
@@ -181,6 +239,50 @@ export class WeaponSystem {
       }
 
       if (dead) pr.kill(i);
+    }
+  }
+
+  /**
+   * Arc reduced damage from a struck enemy to up to `mods.chainCount` other live
+   * enemies within `mods.chainRange`, each hop weaker by `mods.chainFalloff`.
+   * Routes every arc through the centralized pipeline (V3); deterministic via the
+   * shared rng (V16). Bounded by chainCount → no per-hit blow-up.
+   */
+  private chainLightning(
+    enemies: EnemyPool,
+    hash: SpatialHash,
+    fromE: number,
+    pr: ProjectilePool,
+    i: number,
+    mods: RunMods,
+    rng: Rng,
+    fx: FxQueue,
+  ): void {
+    const ox = enemies.posX[fromE]!;
+    const oz = enemies.posZ[fromE]!;
+    const n = hash.queryCircle(ox, oz, mods.chainRange, this.chainQuery);
+    let hops = 0;
+    let mult = pr.dmgMult[i]! * mods.chainFalloff;
+    for (let k = 0; k < n && hops < mods.chainCount; k++) {
+      const e = this.chainQuery[k]!;
+      if (e === fromE || e >= enemies.count) continue;
+      if (enemies.health[e]! <= 0 || enemies.state[e] !== EnemyState.Active) continue;
+
+      const packet = makePacket({
+        weaponId: 'chain',
+        baseDamage: pr.dmgBase[i]!,
+        additive: pr.dmgAdd[i]!,
+        multiplier: mult,
+        critChance: pr.critChance[i]!,
+        critMultiplier: pr.critMult[i]!,
+      });
+      const out = computeOutgoing(packet, rng);
+      const mit = applyMitigation(out.amount, 0, 0);
+      this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
+      enemies.health[e]! -= mit.toHealth;
+      fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!);
+      hops++;
+      mult *= mods.chainFalloff; // each successive arc weaker
     }
   }
 }

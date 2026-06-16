@@ -155,4 +155,30 @@ export const UPGRADES: UpgradeDefinition[] = [
       player.health += 50;
     },
   },
+  {
+    id: 'liability-waiver',
+    name: 'Liability Waiver',
+    description: 'Shots pierce +1 enemy.',
+    tags: ['pierce'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 6,
+    synergyWeight: 2,
+    apply: ({ mods }) => {
+      mods.pierce += 1;
+    },
+  },
+  {
+    id: 'arc-garnishment',
+    name: 'Arc Garnishment',
+    description: 'Hits arc to +1 nearby enemy.',
+    tags: ['chain', 'energy'],
+    rarity: 'rare',
+    maxLevel: 3,
+    baseWeight: 4,
+    synergyWeight: 3,
+    apply: ({ mods }) => {
+      mods.chainCount += 1;
+    },
+  },
 ];

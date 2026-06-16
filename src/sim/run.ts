@@ -44,7 +44,9 @@ export interface RunResult {
  * unlocks possibilities, not raw power. Pure & deterministic from the result.
  */
 export function gloryFor(result: RunResult): number {
-  return Math.floor(result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6);
+  return Math.floor(
+    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6,
+  );
 }
 
 /** Pure projection of accumulated stats into the result summary (V20). */

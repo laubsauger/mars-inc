@@ -64,6 +64,8 @@ export interface DraftState {
   open: boolean;
   level: number;
   options: DraftOption[];
+  rerollsLeft: number;
+  banishesLeft: number;
 }
 
 /** Permanent (meta) upgrade as shown on the game-over Glory panel (T26). */
@@ -95,6 +97,12 @@ export interface UiStore {
   profile: ProfileView;
   /** Bridge to sim — set by boot glue, called by the upgrade screen. */
   chooseUpgrade: (index: number) => void;
+  /** Bridge to sim — re-roll unlocked draft options (T41). */
+  rerollDraft: (lockedIds: string[]) => void;
+  /** Bridge to sim — banish a draft option for the run (T41). */
+  banishOption: (index: number) => void;
+  /** Bridge to sim — skip the draft for a heal (T41). */
+  skipDraft: () => void;
   /** Bridge to sim — restart the run in place (no reload), set by boot glue. */
   restartRun: () => void;
   /** Bridge to sim — leave a finished run and return to the menu. */
@@ -113,6 +121,9 @@ export interface UiStore {
   setMeta: (m: MetaState) => void;
   setProfile: (p: ProfileView) => void;
   setChooseUpgrade: (fn: (index: number) => void) => void;
+  setRerollDraft: (fn: (lockedIds: string[]) => void) => void;
+  setBanishOption: (fn: (index: number) => void) => void;
+  setSkipDraft: (fn: () => void) => void;
   setRestartRun: (fn: () => void) => void;
   setToMenu: (fn: () => void) => void;
   setEnterPit: (fn: () => void) => void;
@@ -132,7 +143,13 @@ const INITIAL_HUD: HudState = {
   countdown: 3,
 };
 
-const INITIAL_DRAFT: DraftState = { open: false, level: 1, options: [] };
+const INITIAL_DRAFT: DraftState = {
+  open: false,
+  level: 1,
+  options: [],
+  rerollsLeft: 0,
+  banishesLeft: 0,
+};
 const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
 const INITIAL_PROFILE: ProfileView = {
   bestTimeSec: 0,
@@ -151,6 +168,9 @@ export const useUiStore = create<UiStore>((set) => ({
   meta: INITIAL_META,
   profile: INITIAL_PROFILE,
   chooseUpgrade: () => {},
+  rerollDraft: () => {},
+  banishOption: () => {},
+  skipDraft: () => {},
   restartRun: () => {},
   toMenu: () => {},
   enterPit: () => {},
@@ -164,6 +184,9 @@ export const useUiStore = create<UiStore>((set) => ({
   setMeta: (meta) => set({ meta }),
   setProfile: (profile) => set({ profile }),
   setChooseUpgrade: (chooseUpgrade) => set({ chooseUpgrade }),
+  setRerollDraft: (rerollDraft) => set({ rerollDraft }),
+  setBanishOption: (banishOption) => set({ banishOption }),
+  setSkipDraft: (skipDraft) => set({ skipDraft }),
   setRestartRun: (restartRun) => set({ restartRun }),
   setToMenu: (toMenu) => set({ toMenu }),
   setEnterPit: (enterPit) => set({ enterPit }),
@@ -181,6 +204,9 @@ export const uiActions = {
   setMeta: (m: MetaState) => useUiStore.getState().setMeta(m),
   setProfile: (p: ProfileView) => useUiStore.getState().setProfile(p),
   setChooseUpgrade: (fn: (i: number) => void) => useUiStore.getState().setChooseUpgrade(fn),
+  setRerollDraft: (fn: (ids: string[]) => void) => useUiStore.getState().setRerollDraft(fn),
+  setBanishOption: (fn: (i: number) => void) => useUiStore.getState().setBanishOption(fn),
+  setSkipDraft: (fn: () => void) => useUiStore.getState().setSkipDraft(fn),
   setRestartRun: (fn: () => void) => useUiStore.getState().setRestartRun(fn),
   setToMenu: (fn: () => void) => useUiStore.getState().setToMenu(fn),
   setEnterPit: (fn: () => void) => useUiStore.getState().setEnterPit(fn),
