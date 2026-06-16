@@ -230,6 +230,9 @@ export function SettingsControls() {
       <SettingRow label="ENEMY HEALTH BARS">
         <Toggle on={s.enemyHealthbars} onChange={(v) => set({ enemyHealthbars: v })} />
       </SettingRow>
+      <SettingRow label="TOON / INK SHADING">
+        <Toggle on={s.toonShading} onChange={(v) => set({ toonShading: v })} />
+      </SettingRow>
       <SettingRow label="REDUCE FLASH">
         <Toggle on={s.reduceFlash} onChange={(v) => set({ reduceFlash: v })} />
       </SettingRow>

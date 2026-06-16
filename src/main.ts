@@ -131,6 +131,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       holdToSprint: save.current.accessibility.holdToSprint,
       pauseOnFocusLoss: save.current.settings.pauseOnFocusLoss,
       enemyHealthbars: save.current.settings.enemyHealthbars,
+      toonShading: save.current.settings.toonShading,
       colorblind: save.current.accessibility.colorblindPalette,
     });
   };
@@ -249,6 +250,8 @@ async function boot(parent: HTMLElement): Promise<void> {
     bloodView.reduceFlash = s.reduceFlash;
     shake.intensity = s.screenShake;
     enemyHealthbars.enabled = s.enemyHealthbars;
+    enemyView.setToon(s.toonShading);
+    playerView.setToon(s.toonShading);
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;

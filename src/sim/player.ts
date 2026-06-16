@@ -110,6 +110,9 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     novaRadius: 6,
     novaForce: 16,
     novaDamage: 8,
+    novaPull: false,
+    dashShockForce: 0,
+    dashShockRadius: 5,
   };
 }
 
@@ -151,6 +154,9 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.novaRadius = 6;
   p.novaForce = 16;
   p.novaDamage = 8;
+  p.novaPull = false;
+  p.dashShockForce = 0;
+  p.dashShockRadius = 5;
 }
 
 /** Advance the player one fixed step. */

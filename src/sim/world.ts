@@ -103,6 +103,8 @@ export class World {
   private hitTriggerDamage = 0;
   /** Damage dealt by the repulsor nova this step (T42, folded into run stats). */
   private novaDamageThisStep = 0;
+  /** Sprint active last step — edge-detects the Kinetic Boots dash shockwave. */
+  private prevSprintActive = false;
   /** Render-facing FX events; the render layer drains this each frame. */
   readonly fx = new FxQueue();
   readonly director: WaveDirector;
@@ -216,13 +218,14 @@ export class World {
         this.player.novaTimer = this.player.novaInterval;
         const px = this.player.pos.x;
         const pz = this.player.pos.z;
+        // Singularity mutation pulls inward (negative force) instead of out.
         radialPush(
           this.enemies,
           this.enemySystem.hash,
           px,
           pz,
           this.player.novaRadius,
-          this.player.novaForce,
+          this.player.novaPull ? -this.player.novaForce : this.player.novaForce,
         );
         this.novaDamageThisStep = applyAreaDamage(
           this.enemies,
@@ -236,6 +239,20 @@ export class World {
         this.fx.push('impact', px, pz); // shockwave ring
       }
     }
+    // Kinetic Boots (CC mobility, T42): a radial shove the instant a sprint
+    // starts — dash INTO a blob to blast a channel open.
+    if (this.player.dashShockForce > 0 && this.player.sprint.active && !this.prevSprintActive) {
+      radialPush(
+        this.enemies,
+        this.enemySystem.hash,
+        this.player.pos.x,
+        this.player.pos.z,
+        this.player.dashShockRadius,
+        this.player.dashShockForce,
+      );
+      this.fx.push('impact', this.player.pos.x, this.player.pos.z);
+    }
+    this.prevSprintActive = this.player.sprint.active;
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
     this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
@@ -450,6 +467,7 @@ export class World {
     this.firingRampSec = 0;
     this.director.reset();
     this.drones.reset();
+    this.prevSprintActive = false;
     this.weaponSystem.reset();
     this.weaponSystem.add(equip(contractualSidearm));
     resetRunStats(this.stats);

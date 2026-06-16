@@ -12,9 +12,11 @@ import {
   InstancedBufferAttribute,
   type Scene,
 } from 'three';
+import type { Material } from 'three';
 import type { EnemyPool } from '../sim/enemies';
 import { MAX_ENEMIES } from '../sim/enemies';
 import { COL } from './art/palette';
+import { toonMaterial } from './art/toon';
 
 // Color blocking, not line noise (art doc pillar 1). Rust Mite = rust body,
 // Debt Hound = dark iron, Gatekeeper boss = elite magenta. Telegraph = hard sun
@@ -41,10 +43,13 @@ export class EnemyView {
   private dummy = new Object3D();
   private colorAttr: InstancedBufferAttribute;
   private phase = 0; // drives the burn flicker / chill shimmer
+  private stdMat: Material;
+  private toonMat: Material | null = null; // built lazily on first toon enable
 
   constructor(scene: Scene, capacity: number = MAX_ENEMIES) {
     const geo = new CapsuleGeometry(0.5, 0.6, 4, 8);
     const mat = new MeshStandardMaterial({ roughness: 0.8, metalness: 0.1 });
+    this.stdMat = mat;
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.castShadow = true;
@@ -57,6 +62,13 @@ export class EnemyView {
 
     this.mesh.count = 0;
     scene.add(this.mesh);
+  }
+
+  /** Toggle banded toon shading (settings opt-in, T37). vertexColors keeps the
+   *  per-instance crowd tint working under the toon material. */
+  setToon(on: boolean): void {
+    if (on && !this.toonMat) this.toonMat = toonMaterial(0xffffff, true);
+    this.mesh.material = on ? this.toonMat! : this.stdMat;
   }
 
   sync(pool: EnemyPool, alpha: number): void {

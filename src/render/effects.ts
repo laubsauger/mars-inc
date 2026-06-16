@@ -250,23 +250,44 @@ export class Effects {
         this.impact.spawn({ x, z, s0: 0.5, s1: 1.7, life: 0.16, spin: 0, color: COL.sunHigh });
         if (hasDir)
           this.muzzle.spawn({
-            x: ox, z: oz, s0: 1.0, s1: 0.25, life: 0.1, spin: 0,
-            color: COL.kineticGold, rot: ang, stretch: 3,
+            x: ox,
+            z: oz,
+            s0: 1.0,
+            s1: 0.25,
+            life: 0.1,
+            spin: 0,
+            color: COL.kineticGold,
+            rot: ang,
+            stretch: 3,
           });
         break;
       case ImpactProfile.Stitch: // rotary: tiny rapid brass chip streak
         this.impact.spawn({ x, z, s0: 0.4, s1: 1.2, life: 0.12, spin: 0, color: COL.brass });
         if (hasDir)
           this.muzzle.spawn({
-            x: ox, z: oz, s0: 0.8, s1: 0.2, life: 0.08, spin: 0,
-            color: COL.brass, rot: ang, stretch: 3.5,
+            x: ox,
+            z: oz,
+            s0: 0.8,
+            s1: 0.2,
+            life: 0.08,
+            spin: 0,
+            color: COL.brass,
+            rot: ang,
+            stretch: 3.5,
           });
         break;
       case ImpactProfile.Arc: // energy: angular cyan flash + streak
         this.impact.spawn({ x, z, s0: 0.7, s1: 2.3, life: 0.2, spin: 0, color: COL.shieldCyan });
         this.muzzle.spawn({
-          x: ox, z: oz, s0: 1.0, s1: 0.2, life: 0.1, spin: 0,
-          color: COL.shieldCyan, rot: ang, stretch: hasDir ? 2.5 : 1,
+          x: ox,
+          z: oz,
+          s0: 1.0,
+          s1: 0.2,
+          life: 0.1,
+          spin: 0,
+          color: COL.shieldCyan,
+          rot: ang,
+          stretch: hasDir ? 2.5 : 1,
         });
         break;
       case ImpactProfile.Blast: // explosive: big radial ring + heavy dust wall

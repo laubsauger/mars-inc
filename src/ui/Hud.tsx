@@ -4,6 +4,12 @@
 import { useEffect, useState } from 'react';
 import { useUiStore, type AnnounceState } from './store';
 
+// Shared "juice" backdrop — a warm ember-tinted radial that's saturated in the
+// core and falls off softly to nothing (no hard disc/border). Reused by the boss
+// banner and the countdown so big centred text always reads with character.
+const JUICE_BACKDROP =
+  'radial-gradient(ellipse at center, rgba(30,9,4,0.96) 0%, rgba(128,44,16,0.52) 28%, rgba(64,20,8,0.24) 54%, rgba(7,5,4,0) 80%)';
+
 function HealthBar() {
   const health = useUiStore((s) => s.hud.health);
   const max = useUiStore((s) => s.hud.maxHealth);
@@ -121,11 +127,8 @@ function Announce() {
   if (shown.kind === 'boss') {
     return (
       <div
-        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-16 py-6 text-center font-mono"
-        style={{
-          background:
-            'radial-gradient(ellipse at center, rgba(7,5,4,0.9) 0%, rgba(7,5,4,0.55) 40%, rgba(7,5,4,0) 75%)',
-        }}
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-20 py-8 text-center font-mono"
+        style={{ background: JUICE_BACKDROP }}
       >
         <div className="text-xs tracking-[0.5em] text-ember [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
           ⚠ WARDEN INBOUND ⚠
@@ -192,9 +195,11 @@ function Countdown() {
   if (countdown <= 0) return null;
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="relative flex h-40 w-40 items-center justify-center">
-        <div className="absolute inset-0 rounded-full bg-pit/65 ring-1 ring-gold/25 shadow-[0_0_90px_rgba(0,0,0,0.85),inset_0_0_46px_rgba(0,0,0,0.7)] backdrop-blur-md" />
-        <span className="relative font-mono text-[7.5rem] font-bold leading-none text-bone tabular-nums [text-shadow:0_4px_20px_rgba(0,0,0,0.95)]">
+      <div
+        className="flex h-64 w-64 items-center justify-center"
+        style={{ background: JUICE_BACKDROP }}
+      >
+        <span className="font-mono text-[7.5rem] font-bold leading-none text-bone tabular-nums [text-shadow:0_4px_20px_rgba(0,0,0,0.95)]">
           {Math.ceil(countdown)}
         </span>
       </div>

@@ -113,6 +113,37 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     },
   },
   {
+    id: 'singularity-core',
+    name: 'Singularity Core',
+    description: 'MUTATION: your Repulsor Pulse now PULLS enemies in, then crunches them harder.',
+    tags: ['control', 'aoe'],
+    rarity: 'rare',
+    maxLevel: 1,
+    baseWeight: 4,
+    synergyWeight: 4,
+    prerequisites: [{ id: 'repulsor-pulse', minLevel: 1 }],
+    apply: ({ player }) => {
+      player.novaPull = true;
+      player.novaDamage += 12; // pulled-in cluster eats a bigger crunch
+      player.novaRadius += 1;
+    },
+  },
+  {
+    id: 'kinetic-boots',
+    name: 'Kinetic Boots',
+    description:
+      'Starting a sprint emits a shockwave that shoves enemies back — dash to part a blob.',
+    tags: ['control', 'movement'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 8,
+    synergyWeight: 3,
+    apply: ({ player }) => {
+      player.dashShockForce += 18;
+      player.dashShockRadius += 0.6;
+    },
+  },
+  {
     id: 'long-arm',
     name: 'Long-Arm Clause',
     description: '+15% weapon range.',

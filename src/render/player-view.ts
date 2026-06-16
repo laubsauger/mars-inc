@@ -10,6 +10,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  type MeshToonMaterial,
   Object3D,
   PlaneGeometry,
   RingGeometry,
@@ -17,8 +18,13 @@ import {
   type Camera,
   type Scene,
 } from 'three';
+
+/** Body material can be the smooth standard or the banded toon (settings opt-in);
+ *  both carry the emissive used by the hurt flash. */
+type ToonOrStd = MeshStandardMaterial | MeshToonMaterial;
 import type { Player } from '../sim/player';
 import { COL, OUTLINE as OUTLINE_W } from './art/palette';
+import { toonMaterial } from './art/toon';
 
 const BODY = COL.brass;
 const ACCENT = COL.kineticGold;
@@ -31,7 +37,10 @@ const FILL_W = PLATE_W - 0.12;
 export class PlayerView {
   readonly group: Group;
   private facingMesh: Group;
-  private bodyMat: MeshStandardMaterial;
+  private body!: Mesh;
+  private stdBodyMat: MeshStandardMaterial;
+  private toonBodyMat: ToonOrStd | null = null;
+  private bodyMat: ToonOrStd; // active body material (hurt flash target)
   private flash = 0; // hurt flash 1 → 0 (red shimmer on taking damage)
   // World-space health plate (art doc): arena medical tag above the character.
   private healthPlate: Group;
@@ -43,8 +52,10 @@ export class PlayerView {
     this.group = new Group();
 
     const radius = player.stats.collisionRadius;
-    this.bodyMat = new MeshStandardMaterial({ color: BODY, roughness: 0.6, metalness: 0.1 });
-    const body = new Mesh(new CapsuleGeometry(radius, 1.4, 6, 12), this.bodyMat);
+    this.stdBodyMat = new MeshStandardMaterial({ color: BODY, roughness: 0.6, metalness: 0.1 });
+    this.bodyMat = this.stdBodyMat;
+    const body = new Mesh(new CapsuleGeometry(radius, 1.4, 6, 12), this.stdBodyMat);
+    this.body = body;
     body.position.y = radius + 0.7;
     body.castShadow = true;
 
@@ -148,6 +159,14 @@ export class PlayerView {
     this.flash = 1;
   }
 
+  /** Toggle banded toon shading on the hero body (settings opt-in, T37). */
+  setToon(on: boolean): void {
+    if (on && !this.toonBodyMat) this.toonBodyMat = toonMaterial(BODY);
+    const next = on ? this.toonBodyMat! : this.stdBodyMat;
+    this.body.material = next;
+    this.bodyMat = next; // keep the hurt flash pointed at the live material
+  }
+
   /** Decay + apply the hurt flash as a red emissive shimmer on the body. */
   update(dt: number): void {
     if (this.flash <= 0) return;
@@ -171,7 +190,10 @@ export class PlayerView {
 
   private syncHealthPlate(player: Player): void {
     this.platePhase += 0.05;
-    const hp01 = Math.max(0, Math.min(1, player.maxHealth > 0 ? player.health / player.maxHealth : 0));
+    const hp01 = Math.max(
+      0,
+      Math.min(1, player.maxHealth > 0 ? player.health / player.maxHealth : 0),
+    );
     this.healthFill.scale.x = Math.max(0.001, hp01);
     this.healthFill.position.x = -(FILL_W * (1 - hp01)) / 2; // keep left edge fixed
     // Low health: pulse the fill toward bright so it reads as "danger" (no

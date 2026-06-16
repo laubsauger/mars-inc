@@ -35,6 +35,7 @@ export interface SettingsView {
   holdToSprint: boolean;
   pauseOnFocusLoss: boolean;
   enemyHealthbars: boolean;
+  toonShading: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -265,6 +266,7 @@ const INITIAL_SETTINGS: SettingsView = {
   holdToSprint: false,
   pauseOnFocusLoss: true,
   enemyHealthbars: false,
+  toonShading: false,
   colorblind: 'off',
 };
 
