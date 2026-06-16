@@ -301,6 +301,9 @@ export function SettingsControls() {
       <SettingRow label="SFX VOLUME">
         <Slider value={s.sfxVolume} onChange={(v) => set({ sfxVolume: v })} />
       </SettingRow>
+      <SettingRow label="MUSIC VOLUME">
+        <Slider value={s.musicVolume} onChange={(v) => set({ musicVolume: v })} />
+      </SettingRow>
       <SettingRow label="SCREEN SHAKE">
         <Slider value={s.screenShake} onChange={(v) => set({ screenShake: v })} />
       </SettingRow>
@@ -1300,10 +1303,62 @@ function ActiveMenu() {
   }
 }
 
+/** Quick mute toggle pinned to the menu corner — first thing a new visitor reaches
+ *  for. Toggles master volume to 0 and back (remembers the prior level), persisting
+ *  through applySetting like every other audio control. */
+function MuteButton() {
+  const master = useUiStore((s) => s.settings.masterVolume);
+  const set = useUiStore((s) => s.applySetting);
+  const muted = master <= 0;
+  // Remember the last audible level so unmute restores it (not a fixed default).
+  const prior = useRef(0.7);
+  if (master > 0) prior.current = master;
+  return (
+    <button
+      type="button"
+      aria-label={muted ? 'Unmute' : 'Mute'}
+      title={muted ? 'Unmute' : 'Mute'}
+      onClick={() => set({ masterVolume: muted ? prior.current : 0 })}
+      className={`pointer-events-auto fixed right-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-sm border bg-pit/70 backdrop-blur-[2px] transition focus:outline-none ${
+        muted
+          ? 'border-bleed/70 text-bleed hover:border-bleed'
+          : 'border-rust/70 text-bone/80 hover:border-gold hover:text-gold'
+      }`}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M11 5 6 9H2v6h4l5 4V5z" />
+        {muted ? (
+          <>
+            <line x1="22" y1="9" x2="16" y2="15" />
+            <line x1="16" y1="9" x2="22" y2="15" />
+          </>
+        ) : (
+          <>
+            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+            <path d="M19 5a9 9 0 0 1 0 14" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
 export function MainMenu() {
   // Socials pinned to the viewport on EVERY menu view (not just the root screen).
   return (
     <>
+      <MuteButton />
       <ActiveMenu />
       <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
     </>

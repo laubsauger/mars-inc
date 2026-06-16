@@ -6,6 +6,15 @@ import type { FxKind } from '../sim/fx';
 
 const MAX_VOICES = 16;
 
+/** Fisher-Yates shuffle (render-side cosmetic — Math.random is fine, not sim). */
+function shuffle(a: string[]): string[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -15,6 +24,15 @@ export class AudioBus {
   private lastAt: Partial<Record<FxKind, number>> = {};
   masterVolume = 0.5;
   sfxVolume = 1;
+  musicVolume = 0.5;
+  // Menu/theme music — a SHUFFLED playlist played via one HTMLAudioElement (separate
+  // from the WebAudio SFX graph). Its volume is master × music so the master slider
+  // governs everything. Tracks come from a folder glob (no hard-coded names).
+  private music: HTMLAudioElement | null = null;
+  private playlist: string[] = [];
+  private trackIdx = 0;
+  private wantMusic = false;
+  private preloaded = false; // first track fetched by preloadMusic, not yet played
 
   /** Lazily create the context; call from a user-gesture handler. */
   resume(): void {
@@ -31,12 +49,107 @@ export class AudioBus {
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     this.applyVolumes();
+    // A gesture just unlocked audio → (re)start the theme if one was requested
+    // before the browser allowed playback (autoplay policy).
+    if (this.wantMusic && this.music && this.music.paused) void this.music.play().catch(() => {});
   }
 
   /** Apply master + per-bus volumes (T36 accessibility). */
   applyVolumes(): void {
     if (this.master) this.master.gain.value = this.masterVolume;
     if (this.sfx) this.sfx.gain.value = this.sfxVolume;
+    if (this.music)
+      this.music.volume = Math.max(0, Math.min(1, this.masterVolume * this.musicVolume));
+  }
+
+  /** Preload ONLY the first (shuffled) track so the boot splash can gate on real
+   *  download progress. The rest of the playlist stays on-demand — each later track
+   *  isn't fetched until startTrack() creates its Audio element. onProgress gets a
+   *  0..1 buffered fraction. Resolves when the track can play through, on error, or
+   *  after a timeout (load guard — the splash must always clear, not a logic
+   *  fallback). Leaves wantMusic false: playMusic() actually starts playback. */
+  preloadMusic(urls: readonly string[], onProgress?: (frac: number) => void): Promise<void> {
+    if (urls.length === 0) return Promise.resolve();
+    this.playlist = shuffle(urls.slice());
+    this.trackIdx = 0;
+    const url = this.playlist[0]!;
+    const el = new Audio();
+    el.preload = 'auto';
+    el.loop = false;
+    el.src = url;
+    el.addEventListener('ended', () => this.nextTrack());
+    this.music = el;
+    this.preloaded = true;
+    this.applyVolumes();
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        onProgress?.(1);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, 8000); // never hang the splash on a stalled fetch
+      const settle = () => {
+        window.clearTimeout(timer);
+        finish();
+      };
+      el.addEventListener('canplaythrough', settle, { once: true });
+      el.addEventListener('error', settle, { once: true });
+      el.addEventListener('progress', () => {
+        const d = el.duration;
+        if (onProgress && d > 0 && el.buffered.length > 0) {
+          onProgress(Math.min(1, el.buffered.end(el.buffered.length - 1) / d));
+        }
+      });
+      el.load();
+    });
+  }
+
+  /** Play a SHUFFLED playlist of tracks, advancing to the next when one ends and
+   *  reshuffling each time it loops through. Idempotent: if already running on the
+   *  same set it just keeps going. Reuses a preloadMusic() element if present so the
+   *  first track isn't downloaded twice. Playback may be deferred until the first
+   *  gesture unlocks audio (resume() retries). */
+  playMusic(urls: readonly string[]): void {
+    if (urls.length === 0) return;
+    this.wantMusic = true;
+    if (this.preloaded && this.music) {
+      this.preloaded = false; // consume the preloaded element; just play it
+      if (this.music.paused) void this.music.play().catch(() => {});
+    } else if (this.playlist.length !== urls.length || !this.music) {
+      this.playlist = shuffle(urls.slice());
+      this.trackIdx = 0;
+      this.startTrack();
+    } else if (this.music.paused) {
+      void this.music.play().catch(() => {});
+    }
+  }
+
+  /** Stop the music (entering a run). */
+  stopMusic(): void {
+    this.wantMusic = false;
+    if (this.music) this.music.pause();
+  }
+
+  private startTrack(): void {
+    const url = this.playlist[this.trackIdx];
+    if (!url) return;
+    if (this.music) this.music.pause();
+    this.music = new Audio(url);
+    this.music.loop = false; // a playlist advances on 'ended', it doesn't loop one track
+    this.music.addEventListener('ended', () => this.nextTrack());
+    this.applyVolumes();
+    void this.music.play().catch(() => {}); // blocked until a gesture → resume() retries
+  }
+
+  private nextTrack(): void {
+    this.trackIdx++;
+    if (this.trackIdx >= this.playlist.length) {
+      this.playlist = shuffle(this.playlist); // reshuffle for the next pass
+      this.trackIdx = 0;
+    }
+    if (this.wantMusic) this.startTrack();
   }
 
   private makeNoise(ctx: AudioContext): AudioBuffer {

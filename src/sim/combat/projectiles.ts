@@ -46,6 +46,9 @@ export class ProjectilePool {
    *  status-on-hit triggers); 0 = a "dumb" bolt (drones) that does NOT, unless the
    *  Networked Munitions keystone is taken. Per-projectile so the pool stays shared. */
   readonly inherit: Uint8Array;
+  /** Visual style index (weapon family) → the render picks shape/length/colour so
+   *  guns read distinctly (sidearm bolt vs energy lance vs cannon shell). Cosmetic. */
+  readonly style: Uint8Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -70,6 +73,7 @@ export class ProjectilePool {
     this.hitCd = new Float32Array(capacity);
     this.procCoef = new Float32Array(capacity);
     this.inherit = new Uint8Array(capacity);
+    this.style = new Uint8Array(capacity);
   }
 
   spawn(
@@ -86,6 +90,7 @@ export class ProjectilePool {
     bounces = 0,
     procCoef = 1,
     inherit = 1,
+    style = 0,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -110,6 +115,7 @@ export class ProjectilePool {
     this.hitCd[i] = 0;
     this.procCoef[i] = procCoef;
     this.inherit[i] = inherit;
+    this.style[i] = style;
     return i;
   }
 
@@ -137,6 +143,7 @@ export class ProjectilePool {
       this.hitCd[i] = this.hitCd[last]!;
       this.procCoef[i] = this.procCoef[last]!;
       this.inherit[i] = this.inherit[last]!;
+      this.style[i] = this.style[last]!;
     }
   }
 }

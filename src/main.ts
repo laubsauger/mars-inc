@@ -32,6 +32,16 @@ import { ChainView } from './render/chain-view';
 import { BloodView } from './render/blood-view';
 import { CameraShake } from './render/camera-shake';
 import { AudioBus } from './audio/audio';
+// Menu music pool: every track in the folder (no hard-coded names — drop more in
+// and they're picked up). Played as a shuffled playlist. Later we can split into
+// menu/ingame subfolders by globbing different paths.
+const MUSIC_TRACKS = Object.values(
+  import.meta.glob('../assets/audio/music/*.mp3', {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  }),
+) as string[];
 import { budgetAt, TIMELINE_STRETCH } from './sim/director/wave-director';
 import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById, levelCost } from './content/permanent/index';
@@ -99,16 +109,28 @@ function computeInspect(world: World): InspectView | null {
   };
 }
 
+/** Drive the determinate boot-splash bar (index.html) as real assets load. */
+function setSplashProgress(frac: number, label?: string): void {
+  const fill = document.getElementById('boot-splash')?.querySelector<HTMLElement>('.bs-fill');
+  if (fill) fill.style.width = `${Math.round(Math.max(0, Math.min(1, frac)) * 100)}%`;
+  if (label) {
+    const tag = document.getElementById('boot-splash')?.querySelector<HTMLElement>('.bs-tag');
+    if (tag) tag.textContent = label;
+  }
+}
+
 /** Fade out + remove the inline boot splash (index.html) once the app is live. */
 function hideBootSplash(): void {
   const s = document.getElementById('boot-splash');
   if (!s) return;
+  setSplashProgress(1);
   s.classList.add('hidden');
   setTimeout(() => s.remove(), 500);
 }
 
 async function boot(parent: HTMLElement): Promise<void> {
   mountUi(parent);
+  setSplashProgress(0.08, 'Booting renderer…');
 
   if (!isWebGpuSupported()) {
     uiActions.setScreen('unsupported');
@@ -134,6 +156,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     return;
   }
 
+  setSplashProgress(0.3, 'Loading the colosseum…');
   // Load the saved profile (or a fresh default) before building the run so
   // persisted settings + owned permanent upgrades apply from the first frame.
   const save = new SaveManager();
@@ -189,6 +212,22 @@ async function boot(parent: HTMLElement): Promise<void> {
   let lastShakeX = 0;
   let lastShakeZ = 0;
   const audio = new AudioBus();
+  // Begin fetching the FIRST (shuffled) menu track now so the splash can gate on
+  // real download progress. The rest of the playlist stays on-demand — later tracks
+  // aren't fetched until they actually start (keeps initial download small).
+  // The 55–95% band is the music download; rotate flavor lines so a slow fetch
+  // doesn't read as a hang. (Music is what's actually pending behind these.)
+  const PRELOAD_QUIPS = [
+    'Notarizing combat contracts…',
+    'Bribing the wave director…',
+    'Cueing the theme…',
+  ];
+  const musicReady = audio.preloadMusic(MUSIC_TRACKS, (f) =>
+    setSplashProgress(
+      0.55 + f * 0.4,
+      PRELOAD_QUIPS[Math.min(PRELOAD_QUIPS.length - 1, Math.floor(f * PRELOAD_QUIPS.length))],
+    ),
+  );
 
   const input = new Input();
   input.attach();
@@ -231,6 +270,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     uiActions.setSettings({
       masterVolume: save.current.settings.masterVolume,
       sfxVolume: save.current.settings.sfxVolume,
+      musicVolume: save.current.settings.musicVolume,
       screenShake: save.current.settings.screenShake,
       reduceFlash: save.current.settings.reduceFlash,
       uiScale: save.current.settings.uiScale,
@@ -269,6 +309,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   } else {
     uiActions.setScreen('menu');
     uiActions.setMenuView('root');
+    audio.playMusic(MUSIC_TRACKS); // theme — starts once the first gesture unlocks audio
   }
 
   // Reset the orbit/zoom camera back to the framed default (HUD button).
@@ -365,6 +406,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     world.setPermanents(save.current.permanentUpgrades);
     world.start();
     discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
+    audio.stopMusic(); // menu theme off in the pit
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
@@ -378,6 +420,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     pushProfile();
     uiActions.setMenuView('root');
     uiActions.setScreen('menu');
+    audio.playMusic(MUSIC_TRACKS); // back to the menu → theme resumes
   });
 
   // Bridge restart from the game-over screen → start a fresh run in place (V15).
@@ -385,6 +428,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     world.setPermanents(save.current.permanentUpgrades); // apply any purchases
     world.start();
     discoverWeapon(world.weaponSystem.primaryId);
+    audio.stopMusic();
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
@@ -397,6 +441,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     const s = save.current.settings;
     audio.masterVolume = s.masterVolume;
     audio.sfxVolume = s.sfxVolume;
+    audio.musicVolume = s.musicVolume;
     audio.applyVolumes();
     effects.reduceFlash = s.reduceFlash;
     bloodView.reduceFlash = s.reduceFlash;
@@ -816,8 +861,17 @@ async function boot(parent: HTMLElement): Promise<void> {
     },
   });
   loop.start();
-  // First frame is rendering — drop the boot splash on the next frame so the
-  // arena/menu has actually painted before the splash fades.
+  // First frame is rendering. Gate the splash on the first menu track finishing its
+  // download (with preloadMusic's own timeout guard) so the menu opens with music
+  // ready to cue. The dev `?play` shortcut drops straight in without waiting.
+  if (!autostart) {
+    setSplashProgress(0.55, 'Cueing the theme…');
+    await musicReady;
+  } else {
+    void musicReady;
+  }
+  // Drop the boot splash on the next frame so the arena/menu has actually painted
+  // before the splash fades.
   requestAnimationFrame(() => hideBootSplash());
 
   document.addEventListener('visibilitychange', () => {

@@ -126,6 +126,7 @@ export class DroneSystem {
         bounces,
         1, // procCoef
         inheritMechanics ? 1 : 0, // inherit global on-hit mods?
+        3, // drone visual style (small purple bolt)
       );
       this.cd[i] = fireInterval;
     }

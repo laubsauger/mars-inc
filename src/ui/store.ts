@@ -45,6 +45,7 @@ export interface ProfileView {
 export interface SettingsView {
   masterVolume: number;
   sfxVolume: number;
+  musicVolume: number;
   screenShake: number;
   reduceFlash: boolean;
   uiScale: number;
@@ -330,6 +331,7 @@ const INITIAL_PROFILE: ProfileView = {
 const INITIAL_SETTINGS: SettingsView = {
   masterVolume: 0.6,
   sfxVolume: 1,
+  musicVolume: 0.7,
   screenShake: 1,
   reduceFlash: false,
   uiScale: 1,

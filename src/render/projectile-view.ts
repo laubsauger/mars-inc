@@ -1,13 +1,15 @@
-// Instanced projectile view (T14). One InstancedMesh, emissive plasma look.
-// Synced from the pool with interpolation (V1/V2). Muzzle/impact FX → T16.
-// Per-instance colour (pre-created instanceColor, §B1) tints the small drone bolts
-// a cooler shade so they read as distinct from the player's gold fire.
+// Instanced projectile view (T14/T37). One InstancedMesh; each bolt is a unit
+// sphere STRETCHED along its travel direction + tinted per weapon family, so guns
+// read distinctly: a sidearm pellet, a rotary tracer, a fat cannon shell, a long
+// cyan energy lance, a heavy orbital slug, a small purple drone bolt. Pre-created
+// instanceColor (§B1 — lazy setColorAt is unreliable on the WebGPU backend).
 
 import {
   InstancedMesh,
   SphereGeometry,
   MeshBasicMaterial,
   Object3D,
+  Color,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   AdditiveBlending,
@@ -17,13 +19,23 @@ import type { ProjectilePool } from '../sim/combat/projectiles';
 import { MAX_PROJECTILES } from '../sim/combat/projectiles';
 import { COL } from './art/palette';
 
-// Player bolts = bright kinetic gold. Drone bolts = magenta-purple — clearly a
-// sidekick's fire, and distinct from cyan XP shards / orange fire / gold player fire.
-const PLAYER_COL = COL.kineticGold.clone().multiplyScalar(1.4);
-const DRONE_COL = COL.eliteMagenta.clone().multiplyScalar(1.15);
-// Drone projectiles are spawned smaller than any weapon bolt (0.12 vs 0.16+), so
-// radius is a reliable "is this a drone bolt" tell without a per-projectile flag.
-const DRONE_RADIUS_MAX = 0.14;
+// Per-style look. Index = weapon family (FAMILY_STYLE in weapon-system):
+// 0 sidearm · 1 rotary · 2 explosive · 3 drone · 4 energy · 5 orbital.
+// `w` = cross-section scale, `len` = length along travel (stretch).
+interface Style {
+  color: Color;
+  w: number;
+  len: number;
+}
+const STYLES: Style[] = [
+  { color: COL.kineticGold.clone().multiplyScalar(1.4), w: 1.0, len: 1.7 }, // sidearm: gold bolt
+  { color: COL.sunHigh.clone().multiplyScalar(1.5), w: 0.75, len: 1.5 }, // rotary: thin fast tracer
+  { color: new Color(1.0, 0.5, 0.18).multiplyScalar(1.3), w: 1.7, len: 1.3 }, // explosive: fat orange shell
+  { color: COL.eliteMagenta.clone().multiplyScalar(1.2), w: 1.0, len: 1.3 }, // drone: small purple
+  { color: COL.shieldCyan.clone().multiplyScalar(1.35), w: 0.62, len: 3.2 }, // energy: long cyan lance
+  { color: COL.kineticGold.clone().multiplyScalar(1.55), w: 1.5, len: 2.5 }, // orbital: heavy gold slug
+];
+const FALLBACK = STYLES[0]!;
 
 export class ProjectileView {
   readonly mesh: InstancedMesh;
@@ -32,28 +44,23 @@ export class ProjectileView {
   constructor(scene: Scene, capacity: number = MAX_PROJECTILES) {
     const geo = new SphereGeometry(1, 8, 6);
     const mat = new MeshBasicMaterial({
-      // White base — the per-instance colour carries the actual tint (gold / drone).
-      color: 0xffffff,
+      color: 0xffffff, // white base — per-instance colour carries the tint
       blending: AdditiveBlending,
       depthWrite: false,
-      // Glowing plasma bolts read as light, not solid geometry — don't let the
-      // raised gate plates (or any opaque prop) occlude them. Draw on top.
-      depthTest: false,
+      depthTest: false, // glowing bolts read as light; never occluded by props
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-    // Pre-create the instanceColor buffer (§B1: lazy setColorAt is unreliable on
-    // the WebGPU backend — allocate it up front, defaulted to the player gold).
     const buf = new Float32Array(capacity * 3);
     for (let i = 0; i < capacity; i++) {
-      buf[i * 3] = PLAYER_COL.r;
-      buf[i * 3 + 1] = PLAYER_COL.g;
-      buf[i * 3 + 2] = PLAYER_COL.b;
+      buf[i * 3] = FALLBACK.color.r;
+      buf[i * 3 + 1] = FALLBACK.color.g;
+      buf[i * 3 + 2] = FALLBACK.color.b;
     }
     this.mesh.instanceColor = new InstancedBufferAttribute(buf, 3);
     this.mesh.instanceColor.setUsage(DynamicDrawUsage);
-    this.mesh.renderOrder = 10; // after opaque scene, with the additive overlay
+    this.mesh.renderOrder = 10;
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     scene.add(this.mesh);
@@ -65,11 +72,15 @@ export class ProjectileView {
       const x = pool.prevX[i]! + (pool.posX[i]! - pool.prevX[i]!) * alpha;
       const z = pool.prevZ[i]! + (pool.posZ[i]! - pool.prevZ[i]!) * alpha;
       const r = pool.radius[i]!;
+      const s = STYLES[pool.style[i]!] ?? FALLBACK;
+      // Orient the stretched body along travel (local +z faces the velocity).
+      const ang = Math.atan2(pool.velX[i]!, pool.velZ[i]!);
       this.dummy.position.set(x, 0.9, z);
-      this.dummy.scale.setScalar(r);
+      this.dummy.rotation.set(0, ang, 0);
+      this.dummy.scale.set(r * s.w, r * s.w, r * s.len);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
-      this.mesh.setColorAt(i, r <= DRONE_RADIUS_MAX ? DRONE_COL : PLAYER_COL);
+      this.mesh.setColorAt(i, s.color);
     }
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;

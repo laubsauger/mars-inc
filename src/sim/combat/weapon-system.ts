@@ -46,6 +46,18 @@ function impactProfile(family: WeaponFamily): ImpactProfile {
   }
 }
 
+/** Per-family projectile VISUAL style index (cosmetic; the render maps it to a
+ *  shape/length/colour so each gun reads distinctly). Keep in sync with the render
+ *  table in `render/projectile-view.ts`. */
+export const FAMILY_STYLE: Record<WeaponFamily, number> = {
+  sidearm: 0,
+  rotary: 1,
+  explosive: 2,
+  drone: 3,
+  energy: 4,
+  orbital: 5,
+};
+
 const NO_COND: ConditionalResult = { damageMult: 1, critAdd: 0, fireRateMult: 1 };
 
 export interface KillEvent {
@@ -201,6 +213,8 @@ export class WeaponSystem {
           profile,
           Math.max(0, Math.floor(mods.ricochet)),
           procCoef,
+          1, // inherit global on-hit mods (player shots always do)
+          FAMILY_STYLE[w.def.family], // per-family projectile look (T37)
         );
       }
 
