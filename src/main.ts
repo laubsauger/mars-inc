@@ -16,6 +16,7 @@ import { EnemyProjectileView } from './render/enemy-projectile-view';
 import { HazardView } from './render/hazard-view';
 import { ThrowMarkerView } from './render/throw-marker-view';
 import { WeaponDropView } from './render/weapon-drop-view';
+import { HealthDropView } from './render/health-drop-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
@@ -103,6 +104,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const hazardView = new HazardView(scene);
   const throwMarkerView = new ThrowMarkerView(scene);
   const weaponDropView = new WeaponDropView(scene);
+  const healthDropView = new HealthDropView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
   const droneView = new DroneView(scene);
@@ -420,6 +422,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       hazardView.sync(world.enemyAttacks.hazards);
       throwMarkerView.sync(world.enemyAttacks.projectiles);
       weaponDropView.sync(world.weaponDrops.pool);
+      healthDropView.sync(world.healthDrops.pool);
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
       cursorView.sync(world.player);

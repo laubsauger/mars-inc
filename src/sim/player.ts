@@ -73,6 +73,11 @@ export interface Player {
   /** Kinetic Boots: a radial shockwave push emitted when a sprint starts (0 = off). */
   dashShockForce: number;
   dashShockRadius: number;
+  /** Recoil build (T55): seconds since the last shot's recoil (>0 = "recoil is
+   *  moving the player"). Set on fire, decays here. Read by recoil conditionals. */
+  recoilTimer: number;
+  /** Backblast Harness: while firing, recoil feeds the sprint recharge (T55). */
+  recoilSprintRecharge: boolean;
 }
 
 export function createPlayer(stats: MovementStats = LILU_STATS): Player {
@@ -113,6 +118,8 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     novaPull: false,
     dashShockForce: 0,
     dashShockRadius: 5,
+    recoilTimer: 0,
+    recoilSprintRecharge: false,
   };
 }
 
@@ -157,6 +164,8 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.novaPull = false;
   p.dashShockForce = 0;
   p.dashShockRadius = 5;
+  p.recoilTimer = 0;
+  p.recoilSprintRecharge = false;
 }
 
 /** Advance the player one fixed step. */
@@ -169,7 +178,11 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
   p.aim.z = input.aimZ;
   p.aim.has = input.hasAim;
 
-  p.sprint = updateSprint(p.sprint, input.sprint, p.stats, dt);
+  // Recoil decay (T55). While recent recoil is "moving" the player, Backblast
+  // Harness feeds the sprint recharge.
+  if (p.recoilTimer > 0) p.recoilTimer = Math.max(0, p.recoilTimer - dt);
+  const sprintBoost = p.recoilSprintRecharge && p.recoilTimer > 0 ? dt * 2 : 0;
+  p.sprint = updateSprint(p.sprint, input.sprint, p.stats, dt, sprintBoost);
 
   // Chill (enemy frost) slows the player until it expires.
   if (p.chillTime > 0) {

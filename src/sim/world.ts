@@ -8,6 +8,7 @@ import { EnemySystem } from './enemy-system';
 import { EnemyAttackSystem } from './enemy-attacks';
 import { BossController } from './boss';
 import { WeaponDropSystem } from './weapon-drops';
+import { HealthDropSystem } from './health-drops';
 import { availableEvolution } from '../content/weapons/evolutions';
 import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
 import { WaveDirector, computeAdaptation } from './director/wave-director';
@@ -37,11 +38,17 @@ import { previewUpgrade, type UpgradeChange } from './progression/preview';
 import { UPGRADES } from '../content/upgrades/index';
 import { ADVANCED_UPGRADES } from '../content/upgrades/advanced';
 import { REACTION_UPGRADES } from '../content/upgrades/reactions';
+import { RECOIL_UPGRADES } from '../content/upgrades/recoil';
 import type { InputSnapshot } from '../core/input';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
- *  status-reaction primers/converters (T54). */
-const DRAFT_POOL: UpgradeDefinition[] = [...UPGRADES, ...ADVANCED_UPGRADES, ...REACTION_UPGRADES];
+ *  status-reaction primers/converters (T54) + recoil build family (T55). */
+const DRAFT_POOL: UpgradeDefinition[] = [
+  ...UPGRADES,
+  ...ADVANCED_UPGRADES,
+  ...REACTION_UPGRADES,
+  ...RECOIL_UPGRADES,
+];
 
 /** Rich post-game summary (T23) — what the run actually became. */
 export interface RunSummary {
@@ -91,6 +98,8 @@ export class World {
   readonly enemyAttacks = new EnemyAttackSystem();
   /** Weapon-crate drops + pickup → primary-weapon swap (T33). */
   readonly weaponDrops = new WeaponDropSystem();
+  /** Occasional medkit drops; auto-collected to heal (T33+). */
+  readonly healthDrops = new HealthDropSystem();
   /** Gatekeeper boss fight controller — phases + telegraphed attacks (T33). */
   readonly boss = new BossController();
   /** Set to the evolved weapon's name the step it evolves (T34); HUD announces. */
@@ -282,6 +291,8 @@ export class World {
       cond,
       onHit,
     );
+    // On-shot trigger (T55 recoil family: Countermass shockwave, God-Kicker).
+    if (this.weaponSystem.firedThisStep && this.effects.has('shot')) this.fireShotTrigger();
     // On-kill / overkill triggers fire after combat resolves (T38, V21 pipeline).
     const triggerDmg = this.fireKillTriggers();
     // Status step (§5.4): burn DoT, chill/mark decay (T39).
@@ -301,6 +312,8 @@ export class World {
       dt,
       this.input.pickup,
     );
+    // Medkits drop from kills + auto-heal on walk-over (T33+).
+    this.healthDrops.step(this.player, this.weaponSystem.kills, this.rng, this.fx, dt);
     this.pendingLevelUps += stepXp(this.shards, this.player, dt);
 
     // Accumulate run stats from this step's authoritative events (V20).
@@ -352,6 +365,7 @@ export class World {
       firingRampSec: this.firingRampSec,
       hpFrac: this.player.maxHealth > 0 ? this.player.health / this.player.maxHealth : 0,
       recentCrit: false, // wired when the weapon system reports crits (T40)
+      recoilActive: this.player.recoilTimer > 0, // recoil builds (T55)
     });
   }
 
@@ -386,6 +400,37 @@ export class World {
     };
     this.effects.fire('hit', ctx);
     if (crit) this.effects.fire('crit', ctx);
+  }
+
+  /** Fire the on-shot trigger once per step the player fired (T55). `x,z` is the
+   *  player; handlers compute "behind" from `player.facing`. */
+  private fireShotTrigger(): void {
+    this.effects.fire('shot', {
+      x: this.player.pos.x,
+      z: this.player.pos.z,
+      player: this.player,
+      enemies: this.enemies,
+      hash: this.enemySystem.hash,
+      rng: this.rng,
+      fx: this.fx,
+      variant: 0,
+      magnitude: 0,
+      targetIndex: -1,
+      dealArea: (x, z, radius, amount) => {
+        const d = applyAreaDamage(
+          this.enemies,
+          this.enemySystem.hash,
+          x,
+          z,
+          radius,
+          { amount },
+          this.rng,
+        );
+        this.hitTriggerDamage += d;
+        return d;
+      },
+      applyStatus: (index, type, opts) => applyStatus(this.enemies, index, type, opts),
+    });
   }
 
   /** Resolve status reactions for this step (T53). Off-cost when no reaction is
@@ -514,6 +559,7 @@ export class World {
     this.enemies.count = 0;
     this.enemyAttacks.reset();
     this.weaponDrops.reset();
+    this.healthDrops.reset();
     this.boss.reset();
     this.justEvolved = null;
     this.shards.count = 0;

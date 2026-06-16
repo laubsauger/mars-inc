@@ -33,17 +33,22 @@ export interface ConditionalCtx {
   hpFrac: number;
   /** True if a crit landed within the recent window. */
   recentCrit: boolean;
+  /** True while recent recoil is moving the player (recoil builds, T55). */
+  recoilActive: boolean;
 }
 
 /** Returns transient bonuses; combined multiplicatively/additively across all. */
 export type ConditionalModifier = (ctx: ConditionalCtx) => {
   damageMult?: number;
   critAdd?: number;
+  /** Transient fire-rate multiplier (ramp builds: Kinetic Overdraft, T55). */
+  fireRateMult?: number;
 };
 
 export interface ConditionalResult {
   damageMult: number;
   critAdd: number;
+  fireRateMult: number;
 }
 
 // ---- Triggers -------------------------------------------------------------
@@ -120,12 +125,14 @@ export class BuildEffects {
   evalConditionals(ctx: ConditionalCtx): ConditionalResult {
     let damageMult = 1;
     let critAdd = 0;
+    let fireRateMult = 1;
     for (let i = 0; i < this.conditionals.length; i++) {
       const r = this.conditionals[i]!(ctx);
       if (r.damageMult !== undefined) damageMult *= r.damageMult;
       if (r.critAdd !== undefined) critAdd += r.critAdd;
+      if (r.fireRateMult !== undefined) fireRateMult *= r.fireRateMult;
     }
-    return { damageMult, critAdd };
+    return { damageMult, critAdd, fireRateMult };
   }
 
   fire(event: TriggerEvent, ctx: TriggerCtx): void {

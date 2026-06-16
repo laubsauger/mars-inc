@@ -99,6 +99,12 @@ export class AimLineView {
       const dx = dirs[i * 2]!;
       const dz = dirs[i * 2 + 1]!;
       const t = this.raycast(pool, px, pz, dx, dz, maxRange);
+      // If the target is closer than the muzzle gap, the end would fall BEHIND the
+      // start → the fat line collapses into a degenerate square blob. Hide it.
+      if (t <= startGap + 0.15) {
+        ln.visible = false;
+        continue;
+      }
       ln.visible = true;
       ln.geometry.setPositions([
         px + dx * startGap,

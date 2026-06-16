@@ -7,12 +7,13 @@ const CTX: ConditionalCtx = {
   firingRampSec: 0,
   hpFrac: 1,
   recentCrit: false,
+  recoilActive: false,
 };
 
 describe('BuildEffects conditionals (T38)', () => {
   it('no conditionals → neutral result', () => {
     const e = new BuildEffects();
-    expect(e.evalConditionals(CTX)).toEqual({ damageMult: 1, critAdd: 0 });
+    expect(e.evalConditionals(CTX)).toEqual({ damageMult: 1, critAdd: 0, fireRateMult: 1 });
   });
 
   it('combines damage multiplicatively, crit additively', () => {

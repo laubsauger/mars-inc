@@ -71,6 +71,20 @@ describe('steerEnemy (T11 seek + separation)', () => {
     const v = steerEnemy(0, 0, { x: 3, z: 3 }, 7, 9, nx, nz, 2, 0.5, DEFAULT_STEER);
     expect(Math.hypot(v.x, v.z)).toBeLessThanOrEqual(7 + 1e-6);
   });
+
+  it('holds at the stop ring — no inward seek once inside stopDist (anti-jiggle)', () => {
+    // Enemy at distance 2 from target, stopDist 3 → inside the contact ring.
+    // With no neighbors, seek is zeroed → velocity ~0 (does not crawl to centre).
+    const v = steerEnemy(8, 0, { x: 10, z: 0 }, 5, 1, empty, empty, 0, 0.5, DEFAULT_STEER, 3);
+    expect(Math.hypot(v.x, v.z)).toBeLessThan(1e-6);
+  });
+
+  it('still seeks at full speed well outside the stop ring', () => {
+    // Distance 10 ≫ stopDist+band → seek unaffected.
+    const v = steerEnemy(0, 0, { x: 10, z: 0 }, 5, 1, empty, empty, 0, 0.5, DEFAULT_STEER, 3);
+    expect(v.x).toBeGreaterThan(0);
+    expect(Math.hypot(v.x, v.z)).toBeCloseTo(5, 5);
+  });
 });
 
 describe('splitOnDeath (T33 splitter blob)', () => {

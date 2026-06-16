@@ -44,16 +44,20 @@ export class CursorView {
     });
     this.group.add(ring);
     for (let i = 0; i < 4; i++) {
-      const tick = onTop(new Mesh(new RingGeometry(0.2, 0.34, 3, 1, i * (Math.PI / 2), 0.18), tickMat));
+      const tick = onTop(
+        new Mesh(new RingGeometry(0.2, 0.34, 3, 1, i * (Math.PI / 2), 0.18), tickMat),
+      );
       this.group.add(tick);
     }
-    this.group.position.y = 0.08;
+    // Just clear of the raised radial seam ridges (top ≈ 0.075) so the reticle
+    // never z-fights them — a hair above, not floating.
+    this.group.position.y = 0.13;
     this.group.visible = false;
     scene.add(this.group);
   }
 
   sync(player: Player): void {
     this.group.visible = player.aim.has;
-    if (player.aim.has) this.group.position.set(player.aim.x, 0.08, player.aim.z);
+    if (player.aim.has) this.group.position.set(player.aim.x, 0.13, player.aim.z);
   }
 }

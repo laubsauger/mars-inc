@@ -13,7 +13,7 @@ export const severanceCannon: WeaponDefinition = {
   range: 22,
   cooldown: 1.5,
   spread: 0.02,
-  recoil: 16,
+  recoil: 24, // truck-stop kick on each slug; very slow fire keeps it controllable
   explosiveRadius: 4.0, // detonates on impact — AoE around the blast point
   projectile: { speed: 16, radius: 0.5, lifetime: 2.0, pierce: 0 },
   damage: {

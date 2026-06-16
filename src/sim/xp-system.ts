@@ -6,12 +6,31 @@ import { ShardPool, ShardState } from './xp';
 import type { Player } from './player';
 import type { KillEvent } from './combat/weapon-system';
 import { xpRequired, SHARD_VALUE } from '../content/balance/xp-curve';
+import { ENEMY_BY_VARIANT } from './enemies';
 
 const MAGNET_SPEED = 18;
 
 /** Spawn one shard per kill, valued by enemy variant. */
 export function emitShards(pool: ShardPool, kills: readonly KillEvent[]): void {
-  for (const k of kills) pool.spawn(k.x, k.z, SHARD_VALUE[k.variant] ?? 1);
+  for (const k of kills) {
+    const total = SHARD_VALUE[k.variant] ?? 1; // total XP value (economy preserved)
+    // Shard COUNT scales with the enemy's size (maxHealth) — bigger/meaner enemies
+    // burst into more crystals, fodder drops one — but every kill drops at least
+    // one. Each shard is worth total/count so the run XP is unchanged. Scattered
+    // by the golden angle (deterministic, V16 — no rng needed).
+    const hp = ENEMY_BY_VARIANT[k.variant]?.maxHealth ?? 6;
+    const count = Math.max(1, Math.min(10, Math.round(hp / 6)));
+    const per = total / count;
+    for (let i = 0; i < count; i++) {
+      if (count === 1) {
+        pool.spawn(k.x, k.z, per);
+      } else {
+        const a = i * 2.399963; // golden angle
+        const r = 0.35 + (i / count) * 0.9;
+        pool.spawn(k.x + Math.cos(a) * r, k.z + Math.sin(a) * r, per);
+      }
+    }
+  }
 }
 
 /**

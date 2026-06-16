@@ -13,7 +13,7 @@ export const arcRepeater: WeaponDefinition = {
   range: 20,
   cooldown: 0.28,
   spread: 0.05,
-  recoil: 4,
+  recoil: 2, // near-recoilless: the energy family's comfort PRO — plant + kite freely
   projectile: { speed: 34, radius: 0.16, lifetime: 1.2, pierce: 2 },
   damage: {
     base: 9,

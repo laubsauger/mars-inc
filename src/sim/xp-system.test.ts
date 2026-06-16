@@ -11,15 +11,18 @@ describe('xp-curve (V13 from balance data)', () => {
 });
 
 describe('emitShards (T17 drop on kill)', () => {
-  it('spawns one shard per kill, valued by variant', () => {
-    const pool = new ShardPool();
-    emitShards(pool, [
-      { x: 1, z: 2, variant: 0 },
-      { x: 3, z: 4, variant: 1 },
-    ]);
-    expect(pool.count).toBe(2);
-    expect(pool.value[0]).toBe(1); // rust mite
-    expect(pool.value[1]).toBe(3); // debt hound
+  it('fodder drops one shard; bigger enemies burst into more, XP value preserved', () => {
+    const mite = new ShardPool();
+    emitShards(mite, [{ x: 1, z: 2, variant: 0 }]); // Rust Mite (low HP) → 1 shard
+    expect(mite.count).toBe(1);
+    expect(mite.value[0]).toBeCloseTo(1, 5); // SHARD_VALUE[0]
+
+    const hound = new ShardPool();
+    emitShards(hound, [{ x: 3, z: 4, variant: 1 }]); // Debt Hound (more HP) → >1 shard
+    expect(hound.count).toBeGreaterThan(1);
+    let total = 0;
+    for (let i = 0; i < hound.count; i++) total += hound.value[i]!;
+    expect(total).toBeCloseTo(3, 4); // total = SHARD_VALUE[1], split across shards
   });
 });
 

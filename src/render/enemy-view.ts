@@ -41,7 +41,7 @@ const VARIANT_COLORS = [
   COL.brass, // 4 Repossession Marshal
   COL.healthRed, // 5 Foreclosure Mortar
   COL.kineticGold, // 6 Riot Shotgunner
-  COL.warmLine, // 7 Audit Brute
+  new Color(0x8a909a), // 7 Audit Brute — steel grey (was near-black, drowned in dark)
   COL.shieldCyan, // 8 Frostbite Auditor (cryo)
   COL.toxicGreen, // 9 Liability Blob (splitter ooze)
   COL.toxicGreen, // 10 Blobling

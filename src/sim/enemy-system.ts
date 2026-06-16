@@ -68,6 +68,9 @@ export class EnemySystem {
           this.nbrZ[m] = p.posZ[j]!;
           m++;
         }
+        // Hold at the contact ring (footprint + a small gap) so the crowd circles
+        // the player instead of converging on the centre point and jiggling.
+        const stopDist = player.stats.collisionRadius + p.radius[i]! + 0.12;
         const v = steerEnemy(
           p.posX[i]!,
           p.posZ[i]!,
@@ -79,6 +82,7 @@ export class EnemySystem {
           m,
           p.radius[i]!,
           DEFAULT_STEER,
+          stopDist,
         );
         p.velX[i] = v.x;
         p.velZ[i] = v.z;
@@ -112,10 +116,12 @@ export class EnemySystem {
         p.posZ[i] = (p.posZ[i]! / d) * limit;
       }
 
-      // Contact damage.
+      // Contact damage: triggers when the enemy reaches the player's FOOTPRINT
+      // ring (a bit beyond `stopDist` so the held ring still deals damage — they
+      // need to touch the footprint, not the exact centre).
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
-      const rr = p.radius[i]! + player.stats.collisionRadius;
+      const rr = p.radius[i]! + player.stats.collisionRadius + 0.3;
       if (dx * dx + dz * dz <= rr * rr && hitPlayer(player, p.contactDmg[i]!)) {
         fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
       }

@@ -5,6 +5,7 @@ import {
   AdditiveBlending,
   BackSide,
   CapsuleGeometry,
+  Color,
   ConeGeometry,
   Group,
   Mesh,
@@ -149,7 +150,7 @@ export class PlayerView {
     };
     const back = flat(PLATE_W + 0.08, PLATE_H + 0.08, OUTLINE); // ink backplate
     back.position.z = -0.01;
-    const trough = flat(PLATE_W, PLATE_H, COL.umberShadow); // empty gauge
+    const trough = flat(PLATE_W, PLATE_H, new Color(0x26272b)); // dark-grey empty gauge
     // Red fill, anchored at the left edge so it shrinks rightward as HP drops.
     const fill = new Mesh(
       new PlaneGeometry(FILL_W, PLATE_H - 0.06),
@@ -232,13 +233,15 @@ export class PlayerView {
     );
     this.healthFill.scale.x = Math.max(0.001, hp01);
     this.healthFill.position.x = -(FILL_W * (1 - hp01)) / 2; // keep left edge fixed
-    // Low health: pulse the fill toward bright so it reads as "danger" (no
-    // full-screen red haze — that's an accessibility opt-in elsewhere).
-    if (hp01 < 0.3) {
+    // Colour scales green (full) → yellow → red (danger) with the fill level.
+    if (hp01 < 0.25) {
+      // Critical: pulse bright red so it reads as danger.
       const pulse = 0.5 + 0.5 * Math.sin(this.platePhase * 9);
-      this.healthFillMat.color.setRGB(0.9, 0.1 + pulse * 0.25, 0.1 + pulse * 0.1);
+      this.healthFillMat.color.setRGB(0.9, 0.08 + pulse * 0.18, 0.08);
     } else {
-      this.healthFillMat.color.copy(COL.healthRed);
+      const r = hp01 > 0.5 ? (1 - hp01) * 2 : 1; // 0 at full → 1 at half-and-below
+      const g = hp01 > 0.5 ? 1 : hp01 * 2; // 1 down to half, then fades
+      this.healthFillMat.color.setRGB(r * 0.85, g * 0.8, 0.12);
     }
   }
 }

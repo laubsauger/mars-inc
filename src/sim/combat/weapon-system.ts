@@ -43,7 +43,7 @@ function impactProfile(family: WeaponFamily): ImpactProfile {
   }
 }
 
-const NO_COND: ConditionalResult = { damageMult: 1, critAdd: 0 };
+const NO_COND: ConditionalResult = { damageMult: 1, critAdd: 0, fireRateMult: 1 };
 
 export interface KillEvent {
   x: number;
@@ -66,6 +66,8 @@ export class WeaponSystem {
   readonly kills: KillEvent[] = [];
   /** Damage applied to enemy health this step (T22 run stats, V20). */
   damageThisStep = 0;
+  /** True if any weapon fired this step (drives the on-shot trigger, T55). */
+  firedThisStep = false;
   private query: number[] = [];
   private chainQuery: number[] = []; // scratch for chain-lightning arc lookup
   private chainVisited: number[] = []; // enemies already hit this chain (no repeats)
@@ -105,6 +107,7 @@ export class WeaponSystem {
   ): void {
     this.kills.length = 0;
     this.damageThisStep = 0;
+    this.firedThisStep = false;
     this.fire(player, enemies, mods, rng, dt, fx, cond);
     this.advanceProjectiles(enemies, hash, mods, rng, dt, fx, onHit);
     compactDead(enemies, this.kills, fx);
@@ -126,7 +129,8 @@ export class WeaponSystem {
       const aim = resolveAim(w, player, enemies, mods.rangeMult);
       if (!aim) continue; // nothing to shoot at and no cursor aim
 
-      w.cooldownLeft = w.def.cooldown / Math.max(0.01, mods.fireRateMult);
+      // Fold in the transient fire-rate ramp (Kinetic Overdraft etc, T55).
+      w.cooldownLeft = w.def.cooldown / Math.max(0.01, mods.fireRateMult * cond.fireRateMult);
 
       // Damage spec with run mods + dynamic conditionals folded in (T38), still
       // resolved through the pipeline (V3).
@@ -182,11 +186,13 @@ export class WeaponSystem {
         player.vel,
         -aim.x,
         -aim.z,
-        w.def.recoil,
+        w.def.recoil * mods.recoilMult, // recoil build scales the kick (still V10-capped)
         player.stats.recoilResistance,
         dt,
         RECOIL_CAP,
       );
+      player.recoilTimer = 0.25; // "recoil is moving the player" window (T55)
+      this.firedThisStep = true;
     }
   }
 

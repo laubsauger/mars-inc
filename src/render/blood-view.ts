@@ -33,7 +33,9 @@ const DECAL_TARGET = COL.umberShadow;
 // Arterial red + toxic ichor green — darker than the bright HUD accents so blood
 // reads as matter on the floor, not a glow.
 const BLOOD = new Color(0.46, 0.02, 0.02);
-const ICHOR = new Color(0.26, 0.58, 0.06);
+// Dark olive ichor — pulled away from the bright green/cyan of the XP shards so
+// it reads as gore on the floor, not a pickup.
+const ICHOR = new Color(0.2, 0.34, 0.04);
 
 function goreColor(variant: number): Color | null {
   const g = ENEMY_BY_VARIANT[variant]?.gore;
@@ -90,11 +92,30 @@ export class BloodView {
     for (const e of events) {
       if (e.kind === 'blood') {
         const c = goreColor(e.variant);
-        if (c) this.spray(e.x, e.z, e.dx, e.dz, c, this.reduceFlash ? 3 : 6, 1);
+        // Vary count + energy per hit so no two splats look identical.
+        if (c)
+          this.spray(
+            e.x,
+            e.z,
+            e.dx,
+            e.dz,
+            c,
+            this.reduceFlash ? 3 : 4 + ((rnd() * 6) | 0),
+            0.8 + rnd() * 0.7,
+          );
       } else if (e.kind === 'death') {
         const c = goreColor(e.variant);
         // Death gush: radial, more matter (no incoming direction → burst outward).
-        if (c) this.spray(e.x, e.z, 0, 0, c, this.reduceFlash ? 6 : 12, 1.5);
+        if (c)
+          this.spray(
+            e.x,
+            e.z,
+            0,
+            0,
+            c,
+            this.reduceFlash ? 6 : 9 + ((rnd() * 8) | 0),
+            1.2 + rnd() * 0.7,
+          );
       }
     }
   }
@@ -126,7 +147,7 @@ export class BloodView {
       this.dr[i] = color.r;
       this.dg[i] = color.g;
       this.db[i] = color.b;
-      this.dsize[i] = 0.6 + rnd() * 0.7;
+      this.dsize[i] = 0.45 + rnd() * 1.15; // wider size spread → less uniform splats
     }
   }
 

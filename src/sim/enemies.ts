@@ -78,6 +78,9 @@ export class EnemyPool {
   readonly velX: Float32Array;
   readonly velZ: Float32Array;
   readonly health: Float32Array;
+  /** Per-instance max health (T44): spawn-time difficulty scaling makes this
+   *  diverge from the type base, so the health bar reads the right fraction. */
+  readonly maxHp: Float32Array;
   readonly radius: Float32Array;
   readonly speed: Float32Array;
   readonly sepWeight: Float32Array;
@@ -120,6 +123,7 @@ export class EnemyPool {
     this.velX = new Float32Array(capacity);
     this.velZ = new Float32Array(capacity);
     this.health = new Float32Array(capacity);
+    this.maxHp = new Float32Array(capacity);
     this.radius = new Float32Array(capacity);
     this.speed = new Float32Array(capacity);
     this.sepWeight = new Float32Array(capacity);
@@ -148,7 +152,14 @@ export class EnemyPool {
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
-  spawn(type: EnemyType, x: number, z: number, telegraph: number, phase: number): number {
+  spawn(
+    type: EnemyType,
+    x: number,
+    z: number,
+    telegraph: number,
+    phase: number,
+    hpScale = 1,
+  ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
     this.posX[i] = x;
@@ -157,7 +168,8 @@ export class EnemyPool {
     this.prevZ[i] = z;
     this.velX[i] = 0;
     this.velZ[i] = 0;
-    this.health[i] = type.maxHealth;
+    this.health[i] = type.maxHealth * hpScale; // difficulty scaling (T44)
+    this.maxHp[i] = this.health[i]!;
     this.radius[i] = type.radius;
     this.speed[i] = type.speed;
     this.sepWeight[i] = type.separationWeight;
@@ -197,6 +209,7 @@ export class EnemyPool {
       this.velX[i] = this.velX[last]!;
       this.velZ[i] = this.velZ[last]!;
       this.health[i] = this.health[last]!;
+      this.maxHp[i] = this.maxHp[last]!;
       this.radius[i] = this.radius[last]!;
       this.speed[i] = this.speed[last]!;
       this.sepWeight[i] = this.sepWeight[last]!;
@@ -521,14 +534,25 @@ export function steerEnemy(
   neighborCount: number,
   selfRadius: number,
   weights: SteerWeights,
+  stopDist = 0,
 ): Vec2 {
-  // Seek.
+  // Seek (unit vector toward the target).
   let sx = target.x - px;
   let sz = target.z - pz;
   const sl = Math.hypot(sx, sz);
   if (sl > 1e-6) {
     sx /= sl;
     sz /= sl;
+  }
+
+  // Hold at the contact ring: fade the inward seek to 0 as the enemy reaches
+  // `stopDist` (its footprint vs the player), so the crowd forms a RING around
+  // the player instead of all piling onto the centre point and jiggling.
+  let seekScale = weights.seek;
+  if (stopDist > 0) {
+    const band = 0.7; // soft approach so they ease in, not slam-and-bounce
+    if (sl <= stopDist) seekScale = 0;
+    else if (sl < stopDist + band) seekScale *= (sl - stopDist) / band;
   }
 
   // Separation: push away from close neighbors, weighted by closeness.
@@ -546,8 +570,8 @@ export function steerEnemy(
     }
   }
 
-  let dx = sx * weights.seek + ax * sepWeight * weights.separation;
-  let dz = sz * weights.seek + az * sepWeight * weights.separation;
+  let dx = sx * seekScale + ax * sepWeight * weights.separation;
+  let dz = sz * seekScale + az * sepWeight * weights.separation;
   const dl = Math.hypot(dx, dz);
   if (dl > 1e-6) {
     dx = (dx / dl) * speed;

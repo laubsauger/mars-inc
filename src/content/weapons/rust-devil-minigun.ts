@@ -1,6 +1,7 @@
 // Rust Devil Minigun (rotary). A bullet hose — tiny per-shot damage at a furious
-// fire rate, wide spray, heavy recoil. Rewards staying on target; punishes
-// trigger discipline with kickback. (§18 family example.)
+// fire rate, wide spray. TRADE-OFF: at this fire rate its recoil SHOVES you
+// backward off your aim — hosing one direction continuously drives you the other
+// way, so you fight your own gun for position. (§18 family example.)
 
 import type { WeaponDefinition } from '../../sim/combat/weapon';
 
@@ -13,7 +14,7 @@ export const rustDevilMinigun: WeaponDefinition = {
   range: 18,
   cooldown: 0.07,
   spread: 0.16,
-  recoil: 9,
+  recoil: 26, // caps the per-shot kick; the fire rate makes it a continuous shove
   projectile: { speed: 28, radius: 0.16, lifetime: 1.0, pierce: 0 },
   damage: {
     base: 3,

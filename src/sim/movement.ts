@@ -123,6 +123,9 @@ export function updateSprint(
   want: boolean,
   stats: MovementStats,
   dt: number,
+  /** Extra seconds of recharge progress this step (Backblast Harness: recoil
+   *  feeds the sprint cooldown, T55). 0 = normal. */
+  extraRecharge = 0,
 ): SprintState {
   let { charges, active, timeLeft, cooldown, forgiveness } = s;
 
@@ -144,7 +147,7 @@ export function updateSprint(
   }
 
   if (charges < s.maxCharges) {
-    cooldown -= dt;
+    cooldown -= dt + extraRecharge;
     if (cooldown <= 0) {
       charges += 1;
       cooldown = charges < s.maxCharges ? stats.sprintCooldown : 0;

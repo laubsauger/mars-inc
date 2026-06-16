@@ -21,6 +21,7 @@ export interface RunMods {
   blastRadius: number; // universal explosive radius added to every shot (0 = off)
   rangeMult: number; // weapon targeting/effective range multiplier (T33 progression)
   knockback: number; // outward impulse applied to enemies on projectile hit (0 = off)
+  recoilMult: number; // scales per-shot recoil impulse (T55; still capped by V10)
 }
 
 export function defaultMods(): RunMods {
@@ -39,6 +40,7 @@ export function defaultMods(): RunMods {
     blastRadius: 0,
     rangeMult: 1,
     knockback: 0,
+    recoilMult: 1,
   };
 }
 

@@ -15,7 +15,7 @@ export const liabilityShotgun: WeaponDefinition = {
   spread: 0,
   pellets: 8,
   spreadArc: 0.5,
-  recoil: 14,
+  recoil: 24, // a hard kick BACK per blast — but the slow fire lets you recover
   projectile: { speed: 22, radius: 0.18, lifetime: 0.55, pierce: 0 },
   damage: {
     base: 4,
