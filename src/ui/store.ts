@@ -34,6 +34,8 @@ export interface ProfileView {
   mostKills: number;
   runCount: number;
   byCombo: RecordRow[];
+  /** True once the player has ever felled the Gatekeeper — gates Act 2 (T-Act). */
+  bossDefeated: boolean;
 }
 
 /** Settings + accessibility, mirrored from the profile and editable (T36). */
@@ -291,6 +293,7 @@ const INITIAL_DRAFT: DraftState = {
 const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
 const INITIAL_PROFILE: ProfileView = {
   bestTimeSec: 0,
+  bossDefeated: false,
   bestLevel: 0,
   mostKills: 0,
   runCount: 0,

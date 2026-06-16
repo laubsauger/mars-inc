@@ -26,6 +26,18 @@ describe('build-seeding permanents (T35+)', () => {
     applyPermanents(p, { 'hunter-protocol': 2 }, defaultMods(), new BuildEffects());
     expect(p.droneCount).toBe(2);
   });
+
+  it('seeds the mod layer as a BASE value that in-run draft picks stack on top of', () => {
+    // Glory Tree contributes starting pierce; the draft's pierce upgrades all use
+    // `mods.pierce += …` (additive mod layer), so they build on the seeded base
+    // rather than replacing it — explosive radius / damage / chain work the same,
+    // and applyPermanents runs before any draft in world.reset.
+    const mods = defaultMods();
+    applyPermanents(createPlayer(), { 'splinter-rounds': 2 }, mods, new BuildEffects());
+    expect(mods.pierce).toBe(2); // base from the Glory Tree
+    mods.pierce += 1; // a draft pierce pick adds ON TOP, never overwrites
+    expect(mods.pierce).toBe(3);
+  });
 });
 
 describe('gloryFor (T26 award)', () => {

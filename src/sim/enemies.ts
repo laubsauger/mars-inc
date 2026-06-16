@@ -64,6 +64,11 @@ export interface EnemyType {
    *  humanoid spurts, `ichor` = green ooze. Absent = mechanical (scrap, no
    *  blood — the death dust poof already covers it). Render reads this (V2). */
   gore?: 'blood' | 'ichor';
+  /** Engagement radius (world units). When set, the enemy ROAMS (slow wander) and
+   *  only locks on + chases once the player comes within this range — a lurker that
+   *  ambushes, breaking up the homogeneous everyone-chases swarm. Absent/0 = always
+   *  aggressive (the default fodder behaviour). */
+  aggroRange?: number;
   /** Threat cost the wave director spends to field one (§8.3). */
   threat: number;
 }
@@ -102,6 +107,9 @@ export class EnemyPool {
   readonly attackCd: Float32Array;
   /** Per-enemy contact (melee) damage (T33). */
   readonly contactDmg: Float32Array;
+  /** Engagement radius (world u); 0 = always aggressive. >0 → roams until the
+   *  player is within this, then chases (lurker/ambush behaviour). */
+  readonly aggroRange: Float32Array;
   // Status effects (T39): per-enemy remaining-time + potency. 0 time = inactive.
   readonly burnTime: Float32Array; // burn DoT remaining (s)
   readonly burnDps: Float32Array; // burn damage per second
@@ -159,6 +167,7 @@ export class EnemyPool {
     this.kbX = new Float32Array(capacity);
     this.kbZ = new Float32Array(capacity);
     this.contactDmg = new Float32Array(capacity);
+    this.aggroRange = new Float32Array(capacity);
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
@@ -191,6 +200,7 @@ export class EnemyPool {
     this.steerPhase[i] = phase & 0xff;
     this.attackCd[i] = 0;
     this.contactDmg[i] = type.contactDamage ?? DEFAULT_CONTACT_DAMAGE;
+    this.aggroRange[i] = type.aggroRange ?? 0;
     this.burnTime[i] = 0;
     this.burnDps[i] = 0;
     this.chillTime[i] = 0;
@@ -232,6 +242,7 @@ export class EnemyPool {
       this.steerPhase[i] = this.steerPhase[last]!;
       this.attackCd[i] = this.attackCd[last]!;
       this.contactDmg[i] = this.contactDmg[last]!;
+      this.aggroRange[i] = this.aggroRange[last]!;
       this.burnTime[i] = this.burnTime[last]!;
       this.burnDps[i] = this.burnDps[last]!;
       this.chillTime[i] = this.chillTime[last]!;
@@ -400,7 +411,9 @@ export const RIOT_SHOTGUNNER: EnemyType = {
 
 // Audit Brute — slow melee wall (T33). High HP, big body, and a punishing touch:
 // it can't be ignored or bodyblocked casually. The melee counterweight to the
-// ranged classes; rewards kiting and burst damage.
+// ranged classes; rewards kiting and burst damage. LURKER (T-roam): it patrols
+// until you wander within 15u, then commits to the charge — a brute can be left
+// alone if you keep your distance, but ambushes once you close.
 export const AUDIT_BRUTE: EnemyType = {
   id: 'audit-brute',
   radius: 1.1,
@@ -411,6 +424,7 @@ export const AUDIT_BRUTE: EnemyType = {
   gore: 'blood',
   threat: 16,
   contactDamage: 16,
+  aggroRange: 15,
 };
 
 // Liability Blob — splitter (T33). On death it doesn't just die: it ruptures

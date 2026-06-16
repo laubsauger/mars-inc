@@ -219,6 +219,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       mostKills: r.mostKills,
       runCount: save.current.runHistory.length,
       byCombo,
+      bossDefeated: !!save.current.unlocks['boss-beaten'],
     });
     uiActions.setSettings({
       masterVolume: save.current.settings.masterVolume,
@@ -639,6 +640,8 @@ async function boot(parent: HTMLElement): Promise<void> {
         lastGlory = gloryFor(r, ARENAS[save.current.settings.arenaId].gloryMult);
         save.mutate((p) => {
           p.currencies.martianGlory += lastGlory;
+          // Felling the Gatekeeper (or winning the run) permanently unlocks Act 2.
+          if (world.stats.bossKills > 0 || r.won) p.unlocks['boss-beaten'] = true;
           // Update the global best AND the per-arena / per-character buckets so
           // Records can break down "best run" by where + who (T65).
           const bump = (rec: RecordData): void => {

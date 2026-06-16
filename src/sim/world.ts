@@ -368,7 +368,7 @@ export class World {
     }
     // Corpse / overkill builds (T65): overkilled kills leave bodies; corpses
     // detonate / launch / chain / call meteors (pipeline-routed, V3/V21).
-    this.corpses.ingest(this.weaponSystem.kills, this.player);
+    this.corpses.ingest(this.weaponSystem.kills, this.player, this.fx);
     const corpseDmg = this.corpses.step(
       this.player,
       this.enemies,

@@ -24,7 +24,7 @@ import type { KillEvent } from './weapon-system';
 
 const MAX_CORPSES = 256; // hard pool cap (V5) — excess kills just don't leave a body
 const STORE_CAP = 400; // ceiling on stored overkill per corpse (bounded scaling)
-const FUSE = 0.85; // s a stationary corpse sits before it pops
+const FUSE = 1.3; // s a stationary corpse sits before it pops (long enough to SEE it)
 const LAUNCH_SPEED = 17; // ballistics travel speed
 const LAUNCH_MAX = 1.3; // s max flight before a launched corpse detonates anyway
 const SEEK_RADIUS = 22; // how far ballistics looks for a target
@@ -112,12 +112,14 @@ export class CorpseSystem {
   private ids: number[] = [];
 
   /** Leave corpses for this step's overkilled kills (gated by Waste Not). */
-  ingest(kills: readonly KillEvent[], player: Player): void {
+  ingest(kills: readonly KillEvent[], player: Player, fx: FxQueue): void {
     if (!player.corpseStore) return;
     for (const k of kills) {
       const over = k.overkill ?? 0;
       if (over <= 0) continue;
-      this.pool.spawn(k.x, k.z, over, k.size ?? variantRadius(k.variant), k.variant);
+      if (this.pool.spawn(k.x, k.z, over, k.size ?? variantRadius(k.variant), k.variant) >= 0) {
+        fx.push('impact', k.x, k.z); // a thud where the body drops → reads the spawn
+      }
     }
   }
 
@@ -156,6 +158,9 @@ export class CorpseSystem {
             p.velZ[i] = (dz / l) * LAUNCH_SPEED;
             p.state[i] = CState.Launched;
             p.fuse[i] = LAUNCH_MAX;
+            // Launch kick — a muzzle-style burst aimed at the target so the corpse
+            // visibly FIRES rather than teleporting toward enemies.
+            fx.push('muzzle', p.posX[i]!, p.posZ[i]!, dx / l, dz / l);
           }
         }
       }
@@ -165,6 +170,9 @@ export class CorpseSystem {
       if (p.state[i] === CState.Launched) {
         p.posX[i]! += p.velX[i]! * dt;
         p.posZ[i]! += p.velZ[i]! * dt;
+        // Silent ember trail so the charging corpse reads as a hurtling projectile
+        // ('ember' is visual-only — a per-step 'blood'/'impact' would spam audio).
+        fx.push('ember', p.posX[i]!, p.posZ[i]!);
         // Detonate on contact with any active enemy, or when the flight times out.
         const hit = this.nearestEnemy(enemies, hash, p.posX[i]!, p.posZ[i]!, p.size[i]! + 0.6);
         if (hit >= 0 || p.fuse[i]! <= 0) {

@@ -1055,6 +1055,8 @@ function CreditsPanel() {
 function ActSelector() {
   const arenaId = useUiStore((s) => s.settings.arenaId);
   const set = useUiStore((s) => s.applySetting);
+  // Act 2+ stays a ??? mystery until the Gatekeeper falls once — the growth gate.
+  const bossDefeated = useUiStore((s) => s.profile.bossDefeated);
   const acts = (Object.keys(ARENAS) as ArenaId[])
     .map((id) => ARENAS[id])
     .sort((a, b) => a.act - b.act);
@@ -1063,7 +1065,28 @@ function ActSelector() {
       <div className="mb-1.5 px-1 text-[11px] uppercase tracking-widest text-dust">Select Act</div>
       <div className="grid grid-cols-2 gap-1.5">
         {acts.map((a) => {
-          const selected = arenaId === a.id;
+          const locked = a.act > 1 && !bossDefeated;
+          const selected = arenaId === a.id && !locked;
+          if (locked) {
+            return (
+              <div
+                key={a.id}
+                className="rounded-sm border-2 border-dashed border-rust/45 bg-pit/55 px-3 py-2.5 text-left opacity-80"
+                title="Defeat the Gatekeeper in Act 1 to unlock"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-bone/40">
+                    Act {a.act}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-bone/40">🔒 Locked</span>
+                </div>
+                <div className="text-sm font-black text-bone/45">??? ? ? ???</div>
+                <div className="mt-0.5 text-[11px] leading-tight text-bone/40">
+                  Fell the Gatekeeper in Act 1 to unlock the next contract.
+                </div>
+              </div>
+            );
+          }
           return (
             <button
               key={a.id}

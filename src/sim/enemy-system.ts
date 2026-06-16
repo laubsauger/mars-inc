@@ -24,6 +24,8 @@ export class EnemySystem {
   private ids: number[] = [];
   private nbrX = new Float32Array(MAX_NEIGHBORS);
   private nbrZ = new Float32Array(MAX_NEIGHBORS);
+  /** Reused wander target for roaming (aggro-gated) enemies — no per-frame alloc. */
+  private roam = { x: 0, z: 0 };
 
   constructor(pool: EnemyPool, cellSize: number) {
     this.pool = pool;
@@ -77,11 +79,28 @@ export class EnemySystem {
         // Hold at the contact ring (footprint + a small gap) so the crowd circles
         // the player instead of converging on the centre point and jiggling.
         const stopDist = player.stats.collisionRadius + p.radius[i]! + 0.12;
+        // Aggro gate (T-roam): a lurker outside its engagement radius ROAMS (slow
+        // wander toward a drifting point) instead of homing the player — it only
+        // locks on once you close in. Deterministic from id + tick (V16/V21).
+        let seekTarget = target;
+        let moveSpeed = p.speed[i]!;
+        const aggro = p.aggroRange[i]!;
+        if (aggro > 0) {
+          const adx = target.x - p.posX[i]!;
+          const adz = target.z - p.posZ[i]!;
+          if (adx * adx + adz * adz > aggro * aggro) {
+            const ang = i * 1.7 + p.steerPhase[i]! + tick * 0.02;
+            this.roam.x = p.posX[i]! + Math.cos(ang) * 6;
+            this.roam.z = p.posZ[i]! + Math.sin(ang) * 6;
+            seekTarget = this.roam;
+            moveSpeed = p.speed[i]! * 0.45; // amble while patrolling
+          }
+        }
         const v = steerEnemy(
           p.posX[i]!,
           p.posZ[i]!,
-          target,
-          p.speed[i]!,
+          seekTarget,
+          moveSpeed,
           p.sepWeight[i]!,
           this.nbrX,
           this.nbrZ,
