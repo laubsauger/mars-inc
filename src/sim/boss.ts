@@ -11,7 +11,7 @@ import type { Player } from './player';
 import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
 import type { EnemyAttackSystem } from './enemy-attacks';
-import { ARENA_RADIUS } from './constants';
+import { interiorPoint } from './arena';
 
 export const BOSS_NAME = 'Gatekeeper of Phobos';
 export const BOSS_PHASES = 3;
@@ -155,9 +155,8 @@ export class BossController {
     attacks.hazardAt(ex, ez, 8 + this.phase * 2, 1.3, 24); // big telegraphed slam
     const adds = 2 + this.phase;
     for (let k = 0; k < adds; k++) {
-      const ang = rng.range(0, Math.PI * 2);
-      const r = ARENA_RADIUS - 2;
-      enemies.spawn(RUST_MITE, Math.cos(ang) * r, Math.sin(ang) * r, 0.6, k);
+      const p = interiorPoint(rng.next(), rng.next(), 0.7, 0.92); // near the walls
+      enemies.spawn(RUST_MITE, p.x, p.z, 0.6, k);
     }
     fx.push('death', ex, ez); // heavy break cue
   }

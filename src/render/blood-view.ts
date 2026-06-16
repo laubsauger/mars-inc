@@ -24,6 +24,9 @@ import { COL } from './art/palette';
 
 const MAX_DROPLETS = 1024;
 const MAX_DECALS = 256;
+const MAX_PLAYER_GORE = 96; // splotches stuck on the player (accumulate, ring buffer)
+const COAT_RANGE = 4.4; // blood from a kill within this of the player coats them
+const PLAYER_GORE_LIFE = 38; // s — lingers WAY longer than floor decals so it builds up
 const GRAVITY = 22; // droplet fall accel (world u/s²)
 const FLOOR_Y = 0.04; // decal rests just above the floor inlays
 // Decals dry + sink into the arena shadow over their life, then recycle.
@@ -47,7 +50,30 @@ function goreColor(variant: number): Color | null {
 // and clamped so nothing vanishes or floods the screen.
 function goreScale(variant: number): number {
   const r = ENEMY_BY_VARIANT[variant]?.radius ?? 0.8;
-  return Math.max(0.55, Math.min(2.2, r / 0.82));
+  // Biased so tier-1 fodder stays modest (was gushing); brutes/boss still erupt.
+  return Math.max(0.45, Math.min(2.2, r / 0.95));
+}
+
+// Irregular blob disc (one-time) so decals read as PUDDLES, not perfect ellipses.
+// Rim radius wobbles with a few periodic harmonics → a lobed, closed outline;
+// per-decal random rotation + non-uniform scale then make each one look distinct
+// (instanced, so they all share this shape — rotation/scale break the repeat).
+function makeBlobGeometry(): CircleGeometry {
+  const g = new CircleGeometry(0.5, 14);
+  const pos = g.attributes.position!;
+  for (let i = 1; i < pos.count; i++) {
+    const x = pos.getX(i)!;
+    const y = pos.getY(i)!;
+    const ang = Math.atan2(y, x); // periodic → first & last rim vertex stay equal
+    const f =
+      1 +
+      0.22 * Math.sin(ang * 3 + 0.6) +
+      0.13 * Math.sin(ang * 5 - 1.1) +
+      0.08 * Math.sin(ang * 8);
+    pos.setXY(i, x * f, y * f);
+  }
+  pos.needsUpdate = true;
+  return g;
 }
 
 // Cheap render-local randomness (V2 — visual only, never touches sim/determinism).
@@ -91,44 +117,88 @@ export class BloodView {
   private cg = new Float32Array(MAX_DECALS);
   private cb = new Float32Array(MAX_DECALS);
 
+  // Player gore SoA (local to the player group). Positions are body-local; the
+  // mesh is parented to the player group so it tracks movement for free.
+  private player: { pos: { x: number; z: number } } | null = null;
+  private pgMesh: InstancedMesh | null = null;
+  private pgHead = 0;
+  private pgCount = 0;
+  private pgX = new Float32Array(MAX_PLAYER_GORE);
+  private pgY = new Float32Array(MAX_PLAYER_GORE);
+  private pgZ = new Float32Array(MAX_PLAYER_GORE);
+  private pgSize = new Float32Array(MAX_PLAYER_GORE);
+  private pgAge = new Float32Array(MAX_PLAYER_GORE);
+  private pgLife = new Float32Array(MAX_PLAYER_GORE);
+  private pgr = new Float32Array(MAX_PLAYER_GORE);
+  private pgg = new Float32Array(MAX_PLAYER_GORE);
+  private pgb = new Float32Array(MAX_PLAYER_GORE);
+
   constructor(scene: Scene) {
     this.dropMesh = makeInstanced(scene, new SphereGeometry(0.12, 6, 5), MAX_DROPLETS);
-    this.decalMesh = makeInstanced(scene, new CircleGeometry(0.5, 12), MAX_DECALS);
+    this.decalMesh = makeInstanced(scene, makeBlobGeometry(), MAX_DECALS);
+  }
+
+  /** Attach the accumulating body-gore layer (T39 fun): blood from kills near the
+   *  player STICKS and lingers ~10× longer than floor decals — a long fight leaves
+   *  you drenched. Parented to the player group so it follows them. */
+  setPlayer(group: Object3D, player: { pos: { x: number; z: number } }): void {
+    this.player = player;
+    this.pgMesh = makeInstanced(group, new SphereGeometry(0.17, 6, 5), MAX_PLAYER_GORE);
+    this.pgMesh.renderOrder = 1; // over the body so it reads
+  }
+
+  /** Splatter blood onto the player when a kill/hit happens close by. */
+  private coatPlayer(x: number, z: number, color: Color, sizeMul: number): void {
+    const p = this.player;
+    if (!p || !this.pgMesh) return;
+    const dx = p.pos.x - x;
+    const dz = p.pos.z - z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > COAT_RANGE) return;
+    const closeness = 1 - dist / COAT_RANGE; // 1 = right on top of the player
+    const count = Math.round(closeness * closeness * (1 + sizeMul * 2.5) * (0.4 + rnd()));
+    const srcAng = Math.atan2(-dz, -dx); // body side facing the blood source
+    for (let k = 0; k < count; k++) {
+      const i = this.pgHead;
+      this.pgHead = (this.pgHead + 1) % MAX_PLAYER_GORE;
+      if (this.pgCount < MAX_PLAYER_GORE) this.pgCount++;
+      const ang = srcAng + (rnd() - 0.5) * 2.2; // biased to the near side
+      const R = 0.7;
+      this.pgX[i] = Math.cos(ang) * R;
+      this.pgY[i] = 0.45 + rnd() * 1.55; // up the body
+      this.pgZ[i] = Math.sin(ang) * R;
+      this.pgSize[i] = (0.45 + rnd() * 0.85) * (0.7 + sizeMul * 0.5);
+      this.pgAge[i] = 0;
+      this.pgLife[i] = PLAYER_GORE_LIFE * (0.7 + rnd() * 0.6);
+      // A touch brighter than floor blood so it reads on the dark body.
+      this.pgr[i] = Math.min(1, color.r * 1.35 + 0.06);
+      this.pgg[i] = color.g * 1.1;
+      this.pgb[i] = color.b * 1.1;
+    }
   }
 
   consume(events: readonly FxEvent[]): void {
     for (const e of events) {
       if (e.kind === 'blood') {
         const c = goreColor(e.variant);
-        // Vary count + energy per hit so no two splats look identical.
         if (c) {
           const sz = goreScale(e.variant);
-          this.spray(
-            e.x,
-            e.z,
-            e.dx,
-            e.dz,
-            c,
-            Math.max(2, Math.round((this.reduceFlash ? 3 : 4 + ((rnd() * 6) | 0)) * sz)),
-            0.8 + rnd() * 0.7,
-            sz,
-          );
+          // Per-hit "gush" — skewed low so most hits are a modest spritz and the
+          // odd one ERUPTS. Makes the amount visibly vary shot to shot.
+          const gush = 0.35 + rnd() * rnd() * 1.9;
+          const n = Math.min(24, Math.max(2, Math.round((this.reduceFlash ? 3 : 5) * sz * gush)));
+          this.spray(e.x, e.z, e.dx, e.dz, c, n, 0.8 + rnd() * 0.8, sz);
+          this.coatPlayer(e.x, e.z, c, sz);
         }
       } else if (e.kind === 'death') {
         const c = goreColor(e.variant);
         // Death gush: radial, more matter (no incoming direction → burst outward).
         if (c) {
           const sz = goreScale(e.variant);
-          this.spray(
-            e.x,
-            e.z,
-            0,
-            0,
-            c,
-            Math.max(3, Math.round((this.reduceFlash ? 6 : 9 + ((rnd() * 8) | 0)) * sz)),
-            1.2 + rnd() * 0.7,
-            sz,
-          );
+          const gush = 0.5 + rnd() * rnd() * 1.9;
+          const n = Math.min(40, Math.max(3, Math.round((this.reduceFlash ? 6 : 10) * sz * gush)));
+          this.spray(e.x, e.z, 0, 0, c, n, 1.2 + rnd() * 0.8, sz);
+          this.coatPlayer(e.x, e.z, c, sz);
         }
       }
     }
@@ -147,11 +217,18 @@ export class BloodView {
   ): void {
     const hasDir = dirX * dirX + dirZ * dirZ > 1e-4;
     const base = hasDir ? Math.atan2(dirZ, dirX) : 0;
+    // Horizontal reach scales with the enemy — a small pistol kill flicks blood a
+    // short way, a brute paints the floor far. Keeps tier-1 splatter near the body.
+    const reach = Math.max(0.5, Math.min(1.6, sizeMul));
     for (let k = 0; k < n; k++) {
       if (this.dCount >= MAX_DROPLETS) break;
-      // Cone around the travel dir (away from the hit face); full circle on death.
-      const ang = hasDir ? base + (rnd() - 0.5) * 1.5 : rnd() * Math.PI * 2;
-      const sp = (3 + rnd() * 6) * force;
+      // TIGHT cone around the shot direction (exits the victim along the bullet
+      // line) so the spray reads as a directional jet, not a radial puff. Full
+      // circle only on death (dir≈0). A few stray wide droplets keep it organic.
+      const spread = rnd() < 0.18 ? 0.9 : 0.32; // mostly tight, occasional flick
+      const ang = hasDir ? base + (rnd() - 0.5) * spread : rnd() * Math.PI * 2;
+      // Bias speed along the jet so streaks elongate down the shot line.
+      const sp = (4 + rnd() * 7) * force * reach;
       const i = this.dCount++;
       this.px[i] = x;
       this.py[i] = 0.7 + rnd() * 0.4; // body height
@@ -162,8 +239,8 @@ export class BloodView {
       this.dr[i] = color.r;
       this.dg[i] = color.g;
       this.db[i] = color.b;
-      // Droplet size scales with the enemy (small fodder bleeds small, T39).
-      this.dsize[i] = (0.45 + rnd() * 1.15) * sizeMul;
+      // Wider per-droplet size spread (more visible variety), scaled by enemy.
+      this.dsize[i] = (0.3 + rnd() * rnd() * 2.0) * sizeMul;
     }
   }
 
@@ -175,6 +252,7 @@ export class BloodView {
     r: number,
     g: number,
     b: number,
+    size: number,
   ): void {
     const speed = Math.hypot(vx, vz);
     const i = this.cHead;
@@ -183,31 +261,49 @@ export class BloodView {
     this.cx[i] = x;
     this.cz[i] = z;
     this.cAge[i] = 0;
-    this.cRot[i] = speed > 0.1 ? Math.atan2(vz, vx) : rnd() * Math.PI * 2;
-    this.cLen[i] = 0.45 + Math.min(1.4, speed * 0.07); // faster splat → longer streak
-    this.cWid[i] = 0.3 + rnd() * 0.12;
+    // Random blob rotation so the shared shape never reads as a repeat; bias
+    // toward the travel direction so fast splats still streak that way.
+    const dir = speed > 0.1 ? Math.atan2(vz, vx) : rnd() * Math.PI * 2;
+    this.cRot[i] = dir + (rnd() - 0.5) * 1.2;
+    // Puddle size tracks the droplet (→ enemy size); streak length adds with
+    // speed; non-uniform width keeps each blob lopsided, never a clean ellipse.
+    const base = 0.4 * size;
+    this.cLen[i] = base + Math.min(1.4, speed * 0.07) + rnd() * 0.4 * size;
+    this.cWid[i] = base * (0.6 + rnd() * 0.7);
     this.cr[i] = r;
     this.cg[i] = g;
     this.cb[i] = b;
   }
 
   update(dt: number): void {
+    // Strong horizontal air drag so blood sheds speed fast and LANDS near the
+    // kill (the spray still bursts out energetically, it just doesn't sail across
+    // the arena). Vertical is left to gravity so it keeps arcing.
+    const drag = Math.max(0, 1 - 9 * dt);
     // Droplets: integrate + fall; on landing, convert to a directional decal.
     for (let i = this.dCount - 1; i >= 0; i--) {
       this.vy[i]! -= GRAVITY * dt;
+      this.vx[i]! *= drag;
+      this.vz[i]! *= drag;
       this.px[i]! += this.vx[i]! * dt;
       this.py[i]! += this.vy[i]! * dt;
       this.pz[i]! += this.vz[i]! * dt;
       if (this.py[i]! <= FLOOR_Y) {
-        this.landDecal(
-          this.px[i]!,
-          this.pz[i]!,
-          this.vx[i]!,
-          this.vz[i]!,
-          this.dr[i]!,
-          this.dg[i]!,
-          this.db[i]!,
-        );
+        // Only a FRACTION of droplets leave a floor mark, weighted by droplet
+        // size — small fodder droplets mostly evaporate (less floor clutter),
+        // fat ones always stain. Keeps the mid-air spray dense but the floor calm.
+        if (rnd() < Math.min(1, this.dsize[i]! * 0.6)) {
+          this.landDecal(
+            this.px[i]!,
+            this.pz[i]!,
+            this.vx[i]!,
+            this.vz[i]!,
+            this.dr[i]!,
+            this.dg[i]!,
+            this.db[i]!,
+            this.dsize[i]!,
+          );
+        }
         const last = --this.dCount;
         if (i !== last) this.moveDroplet(last, i);
         continue;
@@ -229,7 +325,9 @@ export class BloodView {
       const t = Math.min(1, this.cAge[i]! / DECAL_LIFE);
       const ease = t * t; // hold fresh, sink late
       this.dummy.position.set(this.cx[i]!, FLOOR_Y, this.cz[i]!);
-      this.dummy.rotation.set(-Math.PI / 2, this.cRot[i]!, 0);
+      // Flatten (−π/2 about X) then spin IN-PLANE about Z; spinning about Y would
+      // tilt the decal up out of the floor (same Euler-order trap as the FX rings).
+      this.dummy.rotation.set(-Math.PI / 2, 0, this.cRot[i]!);
       this.dummy.scale.set(this.cLen[i]!, this.cWid[i]!, 1);
       this.dummy.updateMatrix();
       this.decalMesh.setMatrixAt(i, this.dummy.matrix);
@@ -245,6 +343,31 @@ export class BloodView {
     this.decalMesh.count = this.cCount;
     this.decalMesh.instanceMatrix.needsUpdate = true;
     if (this.decalMesh.instanceColor) this.decalMesh.instanceColor.needsUpdate = true;
+
+    // Player gore: age slowly (lingers), dry + shrink at the very end. Expired
+    // splotches collapse to zero scale (invisible) until the ring buffer reuses
+    // them — no compaction needed.
+    if (this.pgMesh) {
+      for (let i = 0; i < this.pgCount; i++) {
+        this.pgAge[i]! += dt;
+        const t = this.pgAge[i]! / this.pgLife[i]!;
+        const k = t >= 1 ? 0 : 1 - t * t * t; // hold fresh, dry/shrink late
+        const s = this.pgSize[i]! * k;
+        this.dummy.position.set(this.pgX[i]!, this.pgY[i]!, this.pgZ[i]!);
+        this.dummy.rotation.set(0, 0, 0);
+        this.dummy.scale.set(s, s * 0.5, s); // squashed = a splat clinging to the body
+        this.dummy.updateMatrix();
+        this.pgMesh.setMatrixAt(i, this.dummy.matrix);
+        const drk = 0.45 + 0.55 * k; // darken as it dries
+        this.pgMesh.setColorAt(
+          i,
+          this.tmp.setRGB(this.pgr[i]! * drk, this.pgg[i]! * drk, this.pgb[i]! * drk),
+        );
+      }
+      this.pgMesh.count = this.pgCount;
+      this.pgMesh.instanceMatrix.needsUpdate = true;
+      if (this.pgMesh.instanceColor) this.pgMesh.instanceColor.needsUpdate = true;
+    }
   }
 
   private moveDroplet(from: number, to: number): void {
@@ -265,7 +388,7 @@ export class BloodView {
   }
 }
 
-function makeInstanced(scene: Scene, geo: THREE_GEO, capacity: number): InstancedMesh {
+function makeInstanced(parent: Object3D, geo: THREE_GEO, capacity: number): InstancedMesh {
   // Non-additive: blood is opaque matter, not a glow. Flat-shaded basic material.
   const mat = new MeshBasicMaterial({ toneMapped: false });
   const mesh = new InstancedMesh(geo, mat, capacity);
@@ -275,7 +398,7 @@ function makeInstanced(scene: Scene, geo: THREE_GEO, capacity: number): Instance
   mesh.instanceColor.setUsage(DynamicDrawUsage);
   mesh.frustumCulled = false;
   mesh.count = 0;
-  scene.add(mesh);
+  parent.add(mesh); // Scene for world gore; the player group for body coating
   return mesh;
 }
 

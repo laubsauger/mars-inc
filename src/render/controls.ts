@@ -6,8 +6,7 @@
 
 import { MOUSE, TOUCH, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { ARENA_RADIUS } from '../sim/constants';
-import { computeFitDistance, frameArena, AIM_Z } from './camera';
+import { arenaFitDistance, frameArena, arenaAimZ } from './camera';
 
 export interface ArenaControls {
   controls: OrbitControls;
@@ -21,7 +20,7 @@ export function createControls(
   aspect: number,
 ): ArenaControls {
   const controls = new OrbitControls(camera, dom);
-  controls.target.set(0, 0, AIM_Z);
+  controls.target.set(0, 0, arenaAimZ());
   controls.enablePan = false; // pivot stays locked on the arena centre
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -32,14 +31,16 @@ export function createControls(
   // fully top-down (keeps the arena readable).
   controls.minPolarAngle = (16 * Math.PI) / 180;
   controls.maxPolarAngle = (84 * Math.PI) / 180;
-  const fit = computeFitDistance(ARENA_RADIUS, camera.fov, aspect);
-  controls.minDistance = fit * 0.4;
-  controls.maxDistance = fit * 1.25;
+  const fit = arenaFitDistance(camera.fov, aspect);
+  // Framed default IS the fully-zoomed-out view now (MARGIN baked into `fit`);
+  // only a hair of extra dolly-out, and the same absolute closest zoom-in.
+  controls.minDistance = fit * 0.32;
+  controls.maxDistance = fit * 1.05;
   controls.update();
 
   const reset = (): void => {
     frameArena(camera, camera.aspect); // re-place at the framed default position
-    controls.target.set(0, 0, AIM_Z);
+    controls.target.set(0, 0, arenaAimZ());
     controls.update(); // sync OrbitControls' internal spherical to the new pose
   };
 

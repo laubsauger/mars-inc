@@ -3,7 +3,7 @@
 import { Scene, FogExp2 } from 'three';
 import { isWebGpuSupported, createRenderer } from './render/renderer';
 import { createPostProcessing } from './render/post';
-import { createCamera, screenToGround } from './render/camera';
+import { createCamera, screenToGround, frameArena } from './render/camera';
 import { createControls } from './render/controls';
 import { ArenaView } from './render/arena';
 import { PlayerView } from './render/player-view';
@@ -20,6 +20,7 @@ import { HealthDropView } from './render/health-drop-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
+import { CorpseView } from './render/corpse-view';
 import { AimLineView } from './render/aim-line-view';
 import { Effects } from './render/effects';
 import { FloatingText } from './render/floating-text';
@@ -32,7 +33,7 @@ import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
-import { ARENA_RADIUS } from './sim/constants';
+import { arenaContains, setActiveArena } from './sim/arena';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
@@ -128,6 +129,9 @@ async function boot(parent: HTMLElement): Promise<void> {
   // persisted settings + owned permanent upgrades apply from the first frame.
   const save = new SaveManager();
   await save.load();
+  // Select the arena BEFORE building camera/arena/world — they read the active
+  // arena's shape for framing, boundary, and spawns.
+  setActiveArena(save.current.settings.arenaId);
 
   const scene = new Scene();
   // Warm haze for rim depth only — kept FAINT so it doesn't grey out the whole
@@ -135,7 +139,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   // camera distance. Just a touch of atmosphere toward the spectator dark.
   scene.fog = new FogExp2(0x140c08, 0.0038);
   const camera = createCamera(window.innerWidth / window.innerHeight);
-  const arena = new ArenaView(scene);
+  let arena = new ArenaView(scene);
 
   const world = new World(seed, save.current.permanentUpgrades);
   const playerView = new PlayerView(scene, world.player);
@@ -152,12 +156,14 @@ async function boot(parent: HTMLElement): Promise<void> {
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
   const droneView = new DroneView(scene);
+  const corpseView = new CorpseView(scene);
   const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
   const aimDirs = new Float32Array(64); // reused per frame (multishot fan)
   const effects = new Effects(scene);
   const floating = new FloatingText();
   const chainView = new ChainView(scene);
   const bloodView = new BloodView(scene);
+  bloodView.setPlayer(playerView.group, world.player); // accumulating body gore (T39)
   const shake = new CameraShake();
   // Optional orbit/zoom (right-drag + wheel) with a reset; shake rides on top.
   const arenaControls = createControls(camera, canvas, window.innerWidth / window.innerHeight);
@@ -199,6 +205,8 @@ async function boot(parent: HTMLElement): Promise<void> {
       pauseOnFocusLoss: save.current.settings.pauseOnFocusLoss,
       enemyHealthbars: save.current.settings.enemyHealthbars,
       toonShading: save.current.settings.toonShading,
+      arenaId: save.current.settings.arenaId,
+      showCountdown: save.current.settings.showCountdown,
       ambientOcclusion: save.current.settings.ambientOcclusion,
       colorblind: save.current.accessibility.colorblindPalette,
     });
@@ -321,6 +329,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     enemyView.setToon(s.toonShading);
     playerView.setToon(s.toonShading);
     post.setAO(s.ambientOcclusion);
+    world.countdownEnabled = s.showCountdown; // applied at the next run's reset()
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;
@@ -337,6 +346,14 @@ async function boot(parent: HTMLElement): Promise<void> {
     audio.resume();
     applyAllSettings();
     pushProfile();
+    // Switching the arena rebuilds the pit geometry + reframes the camera live.
+    if (patch.arenaId !== undefined) {
+      setActiveArena(patch.arenaId);
+      arena.dispose(scene);
+      arena = new ArenaView(scene);
+      frameArena(camera, window.innerWidth / window.innerHeight);
+      arenaControls.reset();
+    }
   });
 
   window.addEventListener('resize', () => {
@@ -371,7 +388,7 @@ async function boot(parent: HTMLElement): Promise<void> {
           window.innerWidth,
           window.innerHeight,
         );
-        if (g && Math.hypot(g.x, g.z) <= ARENA_RADIUS + 4) {
+        if (g && arenaContains(g.x, g.z, 4)) {
           snap.aimX = g.x;
           snap.aimZ = g.z;
           snap.hasAim = true;
@@ -469,6 +486,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       healthDropView.sync(world.healthDrops.pool);
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
+      corpseView.sync(world.corpses.pool, alpha);
       cursorView.sync(world.player);
 
       // Aim lines — one per projectile, mirroring the weapon's multishot fan

@@ -77,6 +77,13 @@ export interface Player {
   recoilTimer: number;
   /** Backblast Harness: while firing, recoil feeds the sprint recharge (T55). */
   recoilSprintRecharge: boolean;
+  /** Corpse / overkill build (T65). Off until the family's cards are drafted. */
+  corpseStore: boolean; // Waste Not: overkilled kills leave a corpse storing overkill
+  corpseDetonate: boolean; // Violent Recycling: corpses detonate → AoE by stored
+  corpseBallistics: boolean; // Body Ballistics: corpses launch at the nearest enemy
+  corpseChain: boolean; // Chain of Evidence: detonations seed a decaying child corpse
+  corpsePlayerDanger: boolean; // liability downside: blasts can singe the player
+  corpseMeteorThreshold: number; // Moonshot: stored ≥ this → telegraphed orbital strike (0 = off)
 }
 
 export function createPlayer(stats: MovementStats = LILU_STATS): Player {
@@ -119,6 +126,12 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     dashShockRadius: 5,
     recoilTimer: 0,
     recoilSprintRecharge: false,
+    corpseStore: false,
+    corpseDetonate: false,
+    corpseBallistics: false,
+    corpseChain: false,
+    corpsePlayerDanger: false,
+    corpseMeteorThreshold: 0,
   };
 }
 
@@ -165,6 +178,12 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.dashShockRadius = 5;
   p.recoilTimer = 0;
   p.recoilSprintRecharge = false;
+  p.corpseStore = false;
+  p.corpseDetonate = false;
+  p.corpseBallistics = false;
+  p.corpseChain = false;
+  p.corpsePlayerDanger = false;
+  p.corpseMeteorThreshold = 0;
 }
 
 /** Advance the player one fixed step. */

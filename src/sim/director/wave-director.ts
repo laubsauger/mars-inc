@@ -21,7 +21,8 @@ import {
 } from '../enemies';
 import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
-import { ARENA_RADIUS, GATE_COUNT } from '../constants';
+import { GATE_COUNT } from '../constants';
+import { gateOuterPoint, interiorPoint } from '../arena';
 
 const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
 const TELE_TELEGRAPH = 1.0; // teleport materialize tell before the stalker is live (V9)
@@ -162,14 +163,9 @@ export class WaveDirector {
 
   private spawnAtGate(pool: EnemyPool, rng: Rng, type: EnemyType): boolean {
     const gate = rng.int(0, GATE_COUNT - 1);
-    const angle = (gate / GATE_COUNT) * Math.PI * 2 + rng.range(-0.12, 0.12);
-    // Appear INSIDE the recessed portal tunnel (behind the blast doors); the
-    // telegraph walk then carries them out through the opening into the arena, so
-    // they read as marching out of the gate, not popping in front of it (T40).
-    const r = ARENA_RADIUS + 2.5;
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
-    return pool.spawn(type, x, z, TELEGRAPH, this.phase++) >= 0;
+    // Appear OUTSIDE the gate; the telegraph walk carries them in (shape-aware).
+    const p = gateOuterPoint(gate, rng.range(-1, 1), 2.5);
+    return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++) >= 0;
   }
 
   /** Spawn-time HP scale for fodder this step (run-phase escalation, T44). */
@@ -305,23 +301,19 @@ export class WaveDirector {
 
   /** Spawn one enemy tightly clustered at a single gate (small arc + depth jitter). */
   private spawnCluster(pool: EnemyPool, rng: Rng, gate: number, type: EnemyType): boolean {
-    const angle = (gate / GATE_COUNT) * Math.PI * 2 + rng.range(-0.05, 0.05);
-    // Inside the portal tunnel, behind the doors (T40); slight depth stagger keeps
-    // the cluster from overlapping. The telegraph walk marches them out the gate.
-    const r = ARENA_RADIUS + 2.5 - rng.range(0, 1.5);
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
-    return pool.spawn(type, x, z, TELEGRAPH, this.phase++, this.hpScale) >= 0;
+    // Tight cluster at one gate: small along-edge jitter + a depth stagger so
+    // they don't overlap. The telegraph walk marches them out (shape-aware).
+    const p = gateOuterPoint(gate, rng.range(-0.4, 0.4), 2.5 - rng.range(0, 1.5));
+    return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++, this.hpScale) >= 0;
   }
 
   /** Materialize a Phase Stalker at a random INTERIOR point (not a gate). The
    *  telegraph window + the render-side materialize FX make it dodgeable (V9). */
   private spawnTeleporter(pool: EnemyPool, rng: Rng, cap: number, fx?: FxQueue): void {
     if (pool.count >= cap) return;
-    const angle = rng.range(0, Math.PI * 2);
-    const r = ARENA_RADIUS * rng.range(0.3, 0.82); // interior ring, off the player's edge kite
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
+    const p = interiorPoint(rng.next(), rng.next(), 0.3, 0.82); // interior, off the edge kite
+    const x = p.x;
+    const z = p.z;
     if (
       pool.spawn(
         PHASE_STALKER,

@@ -2,6 +2,8 @@
 // shape is intentionally complete now so later systems (currencies, unlocks,
 // records, prestige) have a stable home; migrations land at T25.
 
+import type { ArenaId } from '../sim/arena';
+
 export const SCHEMA_VERSION = 1;
 
 export interface SettingsData {
@@ -15,6 +17,8 @@ export interface SettingsData {
   enemyHealthbars: boolean; // show HP bars over enemies (T36 opt-in)
   ambientOcclusion: boolean; // GTAO post-process (T37 opt-in)
   toonShading: boolean; // banded toon/ink look on characters (T37 opt-in)
+  arenaId: ArenaId; // which pit to play (circle Rust Crown / rect Cold Vault)
+  showCountdown: boolean; // pre-combat 3s countdown (default off — saves dev time)
 }
 
 export interface AccessibilityData {
@@ -93,6 +97,8 @@ export function defaultSettings(): SettingsData {
     enemyHealthbars: false,
     ambientOcclusion: false,
     toonShading: false,
+    arenaId: 'cold-vault',
+    showCountdown: false,
   };
 }
 

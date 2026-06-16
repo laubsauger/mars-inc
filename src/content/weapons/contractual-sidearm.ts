@@ -8,7 +8,7 @@ export const contractualSidearm: WeaponDefinition = {
   family: 'sidearm',
   tier: 0,
   targeting: 'aim',
-  range: 12, // short reach by design — close in or take range upgrades (T33)
+  range: 15, // modest opening reach — still rewards range upgrades, less cramped early (T33)
   cooldown: 0.62,
   spread: 0.015,
   recoil: 6,

@@ -11,7 +11,7 @@
 import { World } from '../sim/world';
 import { EnemyState, RUST_MITE, DEBT_HOUND, type EnemyType } from '../sim/enemies';
 import { Rng } from '../core/rng';
-import { ARENA_RADIUS } from '../sim/constants';
+import { interiorPoint } from '../sim/arena';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
 
 export interface SceneSpec {
@@ -48,10 +48,9 @@ const DAMAGE = contractualSidearm.damage;
 /** Seed the enemy pool with `n` Active enemies at random in-arena positions. */
 function seedEnemies(w: World, n: number, houndRatio: number, rng: Rng): void {
   for (let i = 0; i < n; i++) {
-    const ang = rng.range(0, Math.PI * 2);
-    const rad = rng.range(0, ARENA_RADIUS - 2);
-    const x = Math.cos(ang) * rad;
-    const z = Math.sin(ang) * rad;
+    const pt = interiorPoint(rng.next(), rng.next(), 0, 0.92);
+    const x = pt.x;
+    const z = pt.z;
     const type: EnemyType = rng.next() < houndRatio ? DEBT_HOUND : RUST_MITE;
     const idx = w.enemies.spawn(type, x, z, 0, i);
     if (idx >= 0) w.enemies.state[idx] = EnemyState.Active; // skip telegraph for load
@@ -64,10 +63,10 @@ function seedProjectiles(w: World, n: number, rng: Rng): void {
   const p = contractualSidearm.projectile;
   for (let i = 0; i < n; i++) {
     const ang = rng.range(0, Math.PI * 2);
-    const rad = rng.range(0, ARENA_RADIUS - 2);
+    const pt = interiorPoint(rng.next(), rng.next(), 0, 0.92);
     pr.spawn(
-      Math.cos(ang) * rad,
-      Math.sin(ang) * rad,
+      pt.x,
+      pt.z,
       Math.sin(ang) * p.speed,
       Math.cos(ang) * p.speed,
       p.radius,

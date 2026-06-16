@@ -56,7 +56,8 @@ function LogoLockup() {
         </div>
       </div>
       <h1 className="mx-auto w-fit border-b-4 border-gold bg-pit/88 px-8 py-2 text-5xl font-black text-bone shadow-[0_18px_64px_rgba(0,0,0,0.72),inset_0_0_0_1px_rgba(240,200,121,0.16)] drop-shadow-[0_0_18px_rgba(196,106,43,0.42)] md:text-7xl">
-        <span className="text-gold">MARS</span> <span className="text-bone">INC</span>
+        <span className="text-gold">MARS</span>
+        <span className="ml-[0.16em] text-bone">INC</span>
       </h1>
       <div className="mx-auto mt-3 flex w-40 items-center gap-2">
         <div className="h-1 flex-1 bg-gold" />
@@ -210,6 +211,29 @@ export function SettingsControls() {
   const set = useUiStore((st) => st.applySetting);
   return (
     <div className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
+      <SettingRow label="ARENA">
+        <span className="flex gap-1.5">
+          {(
+            [
+              ['cold-vault', 'Cold Vault', '#32d7ff'],
+              ['rust-crown', 'Rust Crown', '#f0c879'],
+            ] as const
+          ).map(([id, label, color]) => (
+            <button
+              key={id}
+              onClick={() => set({ arenaId: id })}
+              className={`rounded-sm border px-2.5 py-1 text-xs font-bold tracking-wide transition focus:outline-none ${
+                s.arenaId === id
+                  ? 'bg-pit/70 text-bone'
+                  : 'border-rust/60 bg-pit/40 text-bone/55 hover:text-bone'
+              }`}
+              style={s.arenaId === id ? { borderColor: color, color } : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      </SettingRow>
       <SettingRow label="MASTER VOLUME">
         <Slider value={s.masterVolume} onChange={(v) => set({ masterVolume: v })} />
       </SettingRow>
@@ -245,6 +269,9 @@ export function SettingsControls() {
       </SettingRow>
       <SettingRow label="AUTO-PAUSE ON FOCUS LOSS">
         <Toggle on={s.pauseOnFocusLoss} onChange={(v) => set({ pauseOnFocusLoss: v })} />
+      </SettingRow>
+      <SettingRow label="PRE-COMBAT COUNTDOWN">
+        <Toggle on={s.showCountdown} onChange={(v) => set({ showCountdown: v })} />
       </SettingRow>
     </div>
   );
@@ -449,10 +476,11 @@ function GloryTree() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setMenuView]);
 
-  // Horizontal compression: pull the side branches toward centre so the three
-  // clusters sit closer (slicker than the wide spread). Applied to every x a
-  // layout consumes (nodes, root, edges, branch rings) so they stay aligned.
-  const COMPRESS = 0.82;
+  // Horizontal compression: pulls the side branches toward centre. Eased off
+  // (0.82 → 0.92) because the centred blue (mobility) branch was getting squeezed
+  // between green/yellow — let the side clusters sit a touch wider so blue
+  // breathes. Applied to every x a layout consumes (nodes, root, edges, rings).
+  const COMPRESS = 0.92;
   const px = (x: number) => 50 + (x - 50) * COMPRESS;
   const proj = (n: { x: number; y: number }) => ({ x: px(n.x), y: n.y });
 

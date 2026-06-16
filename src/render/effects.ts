@@ -276,6 +276,47 @@ export class Effects {
             color: COL.shieldCyan,
           });
           break;
+        case 'levelup':
+          // Ascension flourish around the player: a bright bloom + two gold/cyan
+          // shock rings expanding outward + a sparse spark ring. Reads as a
+          // power-up beat in the ~0.55s window before the draft freezes the sim.
+          this.muzzle.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.4,
+            s1: 4.2,
+            life: 0.34,
+            spin: 3,
+            color: COL.sunHigh,
+          });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.8,
+            s1: 7.5,
+            life: 0.5,
+            spin: 2,
+            color: COL.kineticGold,
+          });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.4,
+            s1: 5.2,
+            life: 0.42,
+            spin: -3,
+            color: COL.shieldCyan,
+          });
+          this.dust.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.6,
+            s1: 6.5,
+            life: 0.48,
+            spin: 4,
+            color: COL.kineticGold,
+          });
+          break;
       }
     }
   }

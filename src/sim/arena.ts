@@ -26,27 +26,42 @@ export const RUST_CROWN: ArenaDef = {
   accent: '#f0c879', // warm sun highlight
 };
 
-/** New widescreen pit: a 16:9 rectangle (halfW:halfZ = 16:9), blue-lit so it
+/** New widescreen pit: a big 16:9 rectangle (halfW:halfZ = 16:9), blue-lit so it
  *  reads instantly different from the warm Rust Crown. */
 export const COLD_VAULT: ArenaDef = {
   id: 'cold-vault',
   name: 'Cold Vault',
-  shape: { kind: 'rect', halfW: 44, halfZ: 24.75 },
+  shape: { kind: 'rect', halfW: 56, halfZ: 31.5 },
   accent: '#32d7ff', // shield cyan / blue
 };
 
-/** The active arena. Swap this (or wire a selector later) to change the pit. */
-export const ARENA: ArenaDef = COLD_VAULT;
+/** Selectable arenas (settings). */
+export const ARENAS = { 'cold-vault': COLD_VAULT, 'rust-crown': RUST_CROWN } as const;
+export type ArenaId = keyof typeof ARENAS;
+
+// The ACTIVE arena. Set at boot from the saved setting; sim helpers read it live.
+let active: ArenaDef = COLD_VAULT;
+export function setActiveArena(id: ArenaId): void {
+  active = ARENAS[id] ?? COLD_VAULT;
+}
+export function activeArena(): ArenaDef {
+  return active;
+}
 
 /** Half-extents on x,z (a circle is square-bounded by its radius). */
-export function arenaExtent(shape: ArenaShape = ARENA.shape): { halfW: number; halfZ: number } {
+export function arenaExtent(shape: ArenaShape = active.shape): { halfW: number; halfZ: number } {
   return shape.kind === 'circle'
     ? { halfW: shape.radius, halfZ: shape.radius }
     : { halfW: shape.halfW, halfZ: shape.halfZ };
 }
 
 /** Is a point inside the arena (optionally with an outward margin)? */
-export function arenaContains(x: number, z: number, margin = 0, shape: ArenaShape = ARENA.shape): boolean {
+export function arenaContains(
+  x: number,
+  z: number,
+  margin = 0,
+  shape: ArenaShape = active.shape,
+): boolean {
   if (shape.kind === 'circle') return Math.hypot(x, z) <= shape.radius + margin;
   return Math.abs(x) <= shape.halfW + margin && Math.abs(z) <= shape.halfZ + margin;
 }
@@ -57,7 +72,7 @@ export function clampToArena(
   pos: Vec2,
   vel: Vec2,
   collisionRadius: number,
-  shape: ArenaShape = ARENA.shape,
+  shape: ArenaShape = active.shape,
 ): { pos: Vec2; vel: Vec2 } {
   if (shape.kind === 'circle') return clampCircle(pos, vel, shape.radius, collisionRadius);
   const lx = shape.halfW - collisionRadius;
@@ -83,7 +98,12 @@ export function clampToArena(
 }
 
 /** Hard-clamp a position inside the arena (for enemies kept in bounds; no vel). */
-export function clampPoint(x: number, z: number, inset = 0, shape: ArenaShape = ARENA.shape): Vec2 {
+export function clampPoint(
+  x: number,
+  z: number,
+  inset = 0,
+  shape: ArenaShape = active.shape,
+): Vec2 {
   if (shape.kind === 'circle') {
     const limit = shape.radius - inset;
     const d = Math.hypot(x, z);
@@ -105,7 +125,7 @@ export function gateOuterPoint(
   gate: number,
   along: number,
   out: number,
-  shape: ArenaShape = ARENA.shape,
+  shape: ArenaShape = active.shape,
 ): Vec2 {
   if (shape.kind === 'circle') {
     const angle = (gate / 4) * Math.PI * 2 + along * 0.12;
@@ -113,8 +133,10 @@ export function gateOuterPoint(
     return { x: Math.cos(angle) * r, z: Math.sin(angle) * r };
   }
   const { halfW, halfZ } = shape;
-  const spanW = halfW * 0.8 * along; // jitter spread along the side
-  const spanZ = halfZ * 0.8 * along;
+  // Tight spread along the side — stays within the gate opening (≈ ±6), so a wave
+  // reads as a cluster at one gate, not spread across the whole wall.
+  const spanW = along * 6;
+  const spanZ = along * 6;
   switch (gate & 3) {
     case 0:
       return { x: halfW + out, z: spanZ }; // +x wall
@@ -127,6 +149,29 @@ export function gateOuterPoint(
   }
 }
 
+/** Distance along a unit ray from (px,pz) to the arena wall, capped at maxRange. */
+export function wallDistance(
+  px: number,
+  pz: number,
+  dx: number,
+  dz: number,
+  maxRange: number,
+  shape: ArenaShape = active.shape,
+): number {
+  if (shape.kind === 'circle') {
+    const pd = px * dx + pz * dz;
+    const disc = pd * pd - (px * px + pz * pz - shape.radius * shape.radius);
+    const tWall = disc > 0 ? -pd + Math.sqrt(disc) : maxRange;
+    return Math.min(maxRange, tWall);
+  }
+  let t = maxRange;
+  if (dx > 1e-9) t = Math.min(t, (shape.halfW - px) / dx);
+  else if (dx < -1e-9) t = Math.min(t, (-shape.halfW - px) / dx);
+  if (dz > 1e-9) t = Math.min(t, (shape.halfZ - pz) / dz);
+  else if (dz < -1e-9) t = Math.min(t, (-shape.halfZ - pz) / dz);
+  return t < 0 ? maxRange : t;
+}
+
 /** A random interior point (teleport materialize). `lo`/`hi` are fractions of the
  *  half-extents so spawns avoid the dead centre and the very edge. */
 export function interiorPoint(
@@ -134,7 +179,7 @@ export function interiorPoint(
   rz: number,
   lo: number,
   hi: number,
-  shape: ArenaShape = ARENA.shape,
+  shape: ArenaShape = active.shape,
 ): Vec2 {
   const sign = (r: number) => (r < 0.5 ? -1 : 1);
   if (shape.kind === 'circle') {

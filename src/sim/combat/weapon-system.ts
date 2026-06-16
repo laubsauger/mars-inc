@@ -49,6 +49,10 @@ export interface KillEvent {
   x: number;
   z: number;
   variant: number;
+  /** Damage past 0 hp on the killing blow (T65 corpse/overkill builds). */
+  overkill?: number;
+  /** Enemy footprint radius at death (corpse visual + blast scale). */
+  size?: number;
 }
 
 /** Called at hit time (before compaction) so the enemy index is still valid —
@@ -58,6 +62,7 @@ export type OnHit = (enemy: number, crit: boolean) => void;
 const RECOIL_CAP = 0.4; // max per-shot velocity kick (V10)
 const RICOCHET_RETAIN = 0.8; // damage kept per ricochet bounce
 const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
+const PIERCE_GAP = 0.07; // after a pierce hit, ignore collisions this long (clear the body)
 
 export class WeaponSystem {
   readonly projectiles = new ProjectilePool();
@@ -223,11 +228,18 @@ export class WeaponSystem {
       pr.posX[i]! += pr.velX[i]! * dt;
       pr.posZ[i]! += pr.velZ[i]! * dt;
       pr.life[i]! -= dt;
+      if (pr.hitCd[i]! > 0) pr.hitCd[i]! -= dt; // post-pierce body-clear window
 
       let dead = pr.life[i]! <= 0;
 
-      if (!dead) {
+      // Skip collision while still clearing the last pierced body, so pierce
+      // passes to the NEXT enemy instead of re-hitting the same one.
+      if (!dead && pr.hitCd[i]! <= 0) {
         const r = pr.radius[i]!;
+        // Set once a pierce hit lands this step → after the step we open a brief
+        // body-clear window so the projectile can't re-hit the SAME body next step
+        // (which is what ate pierce on enemy #1 instead of passing to #2).
+        let pierced = false;
         const n = hash.queryCircle(pr.posX[i]!, pr.posZ[i]!, r + 1, this.query);
         for (let k = 0; k < n; k++) {
           const e = this.query[k]!;
@@ -310,7 +322,8 @@ export class WeaponSystem {
 
           if (pr.pierce[i]! > 0) {
             pr.pierce[i]!--;
-            continue; // pass through to the next enemy this step
+            pierced = true; // body-clear window opened after this step's hits
+            continue; // keep hitting OTHER overlapping enemies in the SAME pass
           }
           // Out of pierce: ricochet to a fresh enemy if able, else die. The
           // redirected projectile is a VISIBLE bounce (own travel), unlike the
@@ -322,6 +335,8 @@ export class WeaponSystem {
           dead = true;
           break;
         }
+        // Survived the pass with pierce to spare → hold off re-hitting this body.
+        if (!dead && pierced) pr.hitCd[i] = PIERCE_GAP;
       }
 
       if (dead) pr.kill(i);
@@ -556,7 +571,14 @@ function compactDead(enemies: EnemyPool, kills: KillEvent[], fx: FxQueue): void 
       const x = enemies.posX[i]!;
       const z = enemies.posZ[i]!;
       const variant = enemies.variant[i]!;
-      kills.push({ x, z, variant });
+      // health is now ≤ 0 — its magnitude IS the overkill (T65). Radius = body size.
+      kills.push({
+        x,
+        z,
+        variant,
+        overkill: Math.max(0, -enemies.health[i]!),
+        size: enemies.radius[i]!,
+      });
       fx.push('death', x, z, 0, 0, variant);
       enemies.kill(i);
     }

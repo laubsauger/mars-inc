@@ -25,8 +25,12 @@ import {
   SpotLight,
 } from 'three';
 import { ARENA_RADIUS, GATE_COUNT } from '../sim/constants';
+import { activeArena } from '../sim/arena';
 import { EnemyState, type EnemyPool } from '../sim/enemies';
 import { COL, OUTLINE as OUTLINE_W } from './art/palette';
+import { batchStatic } from './geometry-batch';
+
+import { PlaneGeometry } from 'three';
 
 // Warm floor family (dusty Mars), cool structural family (gunmetal), gold accent.
 const FLOOR = COL.umberShadow;
@@ -77,14 +81,234 @@ interface GateDoors {
 export class ArenaView {
   readonly group = new Group();
   private gates: GateDoors[] = [];
+  private lights: Object3D[] = []; // scene-parented lights, tracked for dispose()
+  private accent = new Color(activeArena().accent);
 
   constructor(scene: Scene) {
-    this.buildFloor();
-    this.buildWallAndCrowd();
-    this.buildEmblem();
-    for (let i = 0; i < GATE_COUNT; i++) this.buildGate((i / GATE_COUNT) * Math.PI * 2);
-    this.buildLighting(scene);
+    const shape = activeArena().shape;
+    if (shape.kind === 'rect') {
+      this.buildRect(shape.halfW, shape.halfZ, scene);
+    } else {
+      this.buildFloor();
+      this.buildWallAndCrowd();
+      this.buildEmblem();
+      for (let i = 0; i < GATE_COUNT; i++) this.buildGate((i / GATE_COUNT) * Math.PI * 2);
+      this.buildLighting(scene);
+    }
+    // Collapse static geometry into one mesh per material (animated doors, if any,
+    // are tagged batchDynamic and left untouched).
+    batchStatic(this.group, { skip: (o) => o.userData.batchDynamic === true });
     scene.add(this.group);
+  }
+
+  /** Remove this arena from the scene (for live arena switching). */
+  dispose(scene: Scene): void {
+    scene.remove(this.group);
+    for (const l of this.lights) scene.remove(l);
+    this.lights.length = 0;
+  }
+
+  private addLight(scene: Scene, l: Object3D): void {
+    this.lights.push(l);
+    scene.add(l);
+  }
+
+  /** A 16:9 rectangular pit — blue-lit so it reads instantly distinct from the
+   *  warm Rust Crown. Floor grid + raised accent rim + perimeter walls + four
+   *  gate recesses at the side midpoints (static; no animated doors yet). */
+  private buildRect(halfW: number, halfZ: number, scene: Scene): void {
+    // Floor.
+    const floor = new Mesh(new PlaneGeometry(halfW * 2, halfZ * 2), mat(FLOOR, 0.95, 0.04));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    this.group.add(floor);
+
+    // Floor grid lines (panel seams) — faint emissive so they read on the dark floor.
+    const lineMat = new MeshStandardMaterial({
+      color: FLOOR_LINE,
+      emissive: this.accent,
+      emissiveIntensity: 0.12,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
+    const grid = 6;
+    for (let i = 1; i < grid; i++) {
+      const fx = -halfW + (i / grid) * halfW * 2;
+      const vline = new Mesh(new BoxGeometry(0.12, 0.06, halfZ * 2), lineMat);
+      vline.position.set(fx, 0.03, 0);
+      this.group.add(vline);
+    }
+    for (let i = 1; i < grid; i++) {
+      const fz = -halfZ + (i / grid) * halfZ * 2;
+      const hline = new Mesh(new BoxGeometry(halfW * 2, 0.06, 0.12), lineMat);
+      hline.position.set(0, 0.03, fz);
+      this.group.add(hline);
+    }
+    // Centre marker.
+    const centre = new Mesh(new RingGeometry(2.4, 2.7, 48), lineMat);
+    centre.rotation.x = -Math.PI / 2;
+    centre.position.y = 0.04;
+    this.group.add(centre);
+
+    // Raised blue accent rim around the floor edge (the arena's highlight colour).
+    const rimMat = new MeshStandardMaterial({
+      color: this.accent,
+      emissive: this.accent,
+      emissiveIntensity: 0.55,
+      roughness: 0.4,
+      metalness: 0.2,
+    });
+    const rimT = 0.5;
+    const rimH = 0.35;
+    const rims: [number, number, number, number][] = [
+      [0, halfZ, halfW * 2 + rimT, rimT], // +z / −z run along x
+      [0, -halfZ, halfW * 2 + rimT, rimT],
+      [halfW, 0, rimT, halfZ * 2 + rimT], // ±x run along z (swap dims below)
+      [-halfW, 0, rimT, halfZ * 2 + rimT],
+    ];
+    for (const [x, z, w, d] of rims) {
+      const r = new Mesh(new BoxGeometry(w, rimH, d), rimMat);
+      r.position.set(x, rimH / 2, z);
+      this.group.add(r);
+    }
+
+    // Perimeter walls (gunmetal slabs just outside the rim), with gate gaps at the
+    // side midpoints. Built as boxes; BackSide isn't needed since the camera looks
+    // down and in.
+    const wallMat = mat(new Color('#2b3038'), 0.85, 0.25);
+    const wallH = 5;
+    const gateHalf = 5; // opening half-width at each side midpoint
+    const wallSeg = (cx: number, cz: number, w: number, d: number): void => {
+      const m = new Mesh(new BoxGeometry(w, wallH, d), wallMat);
+      m.position.set(cx, wallH / 2, cz);
+      m.castShadow = true;
+      this.group.add(m);
+    };
+    const t = 1.2; // wall thickness
+    const off = 0.9; // sit just beyond the rim
+    // Top/bottom walls (along x) split around the centre gate.
+    for (const sz of [halfZ + off, -(halfZ + off)]) {
+      const segW = halfW - gateHalf;
+      wallSeg((halfW + gateHalf) / 2, sz, segW, t);
+      wallSeg(-(halfW + gateHalf) / 2, sz, segW, t);
+    }
+    // Left/right walls (along z) split around the centre gate.
+    for (const sx of [halfW + off, -(halfW + off)]) {
+      const segD = halfZ - gateHalf;
+      wallSeg(sx, (halfZ + gateHalf) / 2, t, segD);
+      wallSeg(sx, -(halfZ + gateHalf) / 2, t, segD);
+    }
+    // Detailed gatehouses at the four side midpoints (gate 0=+x,1=+z,2=−x,3=−z).
+    for (let g = 0; g < 4; g++) this.buildRectGate(g, halfW, halfZ, off, gateHalf, wallH);
+
+    this.buildRectLighting(scene, halfW, halfZ);
+  }
+
+  /** One rectangular gatehouse: a recessed dark tunnel, two side pillars, a heavy
+   *  lintel, and accent glow on the lintel top + floor threshold — built structure,
+   *  not a flat slab. All pieces are deliberately NON-coplanar (no z-fighting), and
+   *  the group is oriented so the opening faces the arena centre. */
+  private buildRectGate(
+    gate: number,
+    halfW: number,
+    halfZ: number,
+    off: number,
+    gateHalf: number,
+    wallH: number,
+  ): void {
+    const horizontal = gate === 1 || gate === 3; // +z / −z gates run along x
+    const sign = gate === 0 || gate === 1 ? 1 : -1;
+    const g = new Group();
+    // Local frame: opening faces −z (toward arena centre), gap spans local x =
+    // ±gateHalf, tunnel depth runs +z (outward). Rotate each gate so −z points in.
+    if (horizontal) {
+      g.position.set(0, 0, sign * (halfZ + off));
+      g.rotation.y = sign > 0 ? 0 : Math.PI; // +z gate faces −z already; −z gate flips
+    } else {
+      g.position.set(sign * (halfW + off), 0, 0);
+      g.rotation.y = sign > 0 ? Math.PI / 2 : -Math.PI / 2; // +x faces −x (inward), −x faces +x
+    }
+
+    const steel = mat(new Color('#2b3038'), 0.8, 0.3);
+    const dark = mat(new Color('#0b0e12'), 0.7, 0.2);
+    const glowMat = new MeshStandardMaterial({
+      color: this.accent,
+      emissive: this.accent,
+      emissiveIntensity: 1.0,
+      roughness: 0.4,
+      metalness: 0.3,
+    });
+
+    // Recessed tunnel behind the wall (reads as depth).
+    const back = new Mesh(new BoxGeometry(gateHalf * 2, wallH, 0.6), dark);
+    back.position.set(0, wallH / 2, 3.4);
+    g.add(back);
+    const tunFloor = new Mesh(new PlaneGeometry(gateHalf * 2, 3.6), dark);
+    tunFloor.rotation.x = -Math.PI / 2;
+    tunFloor.position.set(0, 0.06, 1.7);
+    g.add(tunFloor);
+
+    // Side pillars flanking the gap (inner face at ±gateHalf), sitting in the wall.
+    for (const sx of [-1, 1]) {
+      const pillar = new Mesh(new BoxGeometry(1.2, wallH, 1.6), steel);
+      pillar.position.set(sx * (gateHalf + 0.6), wallH / 2, 0.4);
+      pillar.castShadow = true;
+      this.outlineProp(pillar);
+      g.add(pillar);
+    }
+
+    // Lintel: INTERSECTS the pillars (overlapping solids, no shared face) so its
+    // bottom (wallH−0.3) sits inside them and its top is clear above.
+    const lintel = new Mesh(new BoxGeometry(gateHalf * 2 + 2.8, 1.4, 1.8), steel);
+    lintel.position.set(0, wallH + 0.4, 0.4);
+    lintel.castShadow = true;
+    this.outlineProp(lintel);
+    g.add(lintel);
+    // Accent glow bar floating just ABOVE the lintel top (top = wallH+1.1) — clear
+    // gap, never coplanar.
+    const cap = new Mesh(new BoxGeometry(gateHalf * 2 + 1.0, 0.16, 0.5), glowMat);
+    cap.position.set(0, wallH + 1.35, 0.4);
+    g.add(cap);
+    // Accent strip on the INWARD face of the lintel (offset in −z past the face).
+    const strip = new Mesh(new BoxGeometry(gateHalf * 2, 0.16, 0.1), glowMat);
+    strip.position.set(0, wallH + 0.1, -0.56);
+    g.add(strip);
+    // Floor threshold glow where the tunnel meets the arena (raised above the floor).
+    const sill = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
+    sill.position.set(0, 0.1, -0.2);
+    g.add(sill);
+
+    this.group.add(g);
+  }
+
+  /** Thin inverted-hull ink outline on a prop (matches the hero/arena outline). */
+  private outlineProp(mesh: Mesh): void {
+    outlineHull(mesh, OUTLINE_W.prop);
+  }
+
+  /** Cool key + blue rim lighting for the Cold Vault (keeps the floor low-contrast
+   *  so saturated combat accents win, art-doc accent discipline). */
+  private buildRectLighting(scene: Scene, halfW: number, halfZ: number): void {
+    this.addLight(scene, new AmbientLight('#2a3340', 0.85));
+    const key = new DirectionalLight('#dce8ff', 1.5);
+    key.position.set(halfW * 0.5, 60, halfZ * 0.4);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    const cam = key.shadow.camera;
+    cam.left = -halfW - 6;
+    cam.right = halfW + 6;
+    cam.top = halfZ + 6;
+    cam.bottom = -halfZ - 6;
+    cam.near = 10;
+    cam.far = 160;
+    cam.updateProjectionMatrix();
+    this.addLight(scene, key);
+    const rim = new DirectionalLight(activeArena().accent, 0.5);
+    rim.position.set(-halfW, 20, -halfZ);
+    this.addLight(scene, rim);
+    const fill = new PointLight('#3a4a66', 0.6, 200);
+    fill.position.set(0, 30, 0);
+    this.addLight(scene, fill);
   }
 
   private buildFloor(): void {
@@ -387,6 +611,7 @@ export class ArenaView {
     const doorMat = (): MeshStandardMaterial => mat(STEEL, 0.7, 0.55);
     const makeDoor = (sideSign: number): Group => {
       const pivot = new Group();
+      pivot.userData.batchDynamic = true; // animated (scales open) — never batch it
       const outer = sideSign * doorW; // tangent offset of the outer (pillar) edge
       pivot.position.set(cx + tx * outer, GATE_HEIGHT / 2, cz + tz * outer);
       pivot.rotation.y = faceY;
@@ -477,7 +702,7 @@ export class ArenaView {
   }
 
   private buildLighting(scene: Scene): void {
-    scene.add(new AmbientLight('#46342a', 0.8));
+    this.addLight(scene, new AmbientLight('#46342a', 0.8));
     const key = new DirectionalLight('#ffe0b0', 2.3);
     key.position.set(20, 44, 12);
     key.castShadow = true;
@@ -491,12 +716,12 @@ export class ArenaView {
     key.shadow.camera.near = 1;
     key.shadow.camera.far = 110;
     key.shadow.camera.updateProjectionMatrix();
-    scene.add(key);
+    this.addLight(scene, key);
     const rim = new DirectionalLight('#3aa0ff', 0.85); // cool rim separates steel from floor
     rim.position.set(-26, 20, -22);
-    scene.add(rim);
+    this.addLight(scene, rim);
     const fill = new DirectionalLight('#c46a2b', 0.35);
     fill.position.set(0, 12, 30);
-    scene.add(fill);
+    this.addLight(scene, fill);
   }
 }

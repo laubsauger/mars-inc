@@ -74,6 +74,7 @@ export class AudioBus {
 
     if (kind === 'muzzle') this.muzzleSfx(now);
     else if (kind === 'impact' || kind === 'teleport') this.impactSfx(now);
+    else if (kind === 'levelup') this.levelUpSfx(now);
     else this.deathSfx(now);
     this.lastAt[kind] = now;
   }
@@ -123,6 +124,37 @@ export class AudioBus {
     src.connect(bp).connect(g).connect(this.sfx!);
     src.start(now);
     this.release(src, now, 0.07);
+  }
+
+  private levelUpSfx(now: number): void {
+    if (!this.claim()) return;
+    const ctx = this.ctx!;
+    // Warm rising two-tone swell — a power-up beat, not the dull death thud. Two
+    // triangle voices a fifth apart, each gliding up, soft attack + slow release.
+    const base = 330; // E4
+    const voices: [number, number][] = [
+      [1, 0],
+      [1.5, 0.06],
+    ];
+    voices.forEach(([mult, delay], idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t0 = now + delay;
+      osc.frequency.setValueAtTime(base * mult, t0);
+      osc.frequency.exponentialRampToValueAtTime(base * mult * 1.5, t0 + 0.22);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.11, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.34);
+      osc.connect(g).connect(this.sfx!);
+      osc.start(t0);
+      osc.stop(t0 + 0.36);
+      // One claim covers the pair — release the single voice when the last ends.
+      if (idx === voices.length - 1)
+        osc.onended = () => {
+          this.voices = Math.max(0, this.voices - 1);
+        };
+    });
   }
 
   private deathSfx(now: number): void {

@@ -37,6 +37,8 @@ export interface SettingsView {
   enemyHealthbars: boolean;
   toonShading: boolean;
   ambientOcclusion: boolean;
+  arenaId: 'cold-vault' | 'rust-crown';
+  showCountdown: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -292,6 +294,8 @@ const INITIAL_SETTINGS: SettingsView = {
   enemyHealthbars: false,
   toonShading: false,
   ambientOcclusion: false,
+  arenaId: 'cold-vault',
+  showCountdown: false,
   colorblind: 'off',
 };
 

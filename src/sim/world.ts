@@ -14,6 +14,7 @@ import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards
 import { WaveDirector, computeAdaptation, difficultyScale } from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
+import { CorpseSystem } from './combat/corpses';
 import { radialPush } from './combat/knockback';
 import { equip } from './combat/weapon';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
@@ -39,6 +40,7 @@ import { UPGRADES } from '../content/upgrades/index';
 import { ADVANCED_UPGRADES } from '../content/upgrades/advanced';
 import { REACTION_UPGRADES } from '../content/upgrades/reactions';
 import { RECOIL_UPGRADES } from '../content/upgrades/recoil';
+import { CORPSE_UPGRADES } from '../content/upgrades/corpse';
 import type { InputSnapshot } from '../core/input';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
@@ -48,6 +50,7 @@ const DRAFT_POOL: UpgradeDefinition[] = [
   ...ADVANCED_UPGRADES,
   ...REACTION_UPGRADES,
   ...RECOIL_UPGRADES,
+  ...CORPSE_UPGRADES,
 ];
 
 /** Rich post-game summary (T23) — what the run actually became. */
@@ -68,6 +71,7 @@ export interface CharacterSheet {
 }
 
 const COUNTDOWN_SECONDS = 3;
+const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
 const SKIP_HEAL_FRAC = 0.15; // skipping a draft heals this fraction of max HP
@@ -107,6 +111,8 @@ export class World {
   readonly weaponSystem: WeaponSystem;
   /** Companion drones orbiting the player, auto-hunting enemies (T40/T42). */
   readonly drones = new DroneSystem();
+  /** Overkill corpses: detonate/launch/chain/meteor build family (T65). */
+  readonly corpses = new CorpseSystem();
   readonly shards: ShardPool;
   readonly mods: RunMods;
   /** Dynamic build engine (T38): conditional modifiers + triggers. */
@@ -122,8 +128,11 @@ export class World {
   /** Render-facing FX events; the render layer drains this each frame. */
   readonly fx = new FxQueue();
   readonly director: WaveDirector;
-  /** Pre-combat countdown (T20). Player can move; no spawns; timer held at 0. */
-  countdown = COUNTDOWN_SECONDS;
+  /** When false, runs start with no countdown (dev/testing time-saver, default off). */
+  countdownEnabled = false;
+  /** Pre-combat countdown (T20). Player can move; no spawns; timer held at 0. Init
+   *  matches reset() so a fresh world == a reset world (determinism, V15/V16). */
+  countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
   /** False until the player enters the pit from the menu (T27). Sim idles. */
   started = false;
   input: InputSnapshot = ZERO_INPUT;
@@ -139,6 +148,9 @@ export class World {
   draft: UpgradeDefinition[] = [];
   draftId = 0; // bumps each time a draft opens / re-rolls (UI refresh key)
   pendingLevelUps = 0;
+  // Brief flourish window (s) between earning a level and the draft freezing the
+  // sim — lets the render-side level-up burst read before the overlay covers it.
+  private levelUpDelay = 0;
 
   // Boss reward (T43, V22). While `bossReward`, the sim freezes for the 3-choice.
   bossReward = false;
@@ -261,18 +273,26 @@ export class World {
         this.fx.push('impact', px, pz); // shockwave ring
       }
     }
-    // Kinetic Boots (CC mobility, T42): a radial shove the instant a sprint
-    // starts — dash INTO a blob to blast a channel open.
-    if (this.player.dashShockForce > 0 && this.player.sprint.active && !this.prevSprintActive) {
+    // Kinetic Boots (CC mobility, T42): dashing carves a CHANNEL through the
+    // crowd. A strong burst the instant the sprint starts (dash INTO a blob to
+    // blow it open), then a sustained outward shove every step WHILE sprinting,
+    // applied at the player's CURRENT position — so the cleared lane follows the
+    // whole dash PATH, not just the launch point.
+    if (this.player.dashShockForce > 0 && this.player.sprint.active) {
+      const rising = !this.prevSprintActive;
+      // Launch = full impulse; sustain = dt-scaled rate (frame-independent, V1)
+      // so it shoves enemies aside as the player sweeps through without the
+      // per-step `+=` runaway.
+      const force = rising ? this.player.dashShockForce : this.player.dashShockForce * dt * 15;
       radialPush(
         this.enemies,
         this.enemySystem.hash,
         this.player.pos.x,
         this.player.pos.z,
         this.player.dashShockRadius,
-        this.player.dashShockForce,
+        force,
       );
-      this.fx.push('impact', this.player.pos.x, this.player.pos.z);
+      if (rising) this.fx.push('impact', this.player.pos.x, this.player.pos.z);
     }
     this.prevSprintActive = this.player.sprint.active;
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
@@ -322,7 +342,24 @@ export class World {
     );
     // Medkits drop from kills + auto-heal on walk-over (T33+).
     this.healthDrops.step(this.player, this.weaponSystem.kills, this.rng, this.fx, dt);
-    this.pendingLevelUps += stepXp(this.shards, this.player, dt);
+    // Corpse / overkill builds (T65): overkilled kills leave bodies; corpses
+    // detonate / launch / chain / call meteors (pipeline-routed, V3/V21).
+    this.corpses.ingest(this.weaponSystem.kills, this.player);
+    const corpseDmg = this.corpses.step(
+      this.player,
+      this.enemies,
+      this.enemySystem.hash,
+      this.rng,
+      this.fx,
+      dt,
+    );
+    const leveled = stepXp(this.shards, this.player, dt);
+    this.pendingLevelUps += leveled;
+    if (leveled > 0) {
+      // Flourish around the player, then hold the draft briefly so it shows.
+      this.fx.push('levelup', this.player.pos.x, this.player.pos.z);
+      if (!this.leveling) this.levelUpDelay = LEVELUP_DELAY;
+    }
 
     // Accumulate run stats from this step's authoritative events (V20).
     this.stats.kills += this.weaponSystem.kills.length;
@@ -339,14 +376,18 @@ export class World {
       this.hitTriggerDamage +
       statusDmg +
       reactionDmg +
-      this.novaDamageThisStep;
+      this.novaDamageThisStep +
+      corpseDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
     this.stats.damageTaken += Math.max(0, healthBefore - this.player.health);
     this.stats.timeSurvived = this.elapsed;
     this.stats.level = this.player.level;
 
-    if (this.pendingLevelUps > 0 && !this.leveling) this.openDraft();
+    if (this.pendingLevelUps > 0 && !this.leveling) {
+      if (this.levelUpDelay > 0) this.levelUpDelay -= dt;
+      else this.openDraft();
+    }
 
     // Death ends the run (loss). A boss kill is the progression hinge: it opens a
     // major in-run reward (freezes the sim) and the run continues, harder (V22).
@@ -551,11 +592,12 @@ export class World {
     this.leveling = false;
     this.draft = [];
     this.pendingLevelUps = 0;
+    this.levelUpDelay = 0;
     this.bossReward = false;
     this.bossRewardChoices = [];
     this.bossRewarded = false;
     this.banished.clear();
-    this.countdown = COUNTDOWN_SECONDS;
+    this.countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
     this.started = false;
     for (const k of Object.keys(this.upgradeLevels)) delete this.upgradeLevels[k];
 
@@ -579,6 +621,7 @@ export class World {
     this.firingRampSec = 0;
     this.director.reset();
     this.drones.reset();
+    this.corpses.pool.clear();
     this.prevSprintActive = false;
     this.weaponSystem.reset();
     this.weaponSystem.add(equip(contractualSidearm));
@@ -736,11 +779,32 @@ export class World {
     const s = this.player.stats;
     const p = this.player;
     const pct = (x: number): string => `${Math.round(x * 100)}%`;
+    // Conditional damage/crit/fire-rate (Restraining Order, risk cards, ramps…)
+    // live in the dynamic BuildEffects layer, NOT the static mods — so they'd
+    // read ×1.00 here. Probe the build at a best-case context to surface their
+    // POTENTIAL, so a "+35% while kiting" card is visible (read-only, no mutation).
+    const probe = this.effects.evalConditionals({
+      enemiesOnScreen: 99,
+      nearestDist: 999,
+      firingRampSec: 12,
+      hpFrac: 0.01,
+      recentCrit: true,
+      recoilActive: true,
+    });
+    const upTo = (base: number, max: number, fmt: (n: number) => string): string =>
+      max > base + Math.abs(base) * 0.001 + 1e-4 ? `${fmt(base)} (up to ${fmt(max)})` : fmt(base);
+    const xMult = (n: number): string => `×${n.toFixed(2)}`;
     const attributes = [
       { label: 'Health', value: `${Math.round(p.health)} / ${Math.round(p.maxHealth)}` },
-      { label: 'Damage', value: `×${m.damageMult.toFixed(2)}` },
-      { label: 'Fire rate', value: `×${m.fireRateMult.toFixed(2)}` },
-      { label: 'Crit bonus', value: `+${pct(m.critChanceAdd)}` },
+      { label: 'Damage', value: upTo(m.damageMult, m.damageMult * probe.damageMult, xMult) },
+      {
+        label: 'Fire rate',
+        value: upTo(m.fireRateMult, m.fireRateMult * probe.fireRateMult, xMult),
+      },
+      {
+        label: 'Crit bonus',
+        value: upTo(m.critChanceAdd, m.critChanceAdd + probe.critAdd, (n) => `+${pct(n)}`),
+      },
       { label: 'Range', value: `×${m.rangeMult.toFixed(2)}` },
       { label: 'Projectiles', value: `${m.projectileCount}` },
       { label: 'Pierce', value: m.pierce > 0 ? `+${m.pierce}` : '—' },

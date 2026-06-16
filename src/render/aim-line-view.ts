@@ -23,12 +23,14 @@ import {
   type Scene,
 } from 'three';
 import { EnemyState, type EnemyPool } from '../sim/enemies';
-import { ARENA_RADIUS } from '../sim/constants';
+import { wallDistance } from '../sim/arena';
 import { COL } from './art/palette';
 
 const Y = 0.18; // just above the raised floor seams (≈0.09 top) — no z-fight
 const WIDTH = 0.12; // stripe half-thickness in world units
+const CAP_LEN = 0.9; // perpendicular end-tick length (marks where range ends)
 const MAX_LINES = 32; // pooled; covers heavy multishot stacks
+const MAX_INSTANCES = MAX_LINES * 2; // each stripe = 1 shaft + 1 end cap
 
 export class AimLineView {
   private mesh: InstancedMesh;
@@ -39,16 +41,16 @@ export class AimLineView {
     const mat = new MeshBasicMaterial({
       color: COL.kineticGold,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.26, // subtle aid, not in-your-face
       blending: AdditiveBlending,
       depthWrite: false,
       // Draw over the floor inlays/seams but let the player/enemies sit on top.
       depthTest: true,
       toneMapped: false,
     });
-    this.mesh = new InstancedMesh(geo, mat, MAX_LINES);
+    this.mesh = new InstancedMesh(geo, mat, MAX_INSTANCES);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-    const colorBuf = new Float32Array(MAX_LINES * 3).fill(1);
+    const colorBuf = new Float32Array(MAX_INSTANCES * 3).fill(1);
     this.mesh.instanceColor = new InstancedBufferAttribute(colorBuf, 3);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1;
@@ -68,10 +70,7 @@ export class AimLineView {
     dz: number,
     maxRange: number,
   ): number {
-    const pd = px * dx + pz * dz;
-    const disc = pd * pd - (px * px + pz * pz - ARENA_RADIUS * ARENA_RADIUS);
-    const tWall = disc > 0 ? -pd + Math.sqrt(disc) : maxRange;
-    let tHit = Math.min(maxRange, tWall);
+    let tHit = wallDistance(px, pz, dx, dz, maxRange);
     for (let i = 0; i < pool.count; i++) {
       if (pool.state[i] !== EnemyState.Active) continue;
       const ocx = pool.posX[i]! - px;
@@ -110,14 +109,21 @@ export class AimLineView {
       const len = t - startGap;
       if (len <= 0.1) continue; // target inside the muzzle gap → nothing to draw
       const midT = (startGap + t) / 2;
-      // Flatten to the ground (−π/2 about X), then spin IN-PLANE about Z so the
+      // Shaft: flatten to the ground (−π/2 about X), spin IN-PLANE about Z so the
       // quad's long axis (local X) aligns with the aim direction (dx,dz).
+      const shaftRot = Math.atan2(-dz, dx);
       this.dummy.position.set(px + dx * midT, Y, pz + dz * midT);
-      this.dummy.rotation.set(-Math.PI / 2, 0, Math.atan2(-dz, dx));
+      this.dummy.rotation.set(-Math.PI / 2, 0, shaftRot);
       this.dummy.scale.set(len, WIDTH, 1);
       this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(drawn, this.dummy.matrix);
-      drawn++;
+      this.mesh.setMatrixAt(drawn++, this.dummy.matrix);
+      // End cap: a short tick ACROSS the tip (long axis ⟂ to the aim dir) so the
+      // range terminus reads clearly. Perpendicular dir = (−dz, dx).
+      this.dummy.position.set(px + dx * t, Y, pz + dz * t);
+      this.dummy.rotation.set(-Math.PI / 2, 0, Math.atan2(-dx, -dz));
+      this.dummy.scale.set(CAP_LEN, WIDTH, 1);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(drawn++, this.dummy.matrix);
     }
     this.mesh.count = drawn;
     this.mesh.instanceMatrix.needsUpdate = true;

@@ -3,15 +3,18 @@
 // full circular arena fits at any aspect ratio.
 
 import { PerspectiveCamera, Vector3, Raycaster, Plane, Vector2 } from 'three';
-import { ARENA_RADIUS } from '../sim/constants';
+import { activeArena, arenaExtent } from '../sim/arena';
 
 const FOV_DEG = 45;
 const TILT_RAD = (62 * Math.PI) / 180; // 0 = straight down, 90 = horizon
-const MARGIN = 1.12; // keep arena edge off the screen border
-// Perspective foreshortens the far (top) half, so a circle centered at origin
-// projects with its centroid below screen center → arena drifts down. Aim the
-// camera slightly toward its near side to recenter the projected ellipse (V7).
-export const AIM_Z = ARENA_RADIUS * 0.16;
+const MARGIN = 1.4; // start fully zoomed out (whole arena + breathing room) — players zoom IN from here
+// Perspective foreshortens the far (top) half, so the arena centroid projects
+// below screen center → it drifts down. Aim slightly toward the near side to
+// recenter (V7). Scaled by the active arena's depth half-extent (live, so it
+// updates when the arena is switched).
+export function arenaAimZ(): number {
+  return arenaExtent().halfZ * 0.16;
+}
 
 /**
  * Distance from arena center along the view axis so a circle of `radius` fits
@@ -32,6 +35,28 @@ export function computeFitDistance(
   return Math.max(distV, distH);
 }
 
+/** Distance to fit a HALF-W × HALF-Z rectangle in both FOVs (V7). */
+export function computeFitDistanceRect(
+  halfW: number,
+  halfZ: number,
+  fovDeg: number,
+  aspect: number,
+  margin: number = MARGIN,
+): number {
+  const vFov = (fovDeg * Math.PI) / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const distH = (halfW * margin) / Math.tan(hFov / 2);
+  const distV = (halfZ * margin) / Math.tan(vFov / 2);
+  return Math.max(distH, distV);
+}
+
+/** Fit distance for the ACTIVE arena (circle or rect). Shared by camera + controls. */
+export function arenaFitDistance(fovDeg: number, aspect: number, margin: number = MARGIN): number {
+  const s = activeArena().shape;
+  if (s.kind === 'circle') return computeFitDistance(s.radius, fovDeg, aspect, margin);
+  return computeFitDistanceRect(s.halfW, s.halfZ, fovDeg, aspect, margin);
+}
+
 export function createCamera(aspect: number): PerspectiveCamera {
   const cam = new PerspectiveCamera(FOV_DEG, aspect, 1, 500);
   frameArena(cam, aspect);
@@ -41,13 +66,13 @@ export function createCamera(aspect: number): PerspectiveCamera {
 /** Reposition camera to frame the whole arena. Call on resize. */
 export function frameArena(cam: PerspectiveCamera, aspect: number): void {
   cam.aspect = aspect;
-  const dist = computeFitDistance(ARENA_RADIUS, cam.fov, aspect);
+  const dist = arenaFitDistance(cam.fov, aspect);
   // Look at center (0,0,0). Camera above and pulled back along +z by tilt.
   const y = dist * Math.sin(TILT_RAD);
   const z = dist * Math.cos(TILT_RAD);
   cam.position.set(0, y, z);
   cam.up.set(0, 1, 0);
-  cam.lookAt(new Vector3(0, 0, AIM_Z));
+  cam.lookAt(new Vector3(0, 0, arenaAimZ()));
   cam.updateProjectionMatrix();
 }
 

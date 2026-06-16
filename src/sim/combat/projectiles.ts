@@ -35,6 +35,10 @@ export class ProjectilePool {
   readonly bounces: Int16Array;
   /** Brief park timer (s) at a bounce point so the redirect reads as a sequence. */
   readonly hold: Float32Array;
+  /** Post-hit cooldown (s): a piercing projectile can't hit again until it has
+   *  cleared the body it just struck, so pierce passes to the NEXT enemy instead
+   *  of being eaten by re-hitting the same one every step. */
+  readonly hitCd: Float32Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -56,6 +60,7 @@ export class ProjectilePool {
     this.profile = new Uint8Array(capacity);
     this.bounces = new Int16Array(capacity);
     this.hold = new Float32Array(capacity);
+    this.hitCd = new Float32Array(capacity);
   }
 
   spawn(
@@ -91,6 +96,7 @@ export class ProjectilePool {
     this.profile[i] = profile;
     this.bounces[i] = bounces;
     this.hold[i] = 0;
+    this.hitCd[i] = 0;
     return i;
   }
 
@@ -115,6 +121,7 @@ export class ProjectilePool {
       this.profile[i] = this.profile[last]!;
       this.bounces[i] = this.bounces[last]!;
       this.hold[i] = this.hold[last]!;
+      this.hitCd[i] = this.hitCd[last]!;
     }
   }
 }

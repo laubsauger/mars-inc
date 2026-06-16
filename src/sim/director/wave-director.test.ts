@@ -9,7 +9,7 @@ import {
 import { EnemyPool, RUST_MITE, PHASE_STALKER, SpawnKind } from '../enemies';
 import { Rng } from '../../core/rng';
 import { FxQueue } from '../fx';
-import { ARENA_RADIUS } from '../constants';
+import { arenaContains } from '../arena';
 
 describe('Phase Stalker teleporter (T33+)', () => {
   it('materializes at interior points (not gates) after the unlock time, with FX', () => {
@@ -26,8 +26,8 @@ describe('Phase Stalker teleporter (T33+)', () => {
       if (pool.variant[i] === PHASE_STALKER.variant) {
         teleporters++;
         expect(pool.spawnKind[i]).toBe(SpawnKind.Teleport);
-        const r = Math.hypot(pool.posX[i]!, pool.posZ[i]!);
-        expect(r).toBeLessThan(ARENA_RADIUS); // interior, not the gate ring
+        // Interior of the arena, not out past a gate wall.
+        expect(arenaContains(pool.posX[i]!, pool.posZ[i]!)).toBe(true);
       }
     }
     expect(teleporters).toBeGreaterThan(0);

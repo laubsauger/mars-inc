@@ -3,7 +3,15 @@
 // authority and never feed back into sim state (V2). Accumulates across the
 // multiple fixed steps that can occur within one rendered frame.
 
-export type FxKind = 'muzzle' | 'impact' | 'death' | 'dmg' | 'chain' | 'blood' | 'teleport';
+export type FxKind =
+  | 'muzzle'
+  | 'impact'
+  | 'death'
+  | 'dmg'
+  | 'chain'
+  | 'blood'
+  | 'teleport'
+  | 'levelup';
 
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family

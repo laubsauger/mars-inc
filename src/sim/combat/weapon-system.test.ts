@@ -96,6 +96,34 @@ describe('WeaponSystem (T14 fire + collide + kill)', () => {
     expect(ws.projectiles.count).toBeLessThan(10);
   });
 
+  it('pierce passes through to a SECOND enemy (not eaten re-hitting the first)', () => {
+    const enemies = new EnemyPool();
+    const a = enemies.spawn(RUST_MITE, 4, 0, 0, 0);
+    const b = enemies.spawn(RUST_MITE, 7, 0, 0, 0); // further down the same line
+    enemies.state[a] = EnemyState.Active;
+    enemies.state[b] = EnemyState.Active;
+    enemies.health[a] = 100; // survive so we can confirm BOTH took damage
+    enemies.health[b] = 100;
+
+    const ws = new WeaponSystem();
+    ws.add(equip(contractualSidearm));
+    ws.weapons[0]!.cooldownLeft = 999; // suppress auto-fire; drive one manual shot
+    // One projectile flying +x with pierce 1.
+    ws.projectiles.spawn(0, 0, 24, 0, 0.18, 5, 1, { ...contractualSidearm.damage, critChance: 0 });
+
+    const hash = new SpatialHash(2);
+    const mods = defaultMods();
+    const fx = new FxQueue();
+    const rng = new Rng(1);
+    const player = createPlayer();
+    for (let t = 0; t < 90; t++) {
+      rebuild(hash, enemies);
+      ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
+    }
+    expect(enemies.health[a]!).toBeLessThan(100); // hit first
+    expect(enemies.health[b]!).toBeLessThan(100); // pierced through to the second
+  });
+
   it('ricochet redirects a spent projectile to a fresh enemy (visible bounce)', () => {
     const enemies = new EnemyPool();
     const a = enemies.spawn(RUST_MITE, 5, 0, 0, 0);

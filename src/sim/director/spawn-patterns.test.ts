@@ -8,23 +8,20 @@ import { WaveDirector } from './wave-director';
 import { EnemyPool } from '../enemies';
 import { Rng } from '../../core/rng';
 import { GATE_COUNT } from '../constants';
+import { gateOuterPoint } from '../arena';
 
 const DT = 1 / 60;
-const GATE_ANGLES = Array.from({ length: GATE_COUNT }, (_, g) => (g / GATE_COUNT) * Math.PI * 2);
+// The four gate anchors for the ACTIVE arena (shape-aware: rim points for a
+// circle, side midpoints for a rect). Telegraph spawns sit near these.
+const GATE_ANCHORS = Array.from({ length: GATE_COUNT }, (_, g) => gateOuterPoint(g, 0, 2.5));
 
-function angDist(a: number, b: number): number {
-  const d = Math.abs(a - b) % (2 * Math.PI);
-  return d > Math.PI ? 2 * Math.PI - d : d;
-}
-
-/** Nearest gate index for an enemy at (x,z); the telegraph walk-in is radial so
- *  the spawn angle is preserved. */
+/** Nearest gate anchor (Euclidean) for an enemy at (x,z). */
 function nearestGate(x: number, z: number): { gate: number; dist: number } {
-  const a = Math.atan2(z, x);
   let best = 0;
   let bestD = Infinity;
   for (let g = 0; g < GATE_COUNT; g++) {
-    const d = angDist(a, GATE_ANGLES[g]!);
+    const a = GATE_ANCHORS[g]!;
+    const d = Math.hypot(a.x - x, a.z - z);
     if (d < bestD) {
       bestD = d;
       best = g;
@@ -54,8 +51,8 @@ describe('spawn patterns', () => {
       maxOffset = Math.max(maxOffset, dist);
     }
 
-    // Tight clusters: every enemy sits within the gate jitter of a gate centre.
-    expect(maxOffset).toBeLessThan(0.2);
+    // Tight clusters: every enemy sits within the gate opening of a gate centre.
+    expect(maxOffset).toBeLessThan(8);
     // Directional variety: all four gates fielded enemies across the run.
     expect(used.size).toBe(GATE_COUNT);
   });

@@ -216,7 +216,7 @@ function InspectPanel() {
   const glyph = INSPECT_GLYPH[variant] ?? '◆';
   const frac = Math.max(0, Math.min(1, maxHp > 0 ? hp / maxHp : 0));
   return (
-    <div className="pointer-events-none absolute right-6 bottom-[4.75rem] w-60 border border-rust/80 bg-pit/82 px-3 py-2 font-mono shadow-[0_12px_34px_rgba(0,0,0,0.5),inset_0_0_0_1px_rgba(240,200,121,0.08)]">
+    <div className="pointer-events-none absolute right-6 bottom-[7rem] w-60 border border-rust/80 bg-pit/82 px-3 py-2 font-mono shadow-[0_12px_34px_rgba(0,0,0,0.5),inset_0_0_0_1px_rgba(240,200,121,0.08)]">
       <div className="flex items-center gap-2">
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border text-lg"
