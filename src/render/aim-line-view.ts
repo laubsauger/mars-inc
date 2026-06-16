@@ -1,51 +1,63 @@
-// Aim lines (player aid). Thin, slightly transparent lines from the player along
+// Aim lines (player aid). Thin gold "laser sight" stripes from the player along
 // each fire direction — mirroring the weapon's multishot fan exactly, so a
-// 3-projectile build shows three lines at the projectile angles. Each line
+// 3-projectile build shows three stripes at the projectile angles. Each stripe
 // terminates at the first enemy hit, the weapon's max range, or the arena wall —
-// whichever is nearest. Pure view (V2): the raycast is computed in the render
-// layer from sim state and never written back. Fat-line (Line2) → constant ~2px.
+// whichever is nearest. Pure view (V2): the raycast runs in the render layer from
+// sim state and never writes back.
+//
+// WebGPU note (§B1): `Line2`/`LineMaterial` (the fat-line shader) does NOT render
+// under the WebGPU backend here — it collapses into a degenerate quad at the
+// segment origin (the "gold rectangle at arena centre" bug). So the stripes are
+// flat ground quads in ONE InstancedMesh with a pre-created `instanceColor`, the
+// same reliable pattern as the projectile/effect views — and 1 draw call instead
+// of up to 32 fat-line draws.
 
-import { type Scene } from 'three';
-import { Line2 } from 'three/examples/jsm/lines/Line2.js';
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import {
+  InstancedMesh,
+  PlaneGeometry,
+  MeshBasicMaterial,
+  Object3D,
+  DynamicDrawUsage,
+  InstancedBufferAttribute,
+  AdditiveBlending,
+  type Scene,
+} from 'three';
 import { EnemyState, type EnemyPool } from '../sim/enemies';
 import { ARENA_RADIUS } from '../sim/constants';
 import { COL } from './art/palette';
 
-const Y = 0.6; // line height (roughly gun level)
+const Y = 0.18; // just above the raised floor seams (≈0.09 top) — no z-fight
+const WIDTH = 0.12; // stripe half-thickness in world units
 const MAX_LINES = 32; // pooled; covers heavy multishot stacks
 
 export class AimLineView {
-  private lines: Line2[] = [];
-  private mat: LineMaterial;
+  private mesh: InstancedMesh;
+  private dummy = new Object3D();
 
-  constructor(scene: Scene, width: number, height: number) {
-    this.mat = new LineMaterial({
-      color: COL.kineticGold.getHex(),
-      linewidth: 2, // pixels (worldUnits defaults off)
+  constructor(scene: Scene, _width: number, _height: number) {
+    const geo = new PlaneGeometry(1, 1); // unit quad; scaled per stripe, laid flat
+    const mat = new MeshBasicMaterial({
+      color: COL.kineticGold,
       transparent: true,
-      opacity: 0.5,
-      depthTest: true,
+      opacity: 0.42,
+      blending: AdditiveBlending,
       depthWrite: false,
+      // Draw over the floor inlays/seams but let the player/enemies sit on top.
+      depthTest: true,
       toneMapped: false,
     });
-    this.mat.resolution.set(width, height);
-    for (let i = 0; i < MAX_LINES; i++) {
-      const geo = new LineGeometry();
-      geo.setPositions([0, Y, 0, 0, Y, 0]);
-      const ln = new Line2(geo, this.mat);
-      ln.frustumCulled = false;
-      ln.renderOrder = 1;
-      ln.visible = false;
-      scene.add(ln);
-      this.lines.push(ln);
-    }
+    this.mesh = new InstancedMesh(geo, mat, MAX_LINES);
+    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    const colorBuf = new Float32Array(MAX_LINES * 3).fill(1);
+    this.mesh.instanceColor = new InstancedBufferAttribute(colorBuf, 3);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 1;
+    this.mesh.count = 0;
+    scene.add(this.mesh);
   }
 
-  setResolution(width: number, height: number): void {
-    this.mat.resolution.set(width, height);
-  }
+  // Resolution no longer matters (not a fat line), but keep the API stable.
+  setResolution(_width: number, _height: number): void {}
 
   /** Distance along a unit ray to the first enemy / max range / arena wall. */
   private raycast(
@@ -76,9 +88,9 @@ export class AimLineView {
   }
 
   /**
-   * Render one line per fire direction. `dirs` is a flat [dx0,dz0, dx1,dz1, …]
-   * of unit directions (matching the weapon's multishot fan); `count` is how
-   * many to draw. Extra pooled lines are hidden.
+   * Render one stripe per fire direction. `dirs` is a flat [dx0,dz0, dx1,dz1, …]
+   * of unit directions (matching the weapon's multishot fan); `count` is how many
+   * to draw. Extra pooled instances are dropped via `mesh.count`.
    */
   sync(
     pool: EnemyPool,
@@ -90,34 +102,29 @@ export class AimLineView {
     startGap: number,
   ): void {
     const n = Math.min(count, MAX_LINES);
-    for (let i = 0; i < MAX_LINES; i++) {
-      const ln = this.lines[i]!;
-      if (i >= n) {
-        ln.visible = false;
-        continue;
-      }
+    let drawn = 0;
+    for (let i = 0; i < n; i++) {
       const dx = dirs[i * 2]!;
       const dz = dirs[i * 2 + 1]!;
       const t = this.raycast(pool, px, pz, dx, dz, maxRange);
-      // If the target is closer than the muzzle gap, the end would fall BEHIND the
-      // start → the fat line collapses into a degenerate square blob. Hide it.
-      if (t <= startGap + 0.15) {
-        ln.visible = false;
-        continue;
-      }
-      ln.visible = true;
-      ln.geometry.setPositions([
-        px + dx * startGap,
-        Y,
-        pz + dz * startGap,
-        px + dx * t,
-        Y,
-        pz + dz * t,
-      ]);
+      const len = t - startGap;
+      if (len <= 0.1) continue; // target inside the muzzle gap → nothing to draw
+      const midT = (startGap + t) / 2;
+      // Flatten to the ground (−π/2 about X), then spin IN-PLANE about Z so the
+      // quad's long axis (local X) aligns with the aim direction (dx,dz).
+      this.dummy.position.set(px + dx * midT, Y, pz + dz * midT);
+      this.dummy.rotation.set(-Math.PI / 2, 0, Math.atan2(-dz, dx));
+      this.dummy.scale.set(len, WIDTH, 1);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(drawn, this.dummy.matrix);
+      drawn++;
     }
+    this.mesh.count = drawn;
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 
   hide(): void {
-    for (const l of this.lines) l.visible = false;
+    this.mesh.count = 0;
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 }

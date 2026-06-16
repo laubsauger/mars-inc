@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { World } from './world';
+import { EnemyState } from './enemies';
 import type { InputSnapshot } from '../core/input';
 
 const DT = 1 / 60;
@@ -36,7 +37,24 @@ function driveTick(w: World, t: number): void {
     w.choose(0);
     return;
   }
-  w.input = scriptInput(t);
+  const input = scriptInput(t);
+  // Aim at the nearest live enemy so the scripted run reliably lands hits (the
+  // weapon fires at the cursor). World-driven but still deterministic — both runs
+  // see identical enemies — and robust to spawn-pattern changes.
+  let best = Infinity;
+  const e = w.enemies;
+  for (let i = 0; i < e.count; i++) {
+    if (e.state[i] !== EnemyState.Active) continue;
+    const dx = e.posX[i]! - w.player.pos.x;
+    const dz = e.posZ[i]! - w.player.pos.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < best) {
+      best = d2;
+      input.aimX = e.posX[i]!;
+      input.aimZ = e.posZ[i]!;
+    }
+  }
+  w.input = input;
   w.step(DT);
 }
 

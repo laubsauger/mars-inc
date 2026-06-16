@@ -276,6 +276,7 @@ export const RUST_MITE: EnemyType = {
   separationWeight: 1.0,
   variant: 0,
   threat: 1,
+  gore: 'blood', // tier-1 fodder still bleeds (scaled small by its radius, see blood-view)
 };
 
 export const DEBT_HOUND: EnemyType = {
@@ -286,6 +287,7 @@ export const DEBT_HOUND: EnemyType = {
   separationWeight: 1.2,
   variant: 1,
   threat: 4,
+  gore: 'blood',
 };
 
 // Gatekeeper of Phobos — slice boss (T33 down-payment, art/mechanics → T33/T37).

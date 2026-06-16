@@ -393,7 +393,7 @@ export class ArenaView {
       const d = new Mesh(doorGeo, doorMat());
       d.castShadow = true;
       d.receiveShadow = true;
-      d.position.x = (-sideSign * doorW) / 2; // door centre, inward from the pivot
+      d.position.x = (sideSign * doorW) / 2; // door centre, inward from the pivot
       // gold hazard chevrons (a couple of thin trims on the face)
       for (const cy of [-1.6, 0, 1.6]) {
         const chev = new Mesh(
@@ -433,8 +433,7 @@ export class ArenaView {
         sin * plateFrontR + tz * side * (GATE_HALF_WIDTH - 0.3),
       );
       spot.target = aim;
-      spot.castShadow = true;
-      spot.shadow.mapSize.set(512, 512);
+      spot.castShadow = false; // entry uplights light the gate; shadows here are noisy + costly
       this.group.add(spot);
     }
   }

@@ -275,7 +275,12 @@ type TreeNodeId =
   | 'blacklist-rights'
   | 'lucky-streak'
   | 'gyro-bracing'
-  | 'sponsor-auditor';
+  | 'sponsor-auditor'
+  | 'live-wire'
+  | 'hair-trigger'
+  | 'hunter-protocol'
+  | 'frostbrand'
+  | 'hemorrhage-writ';
 
 const BRANCHES: { id: GloryBranch; label: string; blurb: string }[] = [
   { id: 'arsenal', label: 'Arsenal', blurb: 'Drafting & firepower contracts' },
@@ -298,6 +303,12 @@ const TREE_NODES: Record<TreeNodeId, { x: number; y: number; branch: GloryBranch
     'lucky-streak': { x: 66, y: 34, branch: 'arsenal', icon: '?' },
     'gyro-bracing': { x: 76, y: 22, branch: 'arsenal', icon: '⌖' },
     'sponsor-auditor': { x: 90, y: 25, branch: 'arsenal', icon: '§' },
+    // Build-seeding nodes (T35+).
+    'live-wire': { x: 58, y: 18, branch: 'arsenal', icon: '⌁' },
+    'hair-trigger': { x: 86, y: 10, branch: 'arsenal', icon: '↻' },
+    'hunter-protocol': { x: 72, y: 9, branch: 'arsenal', icon: '◇' },
+    frostbrand: { x: 10, y: 24, branch: 'biology', icon: '❄' },
+    'hemorrhage-writ': { x: 30, y: 19, branch: 'biology', icon: '⧫' },
   };
 
 const TREE_EDGES: ReadonlyArray<readonly [TreeNodeId, TreeNodeId]> = [
@@ -313,6 +324,11 @@ const TREE_EDGES: ReadonlyArray<readonly [TreeNodeId, TreeNodeId]> = [
   ['house-odds', 'lucky-streak'],
   ['lucky-streak', 'gyro-bracing'],
   ['blacklist-rights', 'sponsor-auditor'],
+  ['lucky-streak', 'live-wire'],
+  ['gyro-bracing', 'hair-trigger'],
+  ['sponsor-auditor', 'hunter-protocol'],
+  ['organ-repo-insurance', 'frostbrand'],
+  ['magnetized-marrow', 'hemorrhage-writ'],
 ] as const;
 
 // Prerequisite chain: a node unlocks only once the node it branches from is
@@ -574,11 +590,14 @@ function GloryTree() {
             const owned = p.owned > 0;
             const reachable = isUnlocked(p.id);
             const buyable = reachable && p.affordable && !maxed;
+            // Unlocked + available to buy, but you can't afford it right now.
+            const pricedOut = reachable && !maxed && !owned && !p.affordable;
             const style = BRANCH_STYLE[node.branch];
-            // Four clearly distinct states:
-            //  • maxed (completed)        → gold ring + filled, gold ✓ badge
+            // Five clearly distinct states:
+            //  • maxed (completed)        → gold ring + filled, gold ★ badge
             //  • allocated (owned, < max) → solid branch colour + glow ring
-            //  • reachable (buy next)     → branch outline; affordable pulses, else muted
+            //  • buyable (afford next)    → branch outline, pulsing
+            //  • PRICED OUT (afford fail) → solid branch ring + RED "needs glory" glow + ◈cost
             //  • locked (prereq missing)  → grey, dashed, ⊘
             const stateClass = !reachable
               ? 'border-dashed border-bone/15 bg-pit/80 text-bone/20 opacity-60'
@@ -588,7 +607,7 @@ function GloryTree() {
                   ? `${style.border} ${style.text} ${style.ring} bg-pit`
                   : buyable
                     ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
-                    : `border-dashed ${style.border} ${style.text} opacity-45`;
+                    : `${style.border} text-bone/55 saturate-50 bg-[radial-gradient(circle_at_50%_50%,rgba(255,59,48,0.16),rgba(7,5,4,0.92)_68%)] shadow-[0_0_0_1px_rgba(255,59,48,0.35),0_0_18px_rgba(255,59,48,0.22)]`;
             return (
               <button
                 key={p.id}
@@ -602,9 +621,15 @@ function GloryTree() {
               >
                 {!reachable ? '⊘' : maxed ? '★' : node.icon}
                 <span
-                  className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${maxed ? 'border-gold bg-gold text-pit' : 'border-rust bg-umber text-bone'}`}
+                  className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
+                    maxed
+                      ? 'border-gold bg-gold text-pit'
+                      : pricedOut
+                        ? 'border-bleed bg-pit text-bleed'
+                        : 'border-rust bg-umber text-bone'
+                  }`}
                 >
-                  {maxed ? 'MAX' : `${p.owned}/${p.maxLevel}`}
+                  {maxed ? 'MAX' : pricedOut ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
                 </span>
               </button>
             );

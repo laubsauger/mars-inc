@@ -4,6 +4,8 @@
 // UI to buy them lands at T35 — this is the data + a minimal buy path.
 
 import type { Player } from '../../sim/player';
+import type { RunMods } from '../../sim/progression/mods';
+import type { BuildEffects } from '../../sim/progression/effects';
 
 export interface PermanentUpgrade {
   id: string;
@@ -12,7 +14,10 @@ export interface PermanentUpgrade {
   branch: 'arsenal' | 'biology' | 'mobility';
   cost: number; // Martian Glory per level
   maxLevel: number;
-  apply: (player: Player, level: number) => void;
+  // `mods`/`effects` let a node SEED a build (start with a status primer, a drone,
+  // recoil tuning…), not just buff a player stat (T35+). Plain stat nodes ignore
+  // the extra params.
+  apply: (player: Player, level: number, mods: RunMods, effects: BuildEffects) => void;
 }
 
 export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
@@ -156,6 +161,69 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     apply: (p, level) => {
       p.luck += level;
       p.pickupRadius *= 1 + 0.02 * level;
+    },
+  },
+
+  // ── Build-seeding nodes (T35+): start a run already pointed at a build, so
+  //    Glory choices shape your IDENTITY, not just your stats. ────────────────
+  {
+    id: 'live-wire',
+    name: 'Live Wire',
+    description: 'Start every run with Shock-on-hit — seeds chain & plasma builds.',
+    branch: 'arsenal',
+    cost: 180,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('hit', (c) => c.applyStatus(c.targetIndex, 'shock', { duration: 3, stacks: 1 }));
+    },
+  },
+  {
+    id: 'hair-trigger',
+    name: 'Hair-Trigger Coils',
+    description: 'Start with firmer recoil + recoil recharges Sprint — seeds recoil builds.',
+    branch: 'arsenal',
+    cost: 160,
+    maxLevel: 1,
+    apply: (p, _level, mods) => {
+      mods.recoilMult += 0.25;
+      p.recoilSprintRecharge = true;
+    },
+  },
+  {
+    id: 'hunter-protocol',
+    name: 'Hunter Protocol',
+    description: 'Start each run with +1 companion drone per level.',
+    branch: 'arsenal',
+    cost: 220,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.droneCount += level;
+    },
+  },
+  {
+    id: 'frostbrand',
+    name: 'Frostbrand',
+    description: 'Start with Chill-on-hit — seeds freeze & Blood-Crystal builds.',
+    branch: 'biology',
+    cost: 170,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('hit', (c) =>
+        c.applyStatus(c.targetIndex, 'chill', { duration: 2, slowMult: 0.7 }),
+      );
+    },
+  },
+  {
+    id: 'hemorrhage-writ',
+    name: 'Hemorrhage Writ',
+    description: 'Start with Bleed-on-hit — seeds stacking-DoT builds.',
+    branch: 'biology',
+    cost: 160,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('hit', (c) =>
+        c.applyStatus(c.targetIndex, 'bleed', { duration: 4, dps: 2, stacks: 1 }),
+      );
     },
   },
 ];

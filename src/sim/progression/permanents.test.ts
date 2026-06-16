@@ -3,6 +3,30 @@ import { applyPermanents } from './permanents';
 import { createPlayer } from '../player';
 import { gloryFor } from '../run';
 import { PERMANENT_UPGRADES } from '../../content/permanent/index';
+import { defaultMods } from './mods';
+import { BuildEffects } from './effects';
+
+describe('build-seeding permanents (T35+)', () => {
+  it('Live Wire seeds a Shock-on-hit trigger into the build engine', () => {
+    const effects = new BuildEffects();
+    applyPermanents(createPlayer(), { 'live-wire': 1 }, defaultMods(), effects);
+    expect(effects.has('hit')).toBe(true);
+  });
+
+  it('Hair-Trigger Coils firms recoil + enables recoil→sprint recharge', () => {
+    const p = createPlayer();
+    const mods = defaultMods();
+    applyPermanents(p, { 'hair-trigger': 1 }, mods, new BuildEffects());
+    expect(mods.recoilMult).toBeGreaterThan(1);
+    expect(p.recoilSprintRecharge).toBe(true);
+  });
+
+  it('Hunter Protocol starts the run with drones', () => {
+    const p = createPlayer();
+    applyPermanents(p, { 'hunter-protocol': 2 }, defaultMods(), new BuildEffects());
+    expect(p.droneCount).toBe(2);
+  });
+});
 
 describe('gloryFor (T26 award)', () => {
   it('rewards longer, deadlier, higher-level runs more', () => {

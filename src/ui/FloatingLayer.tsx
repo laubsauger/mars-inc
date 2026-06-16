@@ -8,6 +8,8 @@ import { useUiStore } from './store';
 // Soft elliptical drop-shadow behind the glyphs — the readability backdrop.
 const BACKDROP = 'radial-gradient(ellipse at center, rgba(7,5,4,0.82) 0%, rgba(7,5,4,0) 72%)';
 const SHADOW = '0 2px 7px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.95)';
+// Crit numbers get a hot gold halo on top of the legibility shadow so they pop.
+const CRIT_SHADOW = `${SHADOW}, 0 0 10px rgba(255,210,63,0.9), 0 0 20px rgba(255,210,63,0.55)`;
 
 export function FloatingLayer() {
   const labels = useUiStore((s) => s.labels);
@@ -28,7 +30,7 @@ export function FloatingLayer() {
               color: l.color,
               fontSize: l.size,
               opacity: l.opacity,
-              textShadow: SHADOW,
+              textShadow: l.crit ? CRIT_SHADOW : SHADOW,
               background: BACKDROP, // every label gets the readability backdrop
               padding: isPickup ? '2px 9px' : '0 8px',
               borderRadius: 4,

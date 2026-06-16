@@ -224,10 +224,7 @@ export class EnemyView {
       // telegraph and glows phase-violet → white, so it reads as blinking into the
       // arena rather than walking from a gate.
       let mat = 0; // 0 = fully materialized
-      if (
-        pool.spawnKind[i] === SpawnKind.Teleport &&
-        pool.state[i] === EnemyState.Telegraph
-      ) {
+      if (pool.spawnKind[i] === SpawnKind.Teleport && pool.state[i] === EnemyState.Telegraph) {
         mat = Math.min(1, pool.stateTimer[i]! / TELE_TELEGRAPH); // 1 (just arrived) → 0 (live)
       }
       const scaleMul = 0.3 + 0.7 * (1 - mat);

@@ -6,7 +6,7 @@ import { EnemyPool, EnemyState, steerEnemy, DEFAULT_STEER } from './enemies';
 import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
 import type { FxQueue } from './fx';
-import { ARENA_RADIUS } from './constants';
+import { clampPoint } from './arena';
 
 const STEER_DIVISOR = 3; // re-steer each enemy every 3rd tick → ~20Hz
 const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
@@ -31,7 +31,6 @@ export class EnemySystem {
     for (let i = 0; i < p.count; i++) this.hash.insert(i, p.posX[i]!, p.posZ[i]!);
 
     const target = player.pos;
-    const limit = ARENA_RADIUS - 1;
 
     for (let i = 0; i < p.count; i++) {
       if (p.state[i] === EnemyState.Telegraph) {
@@ -109,12 +108,10 @@ export class EnemySystem {
         if (Math.abs(p.kbZ[i]!) < 0.05) p.kbZ[i] = 0;
       }
 
-      // Keep inside the arena.
-      const d = Math.hypot(p.posX[i]!, p.posZ[i]!);
-      if (d > limit && d > 1e-6) {
-        p.posX[i] = (p.posX[i]! / d) * limit;
-        p.posZ[i] = (p.posZ[i]! / d) * limit;
-      }
+      // Keep inside the arena (shape-aware).
+      const c = clampPoint(p.posX[i]!, p.posZ[i]!, 1);
+      p.posX[i] = c.x;
+      p.posZ[i] = c.z;
 
       // Contact damage: triggers when the enemy reaches the player's FOOTPRINT
       // ring (a bit beyond `stopDist` so the held ring still deals damage — they

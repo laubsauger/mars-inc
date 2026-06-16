@@ -121,6 +121,7 @@ export class WaveDirector {
     this.boss = false;
     this.waveTimer = 1.0;
     this.sweepGate = 0;
+    this.teleTimer = TELE_PERIOD;
   }
 
   /** Current bank of unspent threat points (dev overlay). */
@@ -248,22 +249,35 @@ export class WaveDirector {
     }
   }
 
-  /** Choose this wave's pressure shape — gentle/kiteable early, relentless late. */
+  /** Choose this wave's pressure shape. The DEFAULT is ONE gate at a time
+   *  (Single, or Sweep which is a single rotating gate) — so on average a wave
+   *  comes from one direction and is leadable. Multi-gate shapes (Adjacent /
+   *  Opposing / Surround) are occasional pressure SPIKES that grow over the run. */
   private choosePattern(rng: Rng, elapsed: number): Pattern {
     const r = rng.next();
-    // Open with two-sided pressure (a couple units from two gates) so the very
-    // first pulse already reads as a fight, not a lone straggler.
-    if (elapsed < 20) return r < 0.6 ? Pattern.Adjacent : Pattern.Opposing;
-    if (elapsed < 45) {
-      return r < 0.25
-        ? Pattern.Adjacent
-        : r < 0.55
-          ? Pattern.Opposing
-          : r < 0.85
-            ? Pattern.Sweep
-            : Pattern.Surround;
+    // Calm open: almost always a single gate, rare two-gate nudge.
+    if (elapsed < 25) return r < 0.78 ? Pattern.Single : Pattern.Adjacent;
+    if (elapsed < 60) {
+      // Single-gate baseline (Single + Sweep ≈ 78%); occasional pincer.
+      return r < 0.5
+        ? Pattern.Single
+        : r < 0.78
+          ? Pattern.Sweep
+          : r < 0.92
+            ? Pattern.Adjacent
+            : Pattern.Opposing;
     }
-    return r < 0.3 ? Pattern.Opposing : r < 0.6 ? Pattern.Sweep : Pattern.Surround;
+    // Late: single still the plurality (~64% via Single+Sweep), multi-gate spikes
+    // more often, with a rare full Surround.
+    return r < 0.4
+      ? Pattern.Single
+      : r < 0.64
+        ? Pattern.Sweep
+        : r < 0.82
+          ? Pattern.Opposing
+          : r < 0.93
+            ? Pattern.Adjacent
+            : Pattern.Surround;
   }
 
   /** Resolve a pattern to the gate indices it spawns from this wave. */
@@ -308,7 +322,17 @@ export class WaveDirector {
     const r = ARENA_RADIUS * rng.range(0.3, 0.82); // interior ring, off the player's edge kite
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
-    if (pool.spawn(PHASE_STALKER, x, z, TELE_TELEGRAPH, this.phase++, this.hpScale, SpawnKind.Teleport) >= 0) {
+    if (
+      pool.spawn(
+        PHASE_STALKER,
+        x,
+        z,
+        TELE_TELEGRAPH,
+        this.phase++,
+        this.hpScale,
+        SpawnKind.Teleport,
+      ) >= 0
+    ) {
       fx?.push('teleport', x, z);
     }
   }

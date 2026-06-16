@@ -7,12 +7,11 @@ import {
   type SprintState,
   normalizeInput,
   integrateVelocity,
-  clampToArena,
   updateSprint,
   newSprintState,
 } from './movement';
 import type { InputSnapshot } from '../core/input';
-import { ARENA_RADIUS } from './constants';
+import { clampToArena } from './arena';
 import { xpRequired } from '../content/balance/xp-curve';
 
 // Lilu Tubs, Human Scrapper — balanced (§22).
@@ -207,7 +206,7 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
   p.pos.x += p.vel.x * dt;
   p.pos.z += p.vel.z * dt;
 
-  const clamped = clampToArena(p.pos, p.vel, ARENA_RADIUS, p.stats.collisionRadius);
+  const clamped = clampToArena(p.pos, p.vel, p.stats.collisionRadius);
   p.pos = clamped.pos;
   p.vel = clamped.vel;
 

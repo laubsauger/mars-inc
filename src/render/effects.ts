@@ -146,7 +146,11 @@ class EffectPool {
       const scale = this.s0[i]! + (this.s1[i]! - this.s0[i]!) * t;
       this.rot[i]! += this.spin[i]! * dt;
       this.dummy.position.set(this.posX[i]!, this.yOffset, this.posZ[i]!);
-      this.dummy.rotation.set(-Math.PI / 2, this.rot[i]!, 0);
+      // Flatten to the ground (−π/2 about X), then spin IN-PLANE about Z (the
+      // geometry's own normal). Putting the spin on Y instead tilts the disc out
+      // of the floor — at rot≈π/2 it stands fully vertical and clips into the
+      // ground (the "weirdly oriented, cut-off" impact ring).
+      this.dummy.rotation.set(-Math.PI / 2, 0, this.rot[i]!);
       // Stretch elongates the local long axis → a directional streak (oriented
       // spark). Round effects keep stretch 1.
       this.dummy.scale.set(scale * this.stretch[i]!, scale, scale);
@@ -235,10 +239,42 @@ export class Effects {
         case 'teleport':
           // Materialize: two phase rings COLLAPSE inward (big → small) + a bright
           // bloom + inward sparks → reads as "blinking into" the arena.
-          this.impact.spawn({ x: e.x, z: e.z, s0: 4.6, s1: 0.6, life: 0.5, spin: -4, color: COL.eliteMagenta });
-          this.impact.spawn({ x: e.x, z: e.z, s0: 3.2, s1: 0.4, life: 0.42, spin: 3, color: COL.shieldCyan });
-          this.muzzle.spawn({ x: e.x, z: e.z, s0: 0.2, s1: 2.4, life: 0.32, spin: 6, color: COL.eliteMagenta });
-          this.dust.spawn({ x: e.x, z: e.z, s0: 2.8, s1: 0.4, life: 0.42, spin: 5, color: COL.shieldCyan });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 4.6,
+            s1: 0.6,
+            life: 0.5,
+            spin: -4,
+            color: COL.eliteMagenta,
+          });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 3.2,
+            s1: 0.4,
+            life: 0.42,
+            spin: 3,
+            color: COL.shieldCyan,
+          });
+          this.muzzle.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.2,
+            s1: 2.4,
+            life: 0.32,
+            spin: 6,
+            color: COL.eliteMagenta,
+          });
+          this.dust.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 2.8,
+            s1: 0.4,
+            life: 0.42,
+            spin: 5,
+            color: COL.shieldCyan,
+          });
           break;
       }
     }

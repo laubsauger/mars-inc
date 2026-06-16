@@ -153,6 +153,7 @@ export interface FloatingLabel {
   size: number;
   opacity: number;
   kind: 'dmg' | 'pickup';
+  crit?: boolean;
   prompt?: boolean;
   active?: boolean;
 }

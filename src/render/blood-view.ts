@@ -42,6 +42,14 @@ function goreColor(variant: number): Color | null {
   return g === 'blood' ? BLOOD : g === 'ichor' ? ICHOR : null;
 }
 
+// Gore volume scales with enemy size: tier-1 fodder (r≈0.65) bleeds a small
+// spritz, the brute/boss (r≥1.4) gush. Normalized around the Debt Hound (r≈0.82)
+// and clamped so nothing vanishes or floods the screen.
+function goreScale(variant: number): number {
+  const r = ENEMY_BY_VARIANT[variant]?.radius ?? 0.8;
+  return Math.max(0.55, Math.min(2.2, r / 0.82));
+}
+
 // Cheap render-local randomness (V2 — visual only, never touches sim/determinism).
 let _seed = 0x9e3779b9;
 function rnd(): number {
@@ -93,29 +101,35 @@ export class BloodView {
       if (e.kind === 'blood') {
         const c = goreColor(e.variant);
         // Vary count + energy per hit so no two splats look identical.
-        if (c)
+        if (c) {
+          const sz = goreScale(e.variant);
           this.spray(
             e.x,
             e.z,
             e.dx,
             e.dz,
             c,
-            this.reduceFlash ? 3 : 4 + ((rnd() * 6) | 0),
+            Math.max(2, Math.round((this.reduceFlash ? 3 : 4 + ((rnd() * 6) | 0)) * sz)),
             0.8 + rnd() * 0.7,
+            sz,
           );
+        }
       } else if (e.kind === 'death') {
         const c = goreColor(e.variant);
         // Death gush: radial, more matter (no incoming direction → burst outward).
-        if (c)
+        if (c) {
+          const sz = goreScale(e.variant);
           this.spray(
             e.x,
             e.z,
             0,
             0,
             c,
-            this.reduceFlash ? 6 : 9 + ((rnd() * 8) | 0),
+            Math.max(3, Math.round((this.reduceFlash ? 6 : 9 + ((rnd() * 8) | 0)) * sz)),
             1.2 + rnd() * 0.7,
+            sz,
           );
+        }
       }
     }
   }
@@ -129,6 +143,7 @@ export class BloodView {
     color: Color,
     n: number,
     force: number,
+    sizeMul = 1,
   ): void {
     const hasDir = dirX * dirX + dirZ * dirZ > 1e-4;
     const base = hasDir ? Math.atan2(dirZ, dirX) : 0;
@@ -147,7 +162,8 @@ export class BloodView {
       this.dr[i] = color.r;
       this.dg[i] = color.g;
       this.db[i] = color.b;
-      this.dsize[i] = 0.45 + rnd() * 1.15; // wider size spread → less uniform splats
+      // Droplet size scales with the enemy (small fodder bleeds small, T39).
+      this.dsize[i] = (0.45 + rnd() * 1.15) * sizeMul;
     }
   }
 

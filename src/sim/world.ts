@@ -164,7 +164,7 @@ export class World {
     this.shards = new ShardPool();
     this.mods = defaultMods();
     this.director = new WaveDirector();
-    applyPermanents(this.player, this.permanents);
+    applyPermanents(this.player, this.permanents, this.mods, this.effects);
   }
 
   /** Update owned permanents (e.g. after a Glory purchase); next run applies them. */
@@ -560,7 +560,11 @@ export class World {
     for (const k of Object.keys(this.upgradeLevels)) delete this.upgradeLevels[k];
 
     resetPlayer(this.player);
-    applyPermanents(this.player, this.permanents); // re-apply owned meta upgrades
+    // Reset the build layers BEFORE permanents so build-seeding nodes (Live Wire,
+    // Frostbrand, Hair-Trigger…) register onto a clean slate (T35+).
+    resetMods(this.mods);
+    this.effects.reset();
+    applyPermanents(this.player, this.permanents, this.mods, this.effects);
     // Draft resources include permanent bonuses applied above (T35).
     this.rerollsLeft = STARTING_REROLLS + this.player.bonusRerolls;
     this.banishesLeft = STARTING_BANISHES + this.player.bonusBanishes;
@@ -572,8 +576,6 @@ export class World {
     this.justEvolved = null;
     this.shards.count = 0;
     this.fx.clear();
-    resetMods(this.mods);
-    this.effects.reset();
     this.firingRampSec = 0;
     this.director.reset();
     this.drones.reset();

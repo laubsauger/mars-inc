@@ -26,6 +26,8 @@ export interface ScreenLabel {
   size: number; // font px
   opacity: number;
   kind: 'dmg' | 'pickup';
+  /** Damage labels: a critical hit (gold + "!" + glow). */
+  crit?: boolean;
   /** Pickup labels: show the "E" key chip (always true for crates). */
   prompt?: boolean;
   /** Pickup labels: true for the crate in equip range (the bright candidate). */
@@ -122,21 +124,27 @@ export class FloatingText {
       const ay = 1.2 + this.vy[i]! * age - 0.5 * G * age * age;
       this.v.set(ax, ay, az).project(camera);
       if (this.v.z > 1) continue;
+      // DoT ticks (burn/bleed) remove fractional health each step; don't render a
+      // number until the aggregated total rounds to ≥1, so no "0" ever pops.
+      if (Math.round(this.amt[i]!) < 1) continue;
       const f = this.flag[i];
       const isCrit = f === 1;
       const isSelf = f === 2;
-      // Spring pop: overshoot the size on spawn, settle fast (~0.16s).
-      const pop = 1 + 0.5 * Math.exp(-age * 16);
-      const base = isCrit ? 15 : isSelf ? 14 : 11;
+      // Spring pop: overshoot the size on spawn, settle fast. Crits punch harder.
+      const pop = 1 + (isCrit ? 0.9 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
+      const base = isCrit ? 20 : isSelf ? 14 : 11;
+      const val = Math.round(this.amt[i]!);
       out.push({
         id: `d${i}`,
         x: (this.v.x * 0.5 + 0.5) * w,
         y: (-this.v.y * 0.5 + 0.5) * h,
-        text: isSelf ? `-${Math.round(this.amt[i]!)}` : `${Math.round(this.amt[i]!)}`,
+        // Crit gets a "!" so it reads as a crit even out of the corner of your eye.
+        text: isSelf ? `-${val}` : isCrit ? `${val}!` : `${val}`,
         color: isSelf ? ACCENT.healthRed : isCrit ? ACCENT.kineticGold : '#f3e6c0',
         size: base * pop,
         opacity: 1 - t * t,
         kind: 'dmg',
+        crit: isCrit,
       });
     }
     for (let i = 0; i < drops.count; i++) {

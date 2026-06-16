@@ -702,31 +702,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     world,
     effects,
     save,
-    scene,
     refreshMeta: pushMeta,
-    // TEMP perf-diagnostic hook: stack a heavy build + crowd, read the dev
-    // overlay under load. Remove after profiling.
-    stress(enemies = 1200, multishot = 12, houndRatio = 0.3): void {
-      world.countdown = 0;
-      world.player.maxHealth = 1e9;
-      world.player.health = 1e9;
-      const m = world.mods;
-      m.projectileCount = multishot;
-      m.fireRateMult = 4;
-      m.spreadArc = 1.2;
-      m.chainCount = 4;
-      m.chainRange = 6;
-      m.pierce = 3;
-      m.blastRadius = 2;
-      m.knockback = 3;
-      for (let i = 0; i < enemies; i++) {
-        const ang = (i / enemies) * Math.PI * 2 * 7.3;
-        const rad = 4 + (i % 50) * 0.55;
-        const type = i % 100 < houndRatio * 100 ? ENEMY_BY_VARIANT[1]! : ENEMY_BY_VARIANT[0]!;
-        const idx = world.enemies.spawn(type, Math.cos(ang) * rad, Math.sin(ang) * rad, 0, i);
-        if (idx >= 0) world.enemies.state[idx] = EnemyState.Active;
-      }
-    },
   };
 }
 
