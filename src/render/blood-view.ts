@@ -132,6 +132,12 @@ export class BloodView {
   private pgr = new Float32Array(MAX_PLAYER_GORE);
   private pgg = new Float32Array(MAX_PLAYER_GORE);
   private pgb = new Float32Array(MAX_PLAYER_GORE);
+  // Bloody-footsteps state: track the player's world pos + a cadence timer so a
+  // blood-soaked player leaves prints while moving (strength scales with coverage).
+  private lastPx = 0;
+  private lastPz = 0;
+  private footTimer = 0;
+  private footSide = 1;
 
   constructor(scene: Scene) {
     this.dropMesh = makeInstanced(scene, new SphereGeometry(0.12, 6, 5), MAX_DROPLETS);
@@ -163,7 +169,7 @@ export class BloodView {
       this.pgHead = (this.pgHead + 1) % MAX_PLAYER_GORE;
       if (this.pgCount < MAX_PLAYER_GORE) this.pgCount++;
       const ang = srcAng + (rnd() - 0.5) * 2.2; // biased to the near side
-      const R = 0.7;
+      const R = 0.55; // ON the body surface (not floating off it)
       this.pgX[i] = Math.cos(ang) * R;
       this.pgY[i] = 0.45 + rnd() * 1.55; // up the body
       this.pgZ[i] = Math.sin(ang) * R;
@@ -350,14 +356,19 @@ export class BloodView {
     // splotches collapse to zero scale (invisible) until the ring buffer reuses
     // them — no compaction needed.
     if (this.pgMesh) {
+      let coverage = 0;
       for (let i = 0; i < this.pgCount; i++) {
         this.pgAge[i]! += dt;
         const t = this.pgAge[i]! / this.pgLife[i]!;
         const k = t >= 1 ? 0 : 1 - t * t * t; // hold fresh, dry/shrink late
+        if (k > 0.3) coverage++; // still-wet splats = how "covered" the player is
         const s = this.pgSize[i]! * k;
+        // SLAP it onto the body: flatten along the radial surface normal (local Z
+        // faces outward from the body centre) so the splat hugs the surface instead
+        // of poking out as a vertically-squashed ball.
         this.dummy.position.set(this.pgX[i]!, this.pgY[i]!, this.pgZ[i]!);
-        this.dummy.rotation.set(0, 0, 0);
-        this.dummy.scale.set(s, s * 0.5, s); // squashed = a splat clinging to the body
+        this.dummy.rotation.set(0, Math.atan2(this.pgX[i]!, this.pgZ[i]!), 0);
+        this.dummy.scale.set(s * 1.15, s * 1.15, s * 0.32); // thin in the radial dir
         this.dummy.updateMatrix();
         this.pgMesh.setMatrixAt(i, this.dummy.matrix);
         const drk = 0.45 + 0.55 * k; // darken as it dries
@@ -369,7 +380,35 @@ export class BloodView {
       this.pgMesh.count = this.pgCount;
       this.pgMesh.instanceMatrix.needsUpdate = true;
       if (this.pgMesh.instanceColor) this.pgMesh.instanceColor.needsUpdate = true;
+      this.footsteps(dt, coverage);
     }
+  }
+
+  /** Bloody footprints: while the player is gore-soaked and moving, drop floor
+   *  decals at alternating feet — stronger/darker the more covered they are, fading
+   *  as the blood dries. Reuses the floor-decal pool (capped, V5). */
+  private footsteps(dt: number, coverage: number): void {
+    const p = this.player;
+    if (!p) return;
+    const px = p.pos.x;
+    const pz = p.pos.z;
+    const mvx = px - this.lastPx;
+    const mvz = pz - this.lastPz;
+    const moved = Math.hypot(mvx, mvz);
+    this.lastPx = px;
+    this.lastPz = pz;
+    if (coverage < 4) return; // not bloody enough to track prints
+    this.footTimer -= dt;
+    if (moved < 0.015 || this.footTimer > 0) return;
+    const inv = 1 / moved;
+    const perpx = -mvz * inv; // step offset perpendicular to travel (left/right foot)
+    const perpz = mvx * inv;
+    this.footSide = -this.footSide;
+    const fx = px + perpx * 0.26 * this.footSide;
+    const fz = pz + perpz * 0.26 * this.footSide;
+    const cover = Math.min(1, coverage / 30);
+    this.landDecal(fx, fz, mvx, mvz, BLOOD.r * 0.85, BLOOD.g, BLOOD.b, 0.3 + cover * 0.5);
+    this.footTimer = 0.28 - cover * 0.08; // soaked → prints land closer together
   }
 
   private moveDroplet(from: number, to: number): void {

@@ -137,11 +137,41 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     description: '+15% weapon range.',
     tags: ['range'],
     rarity: 'common',
-    maxLevel: 4,
-    baseWeight: 9,
-    synergyWeight: 2,
+    maxLevel: 5,
+    baseWeight: 12,
+    synergyWeight: 3,
     apply: ({ mods }) => {
       mods.rangeMult += 0.15;
+    },
+  },
+  {
+    id: 'extended-barrel',
+    name: 'Extended Barrel',
+    description: '+28% weapon range and +4% damage — reach out and touch them.',
+    tags: ['range', 'precision', 'damage'],
+    grantsTags: ['range'],
+    rarity: 'uncommon',
+    maxLevel: 4,
+    baseWeight: 8,
+    synergyWeight: 4,
+    apply: ({ mods }) => {
+      mods.rangeMult += 0.28;
+      mods.damageMult += 0.04;
+    },
+  },
+  {
+    id: 'recon-optics',
+    name: 'Recon Optics',
+    description: '+45% weapon range and +3% crit chance — pick targets from afar.',
+    tags: ['range', 'precision', 'crit'],
+    grantsTags: ['range'],
+    rarity: 'rare',
+    maxLevel: 3,
+    baseWeight: 6,
+    synergyWeight: 5,
+    apply: ({ mods }) => {
+      mods.rangeMult += 0.45;
+      mods.critChanceAdd += 0.03;
     },
   },
 

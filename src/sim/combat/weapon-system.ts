@@ -28,17 +28,19 @@ import type { RunMods } from '../progression/mods';
 import type { ConditionalResult } from '../progression/effects';
 import { type FxQueue, ImpactProfile } from '../fx';
 
-/** Weapon family → its hit-FX profile (art doc: each family reads distinctly). */
+/** Weapon family → its NON-EXPLOSIVE hit-FX profile (art doc: each family reads
+ *  distinctly). The explosion (Blast) FX is NOT assigned here — it's added at fire
+ *  time only when a shot actually detonates (blast > 0), so a heavy orbital slug
+ *  with no AoE reads as a strong spark, not an explosion. */
 function impactProfile(family: WeaponFamily): ImpactProfile {
   switch (family) {
     case 'sidearm':
     case 'drone':
+    case 'orbital': // heavy single bolt — a strong spark unless it carries real AoE
+    case 'explosive': // only shows Blast when it genuinely detonates (blast > 0)
       return ImpactProfile.Tick;
     case 'rotary':
       return ImpactProfile.Stitch;
-    case 'explosive':
-    case 'orbital':
-      return ImpactProfile.Blast;
     case 'energy':
       return ImpactProfile.Arc;
   }
@@ -165,7 +167,10 @@ export class WeaponSystem {
       const shots = Math.max(1, (w.def.pellets ?? 1) * mods.projectileCount);
       const arc = w.def.spreadArc ?? mods.spreadArc;
       const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
-      const profile = impactProfile(w.def.family); // per-family hit FX (T37)
+      const blast = Math.max(w.def.explosiveRadius ?? 0, mods.blastRadius);
+      // Explosion impact FX ONLY when the shot actually detonates (blast > 0); a
+      // non-AoE heavy bolt (e.g. orbital Phobos slug) reads as a spark, not a blast.
+      const profile = blast > 0 ? ImpactProfile.Blast : impactProfile(w.def.family);
       // Proc strength rides the projectile (T69, V32); build mods can raise it (T70 status lane).
       const procCoef = Math.max(0, procCoefOf(w.def) + mods.procCoefBonus);
       // Fan multishot evenly across the arc; single shot gets random jitter.
@@ -184,7 +189,7 @@ export class WeaponSystem {
           life,
           pierce,
           dmg,
-          Math.max(w.def.explosiveRadius ?? 0, mods.blastRadius),
+          blast,
           profile,
           Math.max(0, Math.floor(mods.ricochet)),
           procCoef,
@@ -605,7 +610,9 @@ function compactDead(enemies: EnemyPool, kills: KillEvent[], fx: FxQueue): void 
         overkill: Math.max(0, -enemies.health[i]!),
         size: enemies.radius[i]!,
       });
-      fx.push('death', x, z, 0, 0, variant);
+      // Carry the body radius in the dx slot so the render scales the death poof to
+      // the enemy — a small mite gets a tiny puff, not a swarm-wide flash (T37).
+      fx.push('death', x, z, enemies.radius[i]!, 0, variant);
       enemies.kill(i);
     }
   }

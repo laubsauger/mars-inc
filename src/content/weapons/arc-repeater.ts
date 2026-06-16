@@ -19,7 +19,7 @@ export const arcRepeater: WeaponDefinition = {
     base: 9,
     additive: 0,
     multiplier: 1,
-    critChance: 0.05,
+    critChance: 0,
     critMultiplier: 2,
     type: 'energy',
   },

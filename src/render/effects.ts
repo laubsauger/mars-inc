@@ -175,8 +175,15 @@ const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
 // Dim, DESATURATED warm for the explosive blast — additive + bloom blow a bright
 // colour straight to white, so the base value is kept low to read as smoke-fire,
 // not a flashbang. Leaves headroom for statuses / other FX.
-const BLAST_RING = new Color(0.34, 0.16, 0.06);
-const BLAST_DUST = new Color(0.2, 0.1, 0.05);
+// Explosion shockwave — a bright warm ORANGE so a blast reads instantly as an
+// explosion, distinct from the yellow-white spark of a normal hit and the red/
+// orange embers of fire. Reserved for the Blast profile (explosive weapons) only.
+// Dimmed muzzle gold — the full-bright flash was too hot/wide. Precomputed (a
+// per-shot clone would allocate in the hot FX path, V5).
+const MUZZLE_COL = COL.kineticGold.clone().multiplyScalar(0.6);
+const BLAST_RING = new Color(0.95, 0.42, 0.12);
+const BLAST_CORE = new Color(1.1, 0.66, 0.26);
+const BLAST_DUST = new Color(0.28, 0.14, 0.07);
 
 export class Effects {
   private muzzle: EffectPool;
@@ -204,14 +211,16 @@ export class Effects {
         case 'muzzle':
           // Flash reduction: skip the bright muzzle flash, keep gameplay readable.
           if (this.reduceFlash) break;
+          // Tighter + dimmer + a gentler shrink so it reads as a quick pop, not a
+          // wide hard-edged flare (the solid additive disc has a hard rim, §B1).
           this.muzzle.spawn({
             x: e.x,
             z: e.z,
-            s0: 2.1,
-            s1: 1.0,
-            life: 0.11,
-            spin: 8,
-            color: COL.kineticGold,
+            s0: 1.2,
+            s1: 0.5,
+            life: 0.12,
+            spin: 6,
+            color: MUZZLE_COL,
           });
           break;
         case 'impact':
@@ -220,27 +229,23 @@ export class Effects {
           // direction in dx,dz (0 = radial).
           this.impactFx(e.x, e.z, e.variant as ImpactProfile, e.dx, e.dz);
           break;
-        case 'death':
-          // Comic dust poof + scrap scatter, tinted by variant.
+        case 'death': {
+          // A small dust poof SCALED TO THE BODY (radius rides in dx) — a mite gets a
+          // tiny puff, a brute a bigger one. NO ring (that read as an explosion on
+          // every kill). Kept well under the Blast read so explosives stay legible.
+          // Blood spray/splat (emitBlood) carries most of the kill feedback.
+          const sz = e.dx > 0 ? e.dx : 0.5;
           this.dust.spawn({
             x: e.x,
             z: e.z,
-            s0: 1.6,
-            s1: 5,
-            life: 0.45,
+            s0: 0.5 * sz,
+            s1: 1.8 * sz,
+            life: 0.26,
             spin: 4,
             color: e.variant === 1 ? COL.healthRed : COL.marsDust,
           });
-          this.impact.spawn({
-            x: e.x,
-            z: e.z,
-            s0: 0.6,
-            s1: 3.2,
-            life: 0.4,
-            spin: 0,
-            color: COL.sunHigh,
-          });
           break;
+        }
         case 'teleport':
           // Materialize: two phase rings COLLAPSE inward (big → small) + a bright
           // bloom + inward sparks → reads as "blinking into" the arena.
@@ -400,61 +405,35 @@ export class Effects {
     const ang = hasDir ? Math.atan2(dz, dx) : 0;
     const ox = x + dx * 0.4; // bias the streak just past the contact point
     const oz = z + dz * 0.4;
-    switch (profile) {
-      case ImpactProfile.Tick: // sidearm: sharp small yellow-white spark
-        this.impact.spawn({ x, z, s0: 0.5, s1: 1.7, life: 0.16, spin: 0, color: COL.sunHigh });
-        if (hasDir)
-          this.muzzle.spawn({
-            x: ox,
-            z: oz,
-            s0: 1.0,
-            s1: 0.25,
-            life: 0.1,
-            spin: 0,
-            color: COL.kineticGold,
-            rot: ang,
-            stretch: 3,
-          });
-        break;
-      case ImpactProfile.Stitch: // rotary: tiny rapid brass chip streak
-        this.impact.spawn({ x, z, s0: 0.4, s1: 1.2, life: 0.12, spin: 0, color: COL.brass });
-        if (hasDir)
-          this.muzzle.spawn({
-            x: ox,
-            z: oz,
-            s0: 0.8,
-            s1: 0.2,
-            life: 0.08,
-            spin: 0,
-            color: COL.brass,
-            rot: ang,
-            stretch: 3.5,
-          });
-        break;
-      case ImpactProfile.Arc: // energy: angular cyan flash + streak
-        this.impact.spawn({ x, z, s0: 0.7, s1: 2.3, life: 0.2, spin: 0, color: COL.shieldCyan });
-        this.muzzle.spawn({
-          x: ox,
-          z: oz,
-          s0: 1.0,
-          s1: 0.2,
-          life: 0.1,
-          spin: 0,
-          color: COL.shieldCyan,
-          rot: ang,
-          stretch: hasDir ? 2.5 : 1,
-        });
-        break;
-      case ImpactProfile.Blast: // explosive: a contained warm puff — NOT a screen-eater
-        // Smaller + dimmer (muted dust-orange, not bright sun-gold) so it reads as a
-        // blast but leaves room for statuses / other FX to show over the crowd.
-        this.impact.spawn({ x, z, s0: 0.6, s1: 1.9, life: 0.24, spin: 0, color: BLAST_RING });
-        this.dust.spawn({ x, z, s0: 1.1, s1: 2.1, life: 0.32, spin: 3, color: BLAST_DUST });
-        break;
-      default: // generic (enemy attacks, drops, status ticks)
-        this.impact.spawn({ x, z, s0: 0.8, s1: 2.6, life: 0.28, spin: 0, color: COL.sunHigh });
-        this.dust.spawn({ x, z, s0: 1.4, s1: 2.6, life: 0.32, spin: 3, color: COL.kineticGold });
+    // The expanding RING (impact pool = annulus) reads as a shockwave, so it is
+    // reserved for the explosive Blast profile ONLY. Every other hit is a small
+    // SPARK — a bright disc that SHRINKS (s0 > s1, never expands) + a directional
+    // streak — so a normal blaster / drone hit never looks like an explosion.
+    if (profile === ImpactProfile.Blast) {
+      this.impact.spawn({ x, z, s0: 0.5, s1: 2.6, life: 0.3, spin: 0, color: BLAST_RING });
+      this.impact.spawn({ x, z, s0: 0.9, s1: 0.2, life: 0.14, spin: 0, color: BLAST_CORE });
+      this.dust.spawn({ x, z, s0: 1.2, s1: 2.4, life: 0.36, spin: 3, color: BLAST_DUST });
+      return;
     }
+    const sparkCol =
+      profile === ImpactProfile.Stitch
+        ? COL.brass
+        : profile === ImpactProfile.Arc
+          ? COL.shieldCyan
+          : COL.sunHigh;
+    this.muzzle.spawn({ x, z, s0: 0.5, s1: 0.12, life: 0.08, spin: 0, color: sparkCol });
+    if (hasDir)
+      this.muzzle.spawn({
+        x: ox,
+        z: oz,
+        s0: 0.8,
+        s1: 0.16,
+        life: 0.08,
+        spin: 0,
+        color: profile === ImpactProfile.Arc ? COL.shieldCyan : COL.kineticGold,
+        rot: ang,
+        stretch: profile === ImpactProfile.Stitch ? 3.5 : 2.8,
+      });
   }
 
   /** Cyan sprint trail commas (art doc). reduceFlash dampens via fewer puffs. */

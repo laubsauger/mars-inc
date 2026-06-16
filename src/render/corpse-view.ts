@@ -25,7 +25,7 @@ export class CorpseView {
   private tmp = new Color();
 
   constructor(scene: Scene, capacity = 256) {
-    const geo = new IcosahedronGeometry(0.5, 0); // chunky gib
+    const geo = new IcosahedronGeometry(0.85, 1); // chunky, faceted gib — reads as a body
     // Emissive so a corpse glows faintly on the dark arena (and brighter as it
     // loads with overkill via setColorAt below) — otherwise dark gore on a dark
     // floor is invisible. toneMapped off keeps the emissive punchy under bloom.
@@ -51,10 +51,10 @@ export class CorpseView {
     for (let i = 0; i < n; i++) {
       const x = pool.prevX[i]! + (pool.posX[i]! - pool.prevX[i]!) * alpha;
       const z = pool.prevZ[i]! + (pool.posZ[i]! - pool.prevZ[i]!) * alpha;
-      const s = Math.max(0.6, pool.size[i]! * 1.1); // a touch bigger so it reads
-      this.dummy.position.set(x, s * 0.45, z);
+      const s = Math.max(1.0, pool.size[i]! * 1.6); // clearly readable, not a speck
+      this.dummy.position.set(x, s * 0.42, z);
       this.dummy.rotation.set(0.4, pool.variant[i]! * 1.3 + i * 0.7, 0);
-      this.dummy.scale.set(s, s * 0.6, s); // squashed onto the floor
+      this.dummy.scale.set(s, s * 0.62, s); // squashed onto the floor
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
       // Warmer the more overkill it holds → reads as "loaded". Lower threshold so

@@ -137,6 +137,8 @@ export class World {
   readonly effects = new BuildEffects();
   /** Sustained-combat ramp (s) for ramp-while-firing conditionals (T38). */
   private firingRampSec = 0;
+  /** Stand-still ramp (s): grows while the player holds position, resets on move. */
+  private stationarySec = 0;
   /** Damage dealt by on-hit triggers this step (T39, folded into run stats). */
   private hitTriggerDamage = 0;
   /** Damage dealt by the repulsor nova this step (T42, folded into run stats). */
@@ -269,8 +271,10 @@ export class World {
       this.weaponSystem.projectiles,
       dt,
       this.mods.damageMult * this.player.droneDamageMult, // COMMAND drone amp (T35)
-      // Drones inherit the build's projectile mods ONLY with Networked Munitions.
-      this.player.droneInheritMods ? this.mods : null,
+      // Drones inherit your SCALAR stats (range/fire rate) from the build always;
+      // the projectile MECHANICS (blast/pierce/ricochet/on-hit) only with the keystone.
+      this.mods,
+      this.player.droneInheritMods,
     );
     // Repulsor nova (CC, T42): on its interval, shove every nearby enemy outward
     // and deal light AoE through the pipeline (V3) — cuts space in a blob.
@@ -469,6 +473,9 @@ export class World {
     const e = this.enemies;
     const n = e.count;
     this.firingRampSec = n > 0 ? Math.min(12, this.firingRampSec + dt) : 0;
+    // Stand-still ramp: grows while holding position, resets the instant you move.
+    const moving = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5;
+    this.stationarySec = moving ? 0 : Math.min(12, this.stationarySec + dt);
 
     let nearest = Infinity;
     for (let i = 0; i < n; i++) {
@@ -484,6 +491,7 @@ export class World {
       hpFrac: this.player.maxHealth > 0 ? this.player.health / this.player.maxHealth : 0,
       recentCrit: false, // wired when the weapon system reports crits (T40)
       recoilActive: this.player.recoilTimer > 0, // recoil builds (T55)
+      stationarySec: this.stationarySec,
     });
   }
 
@@ -722,6 +730,7 @@ export class World {
     this.shards.count = 0;
     this.fx.clear();
     this.firingRampSec = 0;
+    this.stationarySec = 0;
     this.director.reset();
     this.drones.reset();
     this.corpses.pool.clear();
@@ -949,10 +958,27 @@ export class World {
     const s = this.player.stats;
     const p = this.player;
     const pct = (x: number): string => `${Math.round(x * 100)}%`;
-    // Conditional damage/crit/fire-rate (Restraining Order, risk cards, ramps…)
-    // live in the dynamic BuildEffects layer, NOT the static mods — so they'd
-    // read ×1.00 here. Probe the build at a best-case context to surface their
-    // POTENTIAL, so a "+35% while kiting" card is visible (read-only, no mutation).
+    // Conditional damage/crit/fire-rate (Restraining Order, risk cards, ramps…) live
+    // in the dynamic BuildEffects layer, NOT the static mods. Evaluate them against
+    // the CURRENT battlefield (read-only — no mutation) so the sheet shows what's
+    // ACTIVE right now; a separate best-case probe gives the "up to" potential.
+    const e = this.enemies;
+    let nearest = Infinity;
+    for (let i = 0; i < e.count; i++) {
+      const dx = e.posX[i]! - p.pos.x;
+      const dz = e.posZ[i]! - p.pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < nearest) nearest = d2;
+    }
+    const live = this.effects.evalConditionals({
+      enemiesOnScreen: e.count,
+      nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
+      firingRampSec: this.firingRampSec,
+      hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 0,
+      recentCrit: false,
+      recoilActive: p.recoilTimer > 0,
+      stationarySec: this.stationarySec,
+    });
     const probe = this.effects.evalConditionals({
       enemiesOnScreen: 99,
       nearestDist: 999,
@@ -960,20 +986,29 @@ export class World {
       hpFrac: 0.01,
       recentCrit: true,
       recoilActive: true,
+      stationarySec: 12,
     });
-    const upTo = (base: number, max: number, fmt: (n: number) => string): string =>
-      max > base + Math.abs(base) * 0.001 + 1e-4 ? `${fmt(base)} (up to ${fmt(max)})` : fmt(base);
+    // Show the CURRENTLY-active value, and "(up to MAX)" only when more is possible.
+    const upTo = (now: number, max: number, fmt: (n: number) => string): string =>
+      max > now + Math.abs(now) * 0.001 + 1e-4 ? `${fmt(now)} (up to ${fmt(max)})` : fmt(now);
     const xMult = (n: number): string => `×${n.toFixed(2)}`;
     const attributes = [
       { label: 'Health', value: `${Math.round(p.health)} / ${Math.round(p.maxHealth)}` },
-      { label: 'Damage', value: upTo(m.damageMult, m.damageMult * probe.damageMult, xMult) },
+      {
+        label: 'Damage',
+        value: upTo(m.damageMult * live.damageMult, m.damageMult * probe.damageMult, xMult),
+      },
       {
         label: 'Fire rate',
-        value: upTo(m.fireRateMult, m.fireRateMult * probe.fireRateMult, xMult),
+        value: upTo(m.fireRateMult * live.fireRateMult, m.fireRateMult * probe.fireRateMult, xMult),
       },
       {
         label: 'Crit bonus',
-        value: upTo(m.critChanceAdd, m.critChanceAdd + probe.critAdd, (n) => `+${pct(n)}`),
+        value: upTo(
+          m.critChanceAdd + live.critAdd,
+          m.critChanceAdd + probe.critAdd,
+          (n) => `+${pct(n)}`,
+        ),
       },
       { label: 'Range', value: `×${m.rangeMult.toFixed(2)}` },
       { label: 'Projectiles', value: `${m.projectileCount}` },

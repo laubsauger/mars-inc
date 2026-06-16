@@ -1,12 +1,11 @@
-// Gravedigger pet view (T-necro). Risen pets render in a friendly GHOST-GREEN with
-// an emissive glow (unmistakably YOURS, not an enemy) and a small billboarded health
-// bar so you can read how close each is to crumbling. Pure view (V2): reads the SoA
-// pool, interpolates by alpha (V1), never mutates. Solid geometry + pre-created
-// instanceColor (§B1 WebGPU pattern).
+// Gravedigger pet view (T-necro). A risen pet uses the SAME silhouette as the enemy
+// it was raised from (reusing the enemy-view shape meshes by variant) but in a
+// friendly GHOST-GREEN with an emissive glow + a small billboarded health bar — so
+// you instantly read "that one's mine" from across the arena. Pure view (V2): reads
+// the SoA pool, interpolates by alpha (V1), never mutates. §B1 instanced pattern.
 
 import {
   InstancedMesh,
-  IcosahedronGeometry,
   PlaneGeometry,
   MeshStandardMaterial,
   MeshBasicMaterial,
@@ -19,15 +18,20 @@ import {
   type Scene,
 } from 'three';
 import { MAX_PETS, type PetPool } from '../sim/combat/pets';
+import { buildShapes, VARIANT_SHAPE, SHAPE_COUNT } from './enemy-view';
 
-const FRIEND = new Color(0x3affa0); // ghost-green — "this one fights for you"
+const FRIEND = new Color(0x2bff8a); // ghost-green — "this one fights for you"
 const BAR_H = 0.14;
 const BG = new Color(0.02, 0.03, 0.02);
 const HP_FULL = new Color(0.3, 0.95, 0.55);
 const HP_LOW = new Color(0.95, 0.55, 0.12);
+const WEDGE = 0; // VARIANT_SHAPE fallback (mite wedge) for unknown variants
 
 export class PetView {
-  private body: InstancedMesh;
+  // One instanced mesh per enemy SHAPE family (same geometry as enemy-view), all
+  // tinted friendly-green. Pets route to their mesh by variant, exactly like enemies.
+  private meshes: InstancedMesh[] = [];
+  private counts = new Int32Array(SHAPE_COUNT);
   private bg: InstancedMesh;
   private fill: InstancedMesh;
   private dummy = new Object3D();
@@ -36,18 +40,23 @@ export class PetView {
   private fillColor: InstancedBufferAttribute;
 
   constructor(scene: Scene, capacity: number = MAX_PETS) {
-    const bodyMat = new MeshStandardMaterial({
-      color: FRIEND,
-      emissive: FRIEND,
-      emissiveIntensity: 0.7,
-      roughness: 0.6,
-      metalness: 0.1,
-      toneMapped: false,
-    });
-    this.body = new InstancedMesh(new IcosahedronGeometry(0.5, 0), bodyMat, capacity);
-    this.body.frustumCulled = false;
-    this.body.count = 0;
-    this.body.instanceMatrix.setUsage(DynamicDrawUsage);
+    const shapes = buildShapes();
+    for (let s = 0; s < SHAPE_COUNT; s++) {
+      const mat = new MeshStandardMaterial({
+        color: FRIEND,
+        emissive: FRIEND,
+        emissiveIntensity: 0.6,
+        roughness: 0.55,
+        metalness: 0.1,
+        toneMapped: false,
+      });
+      const mesh = new InstancedMesh(shapes[s]!, mat, capacity);
+      mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      mesh.frustumCulled = false;
+      mesh.count = 0;
+      scene.add(mesh);
+      this.meshes.push(mesh);
+    }
 
     const barGeo = new PlaneGeometry(1, BAR_H);
     this.bg = new InstancedMesh(
@@ -66,13 +75,13 @@ export class PetView {
     }
     this.bg.renderOrder = 2;
     this.fill.renderOrder = 3;
-    scene.add(this.body);
     scene.add(this.bg);
     scene.add(this.fill);
   }
 
   sync(pool: PetPool, camera: PerspectiveCamera, alpha: number): void {
     const n = pool.count;
+    this.counts.fill(0);
     this.right.setFromMatrixColumn(camera.matrixWorld, 0);
     const q = camera.quaternion;
     for (let i = 0; i < n; i++) {
@@ -80,17 +89,21 @@ export class PetView {
       const z = pool.prevZ[i]! + (pool.posZ[i]! - pool.prevZ[i]!) * alpha;
       const s = Math.max(0.5, pool.size[i]!);
 
-      // Body: hovers a touch off the floor, slow tumble.
-      this.dummy.position.set(x, s * 0.55, z);
-      this.dummy.rotation.set(0.5, x * 0.3 + z * 0.2, 0);
-      this.dummy.scale.setScalar(s);
+      // Body: the enemy's own shape mesh (by variant), scaled to the pet's size
+      // (shapes are built to a ~0.5 radius reference, so radius/0.5 fits).
+      const shape = VARIANT_SHAPE[pool.variant[i]!] ?? WEDGE;
+      const mesh = this.meshes[shape]!;
+      const idx = this.counts[shape]!++;
+      this.dummy.position.set(x, 0, z);
+      this.dummy.rotation.set(0, x * 0.3 + z * 0.2, 0); // slow idle turn
+      this.dummy.scale.setScalar(s / 0.5);
       this.dummy.updateMatrix();
-      this.body.setMatrixAt(i, this.dummy.matrix);
+      mesh.setMatrixAt(idx, this.dummy.matrix);
 
       // Health bar above the pet (billboarded), drains from the right.
       const frac = pool.maxHp[i]! > 0 ? Math.max(0, Math.min(1, pool.hp[i]! / pool.maxHp[i]!)) : 0;
       const w = Math.max(0.9, s * 1.7);
-      const y = s * 1.6 + 0.7;
+      const y = s * 1.9 + 0.7;
       this.dummy.position.set(x, y, z);
       this.dummy.quaternion.copy(q);
       this.dummy.scale.set(w + 0.07, BAR_H + 0.05, 1);
@@ -106,10 +119,13 @@ export class PetView {
       this.fill.setMatrixAt(i, this.dummy.matrix);
       this.fill.setColorAt(i, this.tmp.copy(HP_LOW).lerp(HP_FULL, frac));
     }
-    this.body.count = n;
+    for (let s = 0; s < SHAPE_COUNT; s++) {
+      const mesh = this.meshes[s]!;
+      mesh.count = this.counts[s]!;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
     this.bg.count = n;
     this.fill.count = n;
-    this.body.instanceMatrix.needsUpdate = true;
     this.bg.instanceMatrix.needsUpdate = true;
     this.fill.instanceMatrix.needsUpdate = true;
     this.fillColor.needsUpdate = true;

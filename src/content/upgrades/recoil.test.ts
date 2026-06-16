@@ -17,6 +17,7 @@ const CTX: ConditionalCtx = {
   hpFrac: 1,
   recentCrit: false,
   recoilActive: false,
+  stationarySec: 0,
 };
 
 function apply(

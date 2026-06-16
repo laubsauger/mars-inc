@@ -19,7 +19,7 @@ export const phobosDriver: WeaponDefinition = {
     base: 16,
     additive: 0,
     multiplier: 1,
-    critChance: 0.06,
+    critChance: 0,
     critMultiplier: 2.2,
     type: 'kinetic',
   },

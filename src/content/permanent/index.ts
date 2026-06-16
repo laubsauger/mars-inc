@@ -692,6 +692,255 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
       p.luck += 2;
     },
   },
+
+  // ══ EXPANSION (T35) — deeper branches, more path-tip legendaries to commit to ══
+  // ── Mobility ──
+  {
+    id: 'thrust-vectoring',
+    name: 'Thrust Vectoring',
+    description: '+6% acceleration and +3% move speed per level.',
+    branch: 'mobility',
+    rarity: 'rare',
+    cost: 130,
+    maxLevel: 3,
+    apply: (p, level) => {
+      p.stats.acceleration *= 1 + 0.06 * level;
+      p.stats.moveSpeed *= 1 + 0.03 * level;
+    },
+  },
+  {
+    id: 'slipstream',
+    name: 'Slipstream',
+    description: 'RULE: while a shot’s recoil is still carrying you, you deal +20% damage.',
+    branch: 'mobility',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.addConditional((c) => (c.recoilActive ? { damageMult: 1.2 } : {}));
+    },
+  },
+  {
+    id: 'overland-engine',
+    name: 'Overland Engine',
+    description: 'KEYSTONE: +1 sprint charge, +12% move speed, and a heavier dash shockwave.',
+    branch: 'mobility',
+    rarity: 'legendary',
+    cost: 400,
+    maxLevel: 1,
+    apply: (p) => {
+      p.stats.sprintCharges += 1;
+      p.sprint.maxCharges += 1;
+      p.sprint.charges += 1;
+      p.stats.moveSpeed *= 1.12;
+      p.dashShockForce += 12;
+      p.dashShockRadius = Math.max(p.dashShockRadius, 4);
+    },
+  },
+  // ── Biology ──
+  {
+    id: 'armor-lattice',
+    name: 'Armor Lattice',
+    description: '+25 max health and +10% knockback resistance per level.',
+    branch: 'biology',
+    rarity: 'rare',
+    cost: 140,
+    maxLevel: 2,
+    apply: (p, level) => {
+      const hp = 25 * level;
+      p.maxHealth += hp;
+      p.health += hp;
+      p.stats.knockbackResistance += 0.1 * level;
+    },
+  },
+  {
+    id: 'juggernaut-frame',
+    name: 'Juggernaut Frame',
+    description: 'KEYSTONE: +120 max health and near-immunity to knockback — an immovable wall.',
+    branch: 'biology',
+    rarity: 'legendary',
+    cost: 420,
+    maxLevel: 1,
+    apply: (p) => {
+      p.maxHealth += 120;
+      p.health += 120;
+      p.stats.knockbackResistance = Math.min(0.95, p.stats.knockbackResistance + 0.5);
+    },
+  },
+  // ── Arsenal ──
+  {
+    id: 'armor-piercing',
+    name: 'Armor-Piercing Rounds',
+    description: '+2 pierce and +20% crit damage — punch through and punish.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 1,
+    apply: (_p, _level, mods) => {
+      mods.pierce += 2;
+      mods.critDamageMult += 0.2;
+    },
+  },
+  {
+    id: 'high-velocity',
+    name: 'High-Velocity Loads',
+    description: '+20% range and +10% damage per level.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 140,
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.rangeMult += 0.2 * level;
+      mods.damageMult += 0.1 * level;
+    },
+  },
+  {
+    id: 'executioner-protocol',
+    name: 'Executioner Protocol',
+    description: 'KEYSTONE: +25% crit chance AND +70% crit damage — build a one-shot machine.',
+    branch: 'arsenal',
+    rarity: 'legendary',
+    cost: 440,
+    maxLevel: 1,
+    apply: (_p, _level, mods) => {
+      mods.critChanceAdd += 0.25;
+      mods.critDamageMult += 0.7;
+    },
+  },
+  // ── Command ──
+  {
+    id: 'drone-fabricator',
+    name: 'Drone Fabricator',
+    description: '+1 companion drone per level.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.droneCount += level;
+    },
+  },
+  {
+    id: 'swarm-tactics',
+    name: 'Swarm Tactics',
+    description: '+30% drone damage and +1 luck.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 1,
+    apply: (p) => {
+      p.droneDamageMult += 0.3;
+      p.luck += 1;
+    },
+  },
+  {
+    id: 'legion-protocol',
+    name: 'Legion Protocol',
+    description: 'KEYSTONE: +2 drones and +50% drone damage — field a private army.',
+    branch: 'command',
+    rarity: 'legendary',
+    cost: 440,
+    maxLevel: 1,
+    apply: (p) => {
+      p.droneCount += 2;
+      p.droneDamageMult += 0.5;
+    },
+  },
+  // ── Arena ──
+  {
+    id: 'market-maker',
+    name: 'Market Maker',
+    description: 'ECONOMY: +12% Martian Glory earned per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.gloryMult += 0.12 * level;
+    },
+  },
+  {
+    id: 'windfall',
+    name: 'Windfall',
+    description: '+1 luck and +8% pickup radius per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 130,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.luck += level;
+      p.pickupRadius *= 1 + 0.08 * level;
+    },
+  },
+  {
+    id: 'vip-access',
+    name: 'VIP Access',
+    description: 'KEYSTONE: +30% Glory, +2 luck, AND +1 draft option — the whole meta, upgraded.',
+    branch: 'arena',
+    rarity: 'legendary',
+    cost: 420,
+    maxLevel: 1,
+    apply: (p) => {
+      p.gloryMult += 0.3;
+      p.luck += 2;
+      p.draftSize += 1;
+    },
+  },
+  // ── Infamy ──
+  {
+    id: 'martyrdom',
+    name: 'Martyrdom',
+    description: 'RULE: while below 40% health you fire 30% faster — go down swinging.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.addConditional((c) => (c.hpFrac < 0.4 ? { fireRateMult: 1.3 } : {}));
+    },
+  },
+  {
+    id: 'notorious',
+    name: 'Notorious',
+    description: '+15% Glory earned and +10% damage — fame has its perks.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 1,
+    apply: (p, _level, mods) => {
+      p.gloryMult += 0.15;
+      mods.damageMult += 0.1;
+    },
+  },
+  {
+    id: 'pact-of-ruin',
+    name: 'Pact of Ruin',
+    description: 'KEYSTONE: +50% damage and +50% crit damage, paid with 40 max health.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 400,
+    maxLevel: 1,
+    apply: (p, _level, mods) => {
+      mods.damageMult += 0.5;
+      mods.critDamageMult += 0.5;
+      p.maxHealth = Math.max(1, p.maxHealth - 40);
+      p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
+  {
+    id: 'apex-predator',
+    name: 'Apex Predator',
+    description:
+      'KEYSTONE: damage scales up to +80% as your health drops, AND you cheat death once.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 480,
+    maxLevel: 1,
+    apply: (p, _level, _mods, effects) => {
+      p.reviveCharges += 1;
+      effects.addConditional((c) => ({ damageMult: 1 + 0.8 * (1 - c.hpFrac) }));
+    },
+  },
 ];
 
 export function permanentById(id: string): PermanentUpgrade | undefined {

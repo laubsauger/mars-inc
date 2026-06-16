@@ -15,16 +15,16 @@ const MAX_DRONES = 16;
 const ORBIT_RADIUS = 2.8;
 const ORBIT_SPEED = 1.7; // rad/s
 const DRONE_RANGE = 15; // target acquisition radius
-const FIRE_INTERVAL = 0.65; // s between a drone's shots
+const FIRE_INTERVAL = 0.95; // s between a drone shot — slow; drones supplement, not a main gun
 const PROJ_SPEED = 28;
-const PROJ_RADIUS = 0.28;
+const PROJ_RADIUS = 0.12; // smaller than the player's bolts (0.16+) so drones read as minor fire
 const PROJ_LIFETIME = 0.9;
 
 const DRONE_DMG: WeaponDamageSpec = {
-  base: 4,
+  base: 2.5, // low — a companion chip, not a second primary (T35 drone tuning)
   additive: 0,
   multiplier: 1,
-  critChance: 0.05,
+  critChance: 0, // no base crit — crit is earned entirely through upgrades
   critMultiplier: 1.5,
   type: 'energy',
 };
@@ -61,11 +61,18 @@ export class DroneSystem {
     projectiles: ProjectilePool,
     dt: number,
     dmgMult: number,
-    // Non-null only with the Networked Munitions keystone → drone bolts then carry
-    // the build's blast/pierce/ricochet AND inherit global on-hit mods. Null = dumb.
-    inheritMods: RunMods | null = null,
+    // The build's run mods — drones inherit the player's SCALAR stats (damage via
+    // dmgMult, plus range + fire rate) so they scale with your whole build instead
+    // of needing a separate drone skill branch.
+    mods: RunMods,
+    // Mechanic inheritance (blast/pierce/ricochet + global on-hit mods) is OPT-IN
+    // via the Networked Munitions keystone — off by default (drones stay dumb bolts).
+    inheritMechanics = false,
   ): void {
     if (this.count === 0) return;
+    // Drones inherit the player's reach + fire cadence from the build.
+    const range = DRONE_RANGE * mods.rangeMult;
+    const fireInterval = FIRE_INTERVAL / Math.max(0.05, mods.fireRateMult);
     this.spin += ORBIT_SPEED * dt;
     for (let i = 0; i < this.count; i++) {
       const a = this.spin + (i / this.count) * Math.PI * 2;
@@ -80,9 +87,9 @@ export class DroneSystem {
       if (this.cd[i]! > 0) continue;
 
       // Nearest ACTIVE enemy within range (broad-phase, no per-enemy raycast V6).
-      const n = hash.queryCircle(dx0, dz0, DRONE_RANGE, this.ids);
+      const n = hash.queryCircle(dx0, dz0, range, this.ids);
       let best = -1;
-      let bestD2 = DRONE_RANGE * DRONE_RANGE;
+      let bestD2 = range * range;
       for (let k = 0; k < n; k++) {
         const e = this.ids[k]!;
         if (enemies.state[e] !== EnemyState.Active) continue;
@@ -102,9 +109,9 @@ export class DroneSystem {
       const dmg: WeaponDamageSpec = { ...DRONE_DMG, multiplier: DRONE_DMG.multiplier * dmgMult };
       // Dumb bolt by default (no blast/pierce/ricochet, inherit OFF). With Networked
       // Munitions the drone carries the build's projectile mods + inherits on-hit.
-      const blast = inheritMods ? inheritMods.blastRadius : 0;
-      const pierce = inheritMods ? Math.max(0, Math.floor(inheritMods.pierce)) : 0;
-      const bounces = inheritMods ? Math.max(0, Math.floor(inheritMods.ricochet)) : 0;
+      const blast = inheritMechanics ? mods.blastRadius : 0;
+      const pierce = inheritMechanics ? Math.max(0, Math.floor(mods.pierce)) : 0;
+      const bounces = inheritMechanics ? Math.max(0, Math.floor(mods.ricochet)) : 0;
       projectiles.spawn(
         dx0,
         dz0,
@@ -118,9 +125,9 @@ export class DroneSystem {
         0, // profile
         bounces,
         1, // procCoef
-        inheritMods ? 1 : 0, // inherit global on-hit mods?
+        inheritMechanics ? 1 : 0, // inherit global on-hit mods?
       );
-      this.cd[i] = FIRE_INTERVAL;
+      this.cd[i] = fireInterval;
     }
   }
 }

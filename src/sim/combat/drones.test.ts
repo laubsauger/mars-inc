@@ -4,6 +4,7 @@ import { ProjectilePool } from './projectiles';
 import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
 import { SpatialHash } from '../spatial-hash';
 import { createPlayer } from '../player';
+import { defaultMods } from '../progression/mods';
 
 function activeEnemyAt(pool: EnemyPool, hash: SpatialHash, x: number, z: number): void {
   const i = pool.spawn(RUST_MITE, x, z, 0, 0);
@@ -22,7 +23,7 @@ describe('companion drones (T40 drone family)', () => {
 
     const drones = new DroneSystem();
     drones.setCount(1);
-    drones.step(player, enemies, hash, projectiles, 1 / 60, 1);
+    drones.step(player, enemies, hash, projectiles, 1 / 60, 1, defaultMods());
 
     expect(projectiles.count).toBe(1); // a drone bolt was spawned into the shared pool
   });
@@ -36,7 +37,7 @@ describe('companion drones (T40 drone family)', () => {
 
     const drones = new DroneSystem();
     drones.setCount(0);
-    drones.step(player, enemies, hash, projectiles, 1 / 60, 1);
+    drones.step(player, enemies, hash, projectiles, 1 / 60, 1, defaultMods());
 
     expect(projectiles.count).toBe(0);
   });
@@ -50,12 +51,12 @@ describe('companion drones (T40 drone family)', () => {
 
     const drones = new DroneSystem();
     drones.setCount(1);
-    drones.step(player, enemies, hash, projectiles, 1 / 60, 1); // shot 1
-    drones.step(player, enemies, hash, projectiles, 1 / 60, 1); // on cooldown → no shot
+    drones.step(player, enemies, hash, projectiles, 1 / 60, 1, defaultMods()); // shot 1
+    drones.step(player, enemies, hash, projectiles, 1 / 60, 1, defaultMods()); // on cooldown → no shot
     expect(projectiles.count).toBe(1);
 
-    for (let t = 0; t < 0.7; t += 1 / 60) {
-      drones.step(player, enemies, hash, projectiles, 1 / 60, 1);
+    for (let t = 0; t < 1.1; t += 1 / 60) {
+      drones.step(player, enemies, hash, projectiles, 1 / 60, 1, defaultMods());
     }
     expect(projectiles.count).toBeGreaterThanOrEqual(2); // cooldown elapsed → fired again
   });

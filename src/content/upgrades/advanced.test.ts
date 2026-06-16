@@ -18,6 +18,7 @@ const BASE: ConditionalCtx = {
   hpFrac: 1,
   recentCrit: false,
   recoilActive: false,
+  stationarySec: 0,
 };
 
 describe('advanced upgrades drive the build engine (T38)', () => {

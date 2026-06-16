@@ -317,6 +317,24 @@ async function boot(parent: HTMLElement): Promise<void> {
     pushMeta();
   });
 
+  // Bridge: respec — refund ALL spent Glory and wipe the tree so the player can
+  // redistribute into a new build. Refund = Σ (node cost × owned level).
+  uiActions.setResetPermanents(() => {
+    const owned = save.current.permanentUpgrades;
+    let refund = 0;
+    for (const id of Object.keys(owned)) {
+      const def = permanentById(id);
+      if (def) refund += def.cost * (owned[id] ?? 0);
+    }
+    if (refund <= 0) return;
+    save.mutate((p) => {
+      p.currencies.martianGlory += refund;
+      p.permanentUpgrades = {};
+    });
+    world.setPermanents(save.current.permanentUpgrades);
+    pushMeta();
+  });
+
   // Enter the pit from the menu → start a fresh run (applies owned permanents).
   uiActions.setEnterPit(() => {
     world.setPermanents(save.current.permanentUpgrades);

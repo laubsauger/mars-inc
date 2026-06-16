@@ -42,8 +42,8 @@ export const TIMELINE_STRETCH = 2;
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
 // gap shrinks, groups grow, and more gates open as the run escalates.
-const WAVE_GAP_START = 2.5; // seconds between waves at the open
-const WAVE_GAP_MIN = 1.0; // late-game floor
+const WAVE_GAP_START = 1.6; // seconds between waves at the open — less early downtime
+const WAVE_GAP_MIN = 0.9; // late-game floor
 
 // Directional spawn patterns. Kiting makes WHERE enemies come from the real
 // pressure dial: a wave from one gate is easy to lead away from; opposing gates
@@ -110,7 +110,7 @@ export function budgetAt(elapsed: number): SpawnBudget {
     // first minute. Still gentle vs late game and monotonic (V8).
     // Numbers ramp HARD and keep ramping (accelerating) so late waves are a real
     // horde, not a trickle — the bank funds bigger bursts, the cap lets more stand.
-    threatPoints: 3.0 + elapsed * 0.32 + elapsed * elapsed * 0.0018,
+    threatPoints: 5.0 + elapsed * 0.32 + elapsed * elapsed * 0.0018,
     maxConcurrentEnemies: Math.min(
       HARD_CAP,
       Math.floor(8 + elapsed * 2.4 + elapsed * elapsed * 0.01),
@@ -127,7 +127,7 @@ export class WaveDirector {
   private boss = false; // at least one boss has spawned this run
   private bossWaveTimer = 0; // countdown to the next boss wave (0 = spawn ASAP at BOSS_AT)
   private bossesSpawned = 0; // how many bosses fielded → escalates each one's HP
-  private waveTimer = 1.0; // first wave lands shortly after the countdown
+  private waveTimer = 0.4; // first wave lands quickly — no slow empty open
   private sweepGate = 0; // clockwise cursor for the Sweep pattern
 
   reset(): void {
@@ -136,7 +136,7 @@ export class WaveDirector {
     this.boss = false;
     this.bossWaveTimer = 0;
     this.bossesSpawned = 0;
-    this.waveTimer = 1.0;
+    this.waveTimer = 0.4;
     this.sweepGate = 0;
     this.teleTimer = TELE_PERIOD;
   }
@@ -402,5 +402,5 @@ function waveGap(elapsed: number): number {
 
 /** Max enemies per gate this wave — small groups that grow over the run. */
 function waveGroup(elapsed: number): number {
-  return 4 + Math.floor(elapsed / 9); // more bodies per gate, climbing over the run
+  return 6 + Math.floor(elapsed / 7); // bigger opening waves + a faster climb per gate
 }

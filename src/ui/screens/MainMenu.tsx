@@ -387,14 +387,26 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
   // The canvas is 1140×920 (x-units ~1.24× wider than y on screen), so COMPRESS x to
   // keep the radial star round instead of flattening the diagonal spokes.
   const XS = 0.81;
-  const SECTOR = ((2 * Math.PI) / n) * 0.92; // angular width each branch owns (gap between)
+  const SECTOR = ((2 * Math.PI) / n) * 0.86; // angular width each branch owns (gap between)
   const R0 = 15; // depth-0 node distance from the hub
-  const RSTEP = 10; // radial gap per tree depth
+  const RSTEP = 12; // radial gap per tree depth
   BRANCH_ORDER.forEach((branch, bi) => {
     const center = -Math.PI / 2 + (bi * 2 * Math.PI) / n; // spoke direction
-    const nodes = PERMANENT_UPGRADES.filter((u) => u.branch === branch)
+    const all = PERMANENT_UPGRADES.filter((u) => u.branch === branch)
       .slice()
       .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    // Don't let the legendaries pile up at the deepest tips (pure cost order does
+    // that). Cheap commons stay near the hub; splice legendaries into mid-outer
+    // positions so they become INTERNAL milestones — you path THROUGH a keystone to
+    // reach the nodes beyond it, and they sit spread along each branch, not all out
+    // at the rim.
+    const legs = all.filter((u) => u.rarity === 'legendary');
+    const nodes = all.filter((u) => u.rarity !== 'legendary');
+    legs.forEach((lg, i) => {
+      const frac = legs.length === 1 ? 0.55 : 0.4 + 0.42 * (i / (legs.length - 1));
+      const pos = Math.min(nodes.length, Math.max(2, Math.round(nodes.length * frac)));
+      nodes.splice(pos, 0, lg);
+    });
     const count = nodes.length;
     if (count === 0) return;
     // Cost-ordered BINARY tree (heap layout): node k's children are 2k+1 / 2k+2, so a
@@ -531,7 +543,14 @@ function GloryTree() {
   const meta = useUiStore((s) => s.meta);
   const buy = useUiStore((s) => s.buyPermanent);
   const setMenuView = useUiStore((s) => s.setMenuView);
+  const resetPermanents = useUiStore((s) => s.resetPermanents);
 
+  const [confirmReset, setConfirmReset] = useState(false);
+  // Dev affordance: reveal the WHOLE tree to study it. Off (production) reveals
+  // step-by-step from the frontier, so first-time players don't see the far ends.
+  // Defaults ON in dev builds, hidden + off in production.
+  const [revealAll, setRevealAll] = useState(import.meta.env.DEV);
+  const spent = meta.permanents.reduce((s, p) => s + p.cost * p.owned, 0);
   const [hovered, setHovered] = useState<TreeNodeId | null>(null);
   // Start zoomed out a touch — the tree is bigger than the viewport now, so the
   // player sees the whole sprawl first, then pans/zooms into a branch.
@@ -657,6 +676,39 @@ function GloryTree() {
               &#9670; {meta.glory}
             </span>
           </div>
+          {import.meta.env.DEV ? (
+            <button
+              onClick={() => setRevealAll((v) => !v)}
+              title="DEV: toggle full tree reveal vs the production step-by-step reveal"
+              className={`rounded-sm border px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition focus:outline-none ${
+                revealAll
+                  ? 'border-toxic bg-toxic/15 text-toxic'
+                  : 'border-rust bg-pit/60 text-bone/55 hover:border-toxic hover:text-toxic'
+              }`}
+            >
+              {revealAll ? 'Reveal: All' : 'Reveal: Step'}
+            </button>
+          ) : null}
+          <button
+            disabled={spent <= 0}
+            onClick={() => {
+              if (confirmReset) {
+                resetPermanents();
+                setConfirmReset(false);
+              } else {
+                setConfirmReset(true);
+              }
+            }}
+            onBlur={() => setConfirmReset(false)}
+            title="Refund all spent Glory and clear the tree to rebuild"
+            className={`rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none disabled:opacity-30 ${
+              confirmReset
+                ? 'border-bleed bg-bleed/20 text-bleed'
+                : 'border-rust bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
+            }`}
+          >
+            {confirmReset ? `CONFIRM · REFUND ◆${spent}` : 'RESET'}
+          </button>
           <button
             onClick={() => setMenuView('root')}
             className="rounded-sm border border-rust bg-umber/80 px-4 py-1.5 text-sm font-bold text-bone transition hover:border-gold hover:bg-iron/70 focus:border-gold focus:outline-none"
@@ -768,7 +820,9 @@ function GloryTree() {
             const rarity = p.rarity;
             // Show the icon one step past the frontier (and always for keystones)
             // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
-            const revealed = isRevealed(p.id) || rarity === 'legendary';
+            // Production: frontier step-by-step reveal (far ends stay a ⊘ mystery,
+            // including deep legendaries — preserve the surprise). Dev: reveal all.
+            const revealed = revealAll || isRevealed(p.id);
             // Legendary keystones recolour to ORANGE; everything else takes its
             // branch colour (red / green / blue).
             const style = rarity === 'legendary' ? LEGENDARY_STYLE : BRANCH_STYLE[node.branch];

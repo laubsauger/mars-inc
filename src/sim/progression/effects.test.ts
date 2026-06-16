@@ -8,6 +8,7 @@ const CTX: ConditionalCtx = {
   hpFrac: 1,
   recentCrit: false,
   recoilActive: false,
+  stationarySec: 0,
 };
 
 describe('BuildEffects conditionals (T38)', () => {

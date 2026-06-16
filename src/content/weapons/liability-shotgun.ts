@@ -21,7 +21,7 @@ export const liabilityShotgun: WeaponDefinition = {
     base: 4,
     additive: 0,
     multiplier: 1,
-    critChance: 0.04,
+    critChance: 0,
     critMultiplier: 2,
     type: 'kinetic',
   },

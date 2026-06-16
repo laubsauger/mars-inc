@@ -13,9 +13,9 @@ const scratch: number[] = [];
 export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   // ── Uncommon ──────────────────────────────────────────────────────────────
   {
-    id: 'momentum-clause',
-    name: 'Momentum Clause',
-    description: 'Damage ramps the longer you keep firing into the crowd (up to +60%).',
+    id: 'entrenchment',
+    name: 'Entrenchment',
+    description: 'Dig in: damage ramps the longer you STAND STILL (up to +60%), resets on move.',
     tags: ['ramp', 'damage', 'conditional'],
     grantsTags: ['ramp'],
     rarity: 'uncommon',
@@ -25,7 +25,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     role: 'engine',
     riskTier: 0,
     apply: ({ effects }) =>
-      effects.addConditional((c) => ({ damageMult: 1 + Math.min(0.6, c.firingRampSec * 0.06) })),
+      effects.addConditional((c) => ({ damageMult: 1 + Math.min(0.6, c.stationarySec * 0.06) })),
   },
   {
     id: 'adrenaline-account',

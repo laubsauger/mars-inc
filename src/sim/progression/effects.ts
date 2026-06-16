@@ -35,6 +35,9 @@ export interface ConditionalCtx {
   recentCrit: boolean;
   /** True while recent recoil is moving the player (recoil builds, T55). */
   recoilActive: boolean;
+  /** Seconds the player has stood STILL (ramps while not moving, resets on move) —
+   *  for "turret"/hold-position builds (Entrenchment). */
+  stationarySec: number;
 }
 
 /** Returns transient bonuses; combined multiplicatively/additively across all. */

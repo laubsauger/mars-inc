@@ -245,6 +245,8 @@ export interface UiStore {
   togglePause: () => void;
   /** Bridge to save — buy a permanent upgrade with Martian Glory. */
   buyPermanent: (id: string) => void;
+  /** Bridge to save — refund ALL spent Glory and clear the Glory Tree (respec). */
+  resetPermanents: () => void;
   /** Bridge to save — change settings/accessibility (persists + applies live). */
   applySetting: (patch: Partial<SettingsView>) => void;
   setScreen: (s: Screen) => void;
@@ -274,6 +276,7 @@ export interface UiStore {
   setResetView: (fn: () => void) => void;
   setTogglePause: (fn: () => void) => void;
   setBuyPermanent: (fn: (id: string) => void) => void;
+  setResetPermanents: (fn: () => void) => void;
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) => void;
 }
 
@@ -356,6 +359,7 @@ export const useUiStore = create<UiStore>((set) => ({
   resetView: () => {},
   togglePause: () => {},
   buyPermanent: () => {},
+  resetPermanents: () => {},
   applySetting: () => {},
   setScreen: (screen) => set({ screen }),
   setMenuView: (menuView) => set({ menuView }),
@@ -384,6 +388,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setResetView: (resetView) => set({ resetView }),
   setTogglePause: (togglePause) => set({ togglePause }),
   setBuyPermanent: (buyPermanent) => set({ buyPermanent }),
+  setResetPermanents: (resetPermanents) => set({ resetPermanents }),
   setApplySetting: (applySetting) => set({ applySetting }),
 }));
 
@@ -416,6 +421,7 @@ export const uiActions = {
   setResetView: (fn: () => void) => useUiStore.getState().setResetView(fn),
   setTogglePause: (fn: () => void) => useUiStore.getState().setTogglePause(fn),
   setBuyPermanent: (fn: (id: string) => void) => useUiStore.getState().setBuyPermanent(fn),
+  setResetPermanents: (fn: () => void) => useUiStore.getState().setResetPermanents(fn),
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) =>
     useUiStore.getState().setApplySetting(fn),
 };

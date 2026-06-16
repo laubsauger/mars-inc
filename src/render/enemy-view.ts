@@ -61,10 +61,10 @@ const enum Shape {
   Ooze, // squashed blob
   Boss, // arena machinery (core + crown ring)
 }
-const SHAPE_COUNT = 8;
+export const SHAPE_COUNT = 8;
 
 // variant → silhouette family.
-const VARIANT_SHAPE: number[] = [
+export const VARIANT_SHAPE: number[] = [
   Shape.Wedge, // 0 mite
   Shape.Runner, // 1 hound
   Shape.Boss, // 2 gatekeeper
@@ -84,7 +84,7 @@ const SHAPE_FACES = [true, true, true, true, true, false, false, false];
 /** Build each shape as ONE merged, ground-seated geometry (base at y=0), sized to
  *  a ~0.5-radius reference so an instance scale of radius/0.5 fits it to the enemy.
  *  "Front" points along +Z so velocity-yaw aims it. */
-function buildShapes(): BufferGeometry[] {
+export function buildShapes(): BufferGeometry[] {
   const ground = (g: BufferGeometry): BufferGeometry => {
     g.computeBoundingBox();
     const minY = g.boundingBox!.min.y;

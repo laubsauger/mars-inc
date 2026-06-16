@@ -78,14 +78,16 @@ export class FloorReflectionView {
   consume(events: readonly FxEvent[]): void {
     for (const e of events) {
       if (e.kind === 'impact') {
-        const blast = e.variant === ImpactProfile.Blast;
-        // Blast floor-glow kept dim + small so explosive builds don't wash out.
-        if (blast) this.flash(e.x, e.z, 0.7, 2.2, 0.22, BLAST_WARM);
-        else this.flash(e.x, e.z, 0.7, 1.8, 0.16, WARM);
+        // Only an EXPLOSION lights the floor — normal hits dropped a disc per bullet,
+        // which read as the "extra ring" on every shot. Sparks leave no floor glow.
+        if (e.variant === ImpactProfile.Blast) this.flash(e.x, e.z, 0.7, 2.2, 0.22, BLAST_WARM);
       } else if (e.kind === 'death') {
-        this.flash(e.x, e.z, 1.2, 3.0, 0.3, WARM);
+        // Only BIGGER enemies (radius in dx) light the floor — a swarm of small mites
+        // dying constantly would strobe it. Scaled to the body, brief + dim.
+        const sz = e.dx;
+        if (sz > 0.6) this.flash(e.x, e.z, 0.6 * sz, 1.1 * sz, 0.16, WARM);
       } else if (e.kind === 'muzzle') {
-        this.flash(e.x, e.z, 1.4, 0.6, 0.1, GOLD);
+        this.flash(e.x, e.z, 1.0, 0.5, 0.08, GOLD);
       }
     }
   }
@@ -124,10 +126,13 @@ export class FloorReflectionView {
     }
   }
 
-  /** Build the instance buffer: fading flashes + a glint under each projectile. */
-  sync(projectiles: ProjectilePool, alpha: number): void {
+  /** Build the instance buffer: only the brief, event-driven fading flashes now.
+   *  The per-projectile glint was removed — a flat additive CircleGeometry reads as
+   *  a hard SOLID DISC dragging under every bolt (not a soft glow), which looked
+   *  worse than no reflection. `projectiles`/`alpha` are kept for signature
+   *  compatibility with the render loop. */
+  sync(_projectiles: ProjectilePool, _alpha: number): void {
     let w = 0;
-    // Fading FX flashes.
     for (let i = 0; i < this.n; i++) {
       const t = this.age[i]! / this.life[i]!;
       const fade = 1 - t;
@@ -141,14 +146,6 @@ export class FloorReflectionView {
         this.g[i]! * fade,
         this.b[i]! * fade,
       );
-    }
-    // Projectile glints (per frame, capped).
-    const pn = Math.min(projectiles.count, PROJ_CAP);
-    for (let i = 0; i < pn && w < CAP; i++) {
-      const x = projectiles.prevX[i]! + (projectiles.posX[i]! - projectiles.prevX[i]!) * alpha;
-      const z = projectiles.prevZ[i]! + (projectiles.posZ[i]! - projectiles.prevZ[i]!) * alpha;
-      const s = Math.max(0.4, projectiles.radius[i]! * 2.6);
-      this.writeDisc(w++, x, z, s, GOLD.r * 0.5, GOLD.g * 0.5, GOLD.b * 0.5);
     }
     this.mesh.count = w;
     this.mesh.instanceMatrix.needsUpdate = true;
