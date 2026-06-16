@@ -80,7 +80,15 @@ export interface CharacterSheet {
   level: number;
   weapon: string;
   attributes: { label: string; value: string }[];
-  upgrades: { name: string; level: number }[];
+  /** Owned upgrades with enough detail to read the build at a glance (T51):
+   *  name, owned/max level, rarity (for colour), and what the card does. */
+  upgrades: {
+    name: string;
+    level: number;
+    maxLevel: number;
+    rarity: string;
+    description: string;
+  }[];
 }
 
 const COUNTDOWN_SECONDS = 3;
@@ -1098,11 +1106,25 @@ export class World {
       { label: 'Sprint', value: `${s.sprintCharges}× · ${s.sprintCooldown.toFixed(1)}s` },
       { label: 'Magnet', value: `${p.magnetRadius.toFixed(1)} m` },
     ];
+    // Rich abilities list: owned level + rarity + effect text, sorted by level so
+    // the build's backbone reads first. Falls back gracefully if a def is missing.
+    const upgrades = Object.entries(this.upgradeLevels)
+      .map(([id, level]) => {
+        const def = DRAFT_POOL.find((u) => u.id === id);
+        return {
+          name: def?.name ?? id,
+          level,
+          maxLevel: def?.maxLevel ?? level,
+          rarity: def?.rarity ?? 'common',
+          description: def?.description ?? '',
+        };
+      })
+      .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
     return {
       level: p.level,
       weapon: this.weaponSystem.weapons[0]?.def.displayName ?? '—',
       attributes,
-      upgrades: this.runSummary().upgrades,
+      upgrades,
     };
   }
 

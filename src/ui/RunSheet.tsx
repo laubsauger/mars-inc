@@ -4,6 +4,17 @@
 
 import type { SheetView } from './store';
 
+// Rarity → accent colour, mirrors the draft card palette so a card you picked
+// reads the same hue in the build sheet.
+const RARITY_TEXT: Record<string, string> = {
+  common: 'text-bone/80',
+  uncommon: 'text-cyan',
+  rare: 'text-gold',
+  legendary: 'text-elite',
+  corrupted: 'text-bleed',
+  prototype: 'text-toxic',
+};
+
 export function RunSheet({ sheet, compact = false }: { sheet: SheetView; compact?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-3 font-mono">
@@ -29,15 +40,33 @@ export function RunSheet({ sheet, compact = false }: { sheet: SheetView; compact
           ABILITIES — {sheet.upgrades.length}
         </div>
         <div
-          className={`flex flex-col gap-1 overflow-y-auto pr-1 ${compact ? 'max-h-40' : 'max-h-56'}`}
+          className={`flex flex-col gap-1.5 overflow-y-auto pr-1 ${compact ? 'max-h-44' : 'max-h-64'}`}
         >
           {sheet.upgrades.length === 0 && <span className="text-xs text-bone/40">none yet</span>}
-          {sheet.upgrades.map((u) => (
-            <div key={u.name} className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="text-bone/85">{u.name}</span>
-              <span className="text-gold tabular-nums">Lv{u.level}</span>
-            </div>
-          ))}
+          {sheet.upgrades.map((u) => {
+            const maxed = u.level >= u.maxLevel;
+            return (
+              <div key={u.name} className="border-b border-rust/15 pb-1.5 last:border-0 last:pb-0">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className={`font-bold ${RARITY_TEXT[u.rarity] ?? 'text-bone/85'}`}>
+                    {u.name}
+                  </span>
+                  <span
+                    className={`shrink-0 tabular-nums text-[11px] font-black ${maxed ? 'text-gold' : 'text-bone/55'}`}
+                  >
+                    Lv {u.level}
+                    <span className="text-bone/30">/{u.maxLevel}</span>
+                    {maxed ? ' · MAX' : ''}
+                  </span>
+                </div>
+                {u.description && (
+                  <div className="mt-0.5 text-[11px] leading-snug text-bone/55">
+                    {u.description}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

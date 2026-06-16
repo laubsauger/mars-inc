@@ -280,6 +280,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       toonShading: save.current.settings.toonShading,
       arenaId: save.current.settings.arenaId,
       showCountdown: save.current.settings.showCountdown,
+      cameraControls: save.current.settings.cameraControls,
       ambientOcclusion: save.current.settings.ambientOcclusion,
       colorblind: save.current.accessibility.colorblindPalette,
     });
@@ -478,6 +479,10 @@ async function boot(parent: HTMLElement): Promise<void> {
     playerView.setToon(s.toonShading);
     post.setAO(s.ambientOcclusion);
     world.countdownEnabled = s.showCountdown; // applied at the next run's reset()
+    // Orbit/zoom camera is opt-in (off by default). Snap back to the framed view
+    // whenever it's disabled so a stray nudge can't leave the camera off-centre.
+    arenaControls.controls.enabled = s.cameraControls;
+    if (!s.cameraControls) arenaControls.reset();
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;

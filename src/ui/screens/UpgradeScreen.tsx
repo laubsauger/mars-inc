@@ -114,13 +114,21 @@ export function UpgradeScreen() {
         {draft.options.map((o, i) => {
           const isLocked = locked.has(o.id);
           const isHeld = draft.lockedId === o.id;
+          const isUpgrade = o.level > 0;
           const style = styleFor(o.rarity);
           return (
             <div
               key={o.id}
-              className={`group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : ''}`}
+              className={`group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
             >
               <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
+              {/* Level-up cards get a gold corner flag so a stack you already own is
+                  instantly distinct from a brand-new pickup. */}
+              {isUpgrade && (
+                <div className="absolute -left-9 top-3 -rotate-45 bg-gold px-9 py-0.5 text-center text-[9px] font-black uppercase tracking-widest text-pit shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
+                  Upgrade
+                </div>
+              )}
               {/* Faint "approved" corner stamp — tucked into the very top-right corner,
                   behind the controls (pointer-events-none watermark), not floating down. */}
               <div className="pointer-events-none absolute right-1.5 top-1.5 rotate-12 border border-rust/40 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-bone/12">
@@ -177,9 +185,11 @@ export function UpgradeScreen() {
                   <div className="text-xl font-black leading-tight text-bone group-hover/card:text-sun">
                     {o.name}
                   </div>
-                  {o.level > 0 ? (
-                    <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-sm border border-gold/70 bg-gold/12 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold">
-                      Lv {o.level}→{o.level + 1}
+                  {isUpgrade ? (
+                    <span className="mt-0.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-gold bg-gold/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold shadow-[0_0_12px_rgba(255,210,63,0.25)]">
+                      Lv {o.level}
+                      <span className="text-gold/60">→</span>
+                      {o.level + 1}
                     </span>
                   ) : (
                     <span className="mt-0.5 shrink-0 rounded-sm border border-cyan/55 bg-cyan/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan">
@@ -190,6 +200,10 @@ export function UpgradeScreen() {
                 <div className="text-sm leading-5 text-bone/76">{o.description}</div>
                 {o.changes.length > 0 && (
                   <div className="flex flex-col gap-0.5 rounded-sm border border-rust/40 bg-pit/55 px-2 py-1.5">
+                    <div className="mb-0.5 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-bone/35">
+                      <span>{isUpgrade ? 'Now' : 'Stat'}</span>
+                      <span>{isUpgrade ? 'After' : 'Result'}</span>
+                    </div>
                     {o.changes.map((c) => (
                       <div
                         key={c.label}

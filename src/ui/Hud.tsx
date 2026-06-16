@@ -394,6 +394,8 @@ function Countdown() {
 
 function ResetView() {
   const resetView = useUiStore((s) => s.resetView);
+  const cameraControls = useUiStore((s) => s.settings.cameraControls);
+  if (!cameraControls) return null; // no orbit/zoom → nothing to reset
   return (
     <button
       onClick={resetView}
@@ -406,15 +408,24 @@ function ResetView() {
 }
 
 // First-run controls card. Shows once (localStorage), auto-dismisses, or "Got it".
-const CONTROL_ROWS: [string, string][] = [
-  ['WASD', 'Move'],
-  ['Left Click (hold)', 'Fire'],
-  ['Space', 'Toggle auto-fire'],
-  ['Right Click', 'Throw grenade'],
-  ['Shift', 'Sprint'],
-  ['E / F', 'Pick up weapon'],
-  ['Esc', 'Pause'],
+// `keys` are rendered as individual chips (matching the Settings → Controls tab).
+const CONTROL_ROWS: { keys: string[]; action: string }[] = [
+  { keys: ['W', 'A', 'S', 'D'], action: 'Move' },
+  { keys: ['Left Click (hold)'], action: 'Fire' },
+  { keys: ['Space'], action: 'Toggle auto-fire' },
+  { keys: ['Right Click'], action: 'Throw grenade' },
+  { keys: ['Shift'], action: 'Sprint' },
+  { keys: ['E', 'F'], action: 'Pick up weapon' },
+  { keys: ['Esc'], action: 'Pause' },
 ];
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex min-w-[1.6rem] items-center justify-center rounded-sm border border-rust bg-umber/80 px-1.5 py-0.5 text-[11px] font-black tracking-wide text-bone/90 shadow-[inset_0_-1px_0_rgba(0,0,0,0.5)]">
+      {children}
+    </kbd>
+  );
+}
 
 function ControlsHint() {
   const screen = useUiStore((s) => s.screen);
@@ -447,12 +458,14 @@ function ControlsHint() {
         Controls
       </div>
       <div className="flex flex-col gap-1.5">
-        {CONTROL_ROWS.map(([k, a]) => (
-          <div key={a} className="flex items-center justify-between gap-3 text-xs">
-            <span className="shrink-0 rounded-sm border border-rust bg-umber/80 px-2 py-0.5 font-black tracking-wide text-bone/90">
-              {k}
+        {CONTROL_ROWS.map(({ keys, action }) => (
+          <div key={action} className="flex items-center justify-between gap-3 text-xs">
+            <span className="flex shrink-0 flex-wrap items-center gap-1">
+              {keys.map((k) => (
+                <Kbd key={k}>{k}</Kbd>
+              ))}
             </span>
-            <span className="text-bone/70">{a}</span>
+            <span className="text-bone/70">{action}</span>
           </div>
         ))}
       </div>

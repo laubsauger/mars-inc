@@ -21,6 +21,10 @@ export function createControls(
 ): ArenaControls {
   const controls = new OrbitControls(camera, dom);
   controls.target.set(0, 0, arenaAimZ());
+  // Off by default (opt-in setting): players kept nudging the orbit/zoom by
+  // accident and losing the framed view. `update()` still runs for damping +
+  // camera-shake regardless; `enabled` only gates INPUT.
+  controls.enabled = false;
   controls.enablePan = false; // pivot stays locked on the arena centre
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;

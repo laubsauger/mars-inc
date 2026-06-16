@@ -314,6 +314,73 @@ export function SettingsControls() {
       <SettingRow label="PRE-COMBAT COUNTDOWN">
         <Toggle on={s.showCountdown} onChange={(v) => set({ showCountdown: v })} />
       </SettingRow>
+      <SettingRow label="ORBIT / ZOOM CAMERA">
+        <Toggle on={s.cameraControls} onChange={(v) => set({ cameraControls: v })} />
+      </SettingRow>
+    </div>
+  );
+}
+
+// Live keybinds, sourced from the input layer (core/input.ts) and the screen
+// handlers (UpgradeScreen / GameOverScreen). Update here when bindings change —
+// rebinding is a later pass, so this is the canonical reference for now.
+const CONTROL_GROUPS: { group: string; rows: { keys: string[]; action: string }[] }[] = [
+  {
+    group: 'Combat',
+    rows: [
+      { keys: ['W', 'A', 'S', 'D'], action: 'Move' },
+      { keys: ['↑', '↓', '←', '→'], action: 'Move (alt)' },
+      { keys: ['Shift'], action: 'Sprint' },
+      { keys: ['Mouse'], action: 'Aim' },
+      { keys: ['Space'], action: 'Toggle auto-fire' },
+      { keys: ['E', 'F'], action: 'Pick up / equip' },
+      { keys: ['Esc'], action: 'Pause' },
+    ],
+  },
+  {
+    group: 'Upgrade draft',
+    rows: [
+      { keys: ['1', '2', '3'], action: 'Pick upgrade' },
+      { keys: ['R'], action: 'Reroll' },
+    ],
+  },
+  {
+    group: 'Game over',
+    rows: [
+      { keys: ['Enter'], action: 'Restart run' },
+      { keys: ['Esc'], action: 'Back to menu' },
+    ],
+  },
+];
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex min-w-[1.6rem] items-center justify-center rounded-sm border border-rust bg-pit/70 px-1.5 py-0.5 text-[11px] font-bold text-bone/90 shadow-[inset_0_-1px_0_rgba(0,0,0,0.5)]">
+      {children}
+    </kbd>
+  );
+}
+
+function ControlsReference() {
+  return (
+    <div className="space-y-4">
+      {CONTROL_GROUPS.map((g) => (
+        <div key={g.group} className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
+          <div className="mb-2 text-[10px] uppercase tracking-widest text-gold">{g.group}</div>
+          <div className="divide-y divide-rust/25">
+            {g.rows.map((r) => (
+              <div key={r.action} className="flex items-center justify-between gap-4 py-2">
+                <span className="text-sm text-bone/80">{r.action}</span>
+                <span className="flex flex-wrap items-center justify-end gap-1">
+                  {r.keys.map((k) => (
+                    <Kbd key={k}>{k}</Kbd>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -321,36 +388,64 @@ export function SettingsControls() {
 function SettingsPanel() {
   const resetProgress = useUiStore((s) => s.resetProgress);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [tab, setTab] = useState<'options' | 'controls'>('options');
   return (
     <Panel title="SETTINGS">
-      <SettingsControls />
-      <div className="mt-3 text-xs text-bone/40">
-        Key rebinding, controller, and colorblind palettes land in a later pass.
+      <div className="mb-4 flex gap-2">
+        {(['options', 'controls'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded-sm border px-4 py-1.5 text-xs font-bold uppercase tracking-widest transition focus:outline-none ${
+              tab === t
+                ? 'border-gold bg-gold/15 text-gold'
+                : 'border-rust bg-pit/60 text-bone/55 hover:border-gold hover:text-gold'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
       </div>
 
-      {/* Danger zone — wipes the entire save (Glory, unlocks, records, settings). */}
-      <div className="mt-4 rounded-md border border-bleed/50 bg-pit/50 px-6 py-4">
-        <div className="text-sm font-bold tracking-wide text-bleed">RESET PROGRESS</div>
-        <p className="mt-1 text-xs leading-relaxed text-bone/55">
-          Permanently erases ALL saved data — Martian Glory, the Glory Tree, unlocks, records, run
-          history, and settings. This cannot be undone. The page reloads into a fresh save.
-        </p>
-        <button
-          onClick={() => {
-            if (confirmWipe) resetProgress();
-            else setConfirmWipe(true);
-          }}
-          onBlur={() => setConfirmWipe(false)}
-          title="Erase all saved progress and start over"
-          className={`mt-3 rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none ${
-            confirmWipe
-              ? 'border-bleed bg-bleed/25 text-bleed'
-              : 'border-bleed/70 bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
-          }`}
-        >
-          {confirmWipe ? 'CONFIRM · ERASE EVERYTHING' : 'RESET ALL PROGRESS'}
-        </button>
-      </div>
+      {tab === 'controls' ? (
+        <>
+          <ControlsReference />
+          <div className="mt-3 text-xs text-bone/40">
+            Key rebinding and controller support land in a later pass.
+          </div>
+        </>
+      ) : (
+        <>
+          <SettingsControls />
+          <div className="mt-3 text-xs text-bone/40">
+            Key rebinding, controller, and colorblind palettes land in a later pass.
+          </div>
+
+          {/* Danger zone — wipes the entire save (Glory, unlocks, records, settings). */}
+          <div className="mt-4 rounded-md border border-bleed/50 bg-pit/50 px-6 py-4">
+            <div className="text-sm font-bold tracking-wide text-bleed">RESET PROGRESS</div>
+            <p className="mt-1 text-xs leading-relaxed text-bone/55">
+              Permanently erases ALL saved data — Martian Glory, the Glory Tree, unlocks, records,
+              run history, and settings. This cannot be undone. The page reloads into a fresh save.
+            </p>
+            <button
+              onClick={() => {
+                if (confirmWipe) resetProgress();
+                else setConfirmWipe(true);
+              }}
+              onBlur={() => setConfirmWipe(false)}
+              title="Erase all saved progress and start over"
+              className={`mt-3 rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none ${
+                confirmWipe
+                  ? 'border-bleed bg-bleed/25 text-bleed'
+                  : 'border-bleed/70 bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
+              }`}
+            >
+              {confirmWipe ? 'CONFIRM · ERASE EVERYTHING' : 'RESET ALL PROGRESS'}
+            </button>
+          </div>
+        </>
+      )}
     </Panel>
   );
 }

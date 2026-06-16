@@ -19,6 +19,7 @@ export interface SettingsData {
   toonShading: boolean; // banded toon/ink look on characters (T37 opt-in)
   arenaId: ArenaId; // which pit to play (circle Rust Crown / rect Cold Vault)
   showCountdown: boolean; // pre-combat 3s countdown (default off — saves dev time)
+  cameraControls: boolean; // opt-in orbit/zoom camera (default off — players nudged it by accident)
 }
 
 export interface AccessibilityData {
@@ -123,6 +124,7 @@ export function defaultSettings(): SettingsData {
     toonShading: false,
     arenaId: 'cold-vault',
     showCountdown: false,
+    cameraControls: false,
   };
 }
 

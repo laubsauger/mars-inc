@@ -56,6 +56,7 @@ export interface SettingsView {
   ambientOcclusion: boolean;
   arenaId: 'cold-vault' | 'rust-crown';
   showCountdown: boolean;
+  cameraControls: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -190,7 +191,13 @@ export interface SheetView {
   level: number;
   weapon: string;
   attributes: { label: string; value: string }[];
-  upgrades: { name: string; level: number }[];
+  upgrades: {
+    name: string;
+    level: number;
+    maxLevel: number;
+    rarity: string;
+    description: string;
+  }[];
 }
 
 /** Permanent (meta) upgrade as shown on the game-over Glory panel (T26). */
@@ -349,6 +356,7 @@ const INITIAL_SETTINGS: SettingsView = {
   ambientOcclusion: false,
   arenaId: 'cold-vault',
   showCountdown: false,
+  cameraControls: false,
   colorblind: 'off',
 };
 
