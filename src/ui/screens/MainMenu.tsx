@@ -883,7 +883,7 @@ function GloryTree() {
                     d={branchPath(from, to)}
                     fill="none"
                     stroke={style.stroke}
-                    strokeWidth={lit ? 2.8 : 3.4}
+                    strokeWidth={lit ? 1.8 : 2.2}
                     opacity={open ? (lit ? 0.3 : 0.12) : 0.05}
                     strokeLinecap="round"
                     // Blur is EXPENSIVE — apply the feGaussianBlur halo only to the
@@ -896,7 +896,7 @@ function GloryTree() {
                     d={branchPath(from, to)}
                     fill="none"
                     stroke={open ? style.stroke : '#5b4a3a'}
-                    strokeWidth={lit ? 1.1 : 0.85}
+                    strokeWidth={lit ? 0.75 : 0.55}
                     opacity={open ? (lit ? 1 : 0.85) : 0.4}
                     strokeLinecap="round"
                     strokeDasharray={open ? undefined : '1.5 1.5'}

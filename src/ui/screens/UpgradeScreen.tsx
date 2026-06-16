@@ -2,7 +2,7 @@
 // colour-coded; the player can lock a card, re-roll the rest, banish an option
 // for the run, or skip the draft for a heal. Keyboard 1/2/3 selects.
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useUiStore } from '../store';
 
 const RARITY_STYLE: Record<
@@ -122,13 +122,6 @@ export function UpgradeScreen() {
               className={`group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
             >
               <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
-              {/* Level-up cards get a gold corner flag so a stack you already own is
-                  instantly distinct from a brand-new pickup. */}
-              {isUpgrade && (
-                <div className="absolute -left-9 top-3 -rotate-45 bg-gold px-9 py-0.5 text-center text-[9px] font-black uppercase tracking-widest text-pit shadow-[0_2px_8px_rgba(0,0,0,0.5)]">
-                  Upgrade
-                </div>
-              )}
               {/* Faint "approved" corner stamp — tucked into the very top-right corner,
                   behind the controls (pointer-events-none watermark), not floating down. */}
               <div className="pointer-events-none absolute right-1.5 top-1.5 rotate-12 border border-rust/40 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-bone/12">
@@ -199,24 +192,33 @@ export function UpgradeScreen() {
                 </div>
                 <div className="text-sm leading-5 text-bone/76">{o.description}</div>
                 {o.changes.length > 0 && (
-                  <div className="flex flex-col gap-0.5 rounded-sm border border-rust/40 bg-pit/55 px-2 py-1.5">
-                    <div className="mb-0.5 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-bone/35">
-                      <span>{isUpgrade ? 'Now' : 'Stat'}</span>
-                      <span>{isUpgrade ? 'After' : 'Result'}</span>
+                  <div className="rounded-sm border border-rust/40 bg-pit/55 px-2 py-1.5">
+                    {/* 4-col grid so the Now/After headers sit exactly over the
+                        from/to values (header used to mislabel the label column). */}
+                    <div className="grid grid-cols-[1fr_auto_0.75rem_auto] items-center gap-x-1.5 text-[11px]">
+                      <span className="text-[8px] font-black uppercase tracking-widest text-bone/35">
+                        Stat
+                      </span>
+                      <span className="text-right text-[8px] font-black uppercase tracking-widest text-bone/35">
+                        Now
+                      </span>
+                      <span />
+                      <span className="text-right text-[8px] font-black uppercase tracking-widest text-bone/35">
+                        After
+                      </span>
+                      {o.changes.map((c) => (
+                        <Fragment key={c.label}>
+                          <span className="uppercase tracking-wide text-bone/55">{c.label}</span>
+                          <span className="text-right font-black tabular-nums text-bone/40">
+                            {c.from}
+                          </span>
+                          <span className="text-center text-sun">→</span>
+                          <span className="text-right font-black tabular-nums text-bone/85">
+                            {c.to}
+                          </span>
+                        </Fragment>
+                      ))}
                     </div>
-                    {o.changes.map((c) => (
-                      <div
-                        key={c.label}
-                        className="flex items-center justify-between gap-2 text-[11px]"
-                      >
-                        <span className="uppercase tracking-wide text-bone/55">{c.label}</span>
-                        <span className="font-black tabular-nums text-bone/85">
-                          <span className="mr-1 text-bone/40">{c.from}</span>
-                          <span className="mr-1 text-sun">→</span>
-                          {c.to}
-                        </span>
-                      </div>
-                    ))}
                   </div>
                 )}
               </button>

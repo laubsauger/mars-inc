@@ -106,8 +106,14 @@ export async function idbQuarantine(raw: unknown): Promise<void> {
 /**
  * Wipe ALL persisted progress: deletes the whole IndexedDB (profile + every
  * backup + quarantine) and clears the boot pointer. Used by the Settings →
- * Reset Progress action. Best-effort like the rest (V14): a blocked/failed
- * delete resolves `false`, never throws.
+ * Reset Progress action. Best-effort like the rest (V14): never throws.
+ *
+ * Return value is "did the delete COMPLETE synchronously". In practice the live
+ * page still holds open connections (we never cache/close them), so this almost
+ * always resolves `false` via `onblocked` — the delete is *accepted and queued*,
+ * and IndexedDB serialization guarantees it runs once the page unloads. The sole
+ * caller (`SaveManager.reset`) reloads immediately and ignores the bool, so a
+ * `false` here is the expected path, NOT a failure.
  */
 export async function idbClear(): Promise<boolean> {
   setBootPointer(false);
@@ -116,7 +122,7 @@ export async function idbClear(): Promise<boolean> {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
-      req.onblocked = () => resolve(false); // open connection elsewhere — caller reloads
+      req.onblocked = () => resolve(false); // queued behind live connections — completes on reload
     });
   } catch {
     return false;

@@ -480,9 +480,11 @@ async function boot(parent: HTMLElement): Promise<void> {
     post.setAO(s.ambientOcclusion);
     world.countdownEnabled = s.showCountdown; // applied at the next run's reset()
     // Orbit/zoom camera is opt-in (off by default). Snap back to the framed view
-    // whenever it's disabled so a stray nudge can't leave the camera off-centre.
+    // only on the on→off TRANSITION so an unrelated tweak (volume drag, etc.) can't
+    // re-frame a live orbit, but disabling it always recentres.
+    const wasCameraOn = arenaControls.controls.enabled;
     arenaControls.controls.enabled = s.cameraControls;
-    if (!s.cameraControls) arenaControls.reset();
+    if (wasCameraOn && !s.cameraControls) arenaControls.reset();
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;

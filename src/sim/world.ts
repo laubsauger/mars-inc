@@ -603,7 +603,7 @@ export class World {
     const radius = 3.6 + Math.min(2, m.blastRadius) + m.grenadeRadiusAdd;
     // Vacuum Charge inverts the shove into a PULL (negative force → radialPush
     // sucks enemies toward the blast — a gather tool instead of a scatter).
-    const knockback = 38 * m.grenadeKnockbackMult * (m.grenadePull ? -1 : 1);
+    const knockback = 28 * m.grenadeKnockbackMult * (m.grenadePull ? -1 : 1);
     this.grenades.configure(dmg, radius, knockback, m.grenadeMolotov);
     // Clamp the throw to a max range (no infinite-distance lobs); constant sling
     // speed means a longer throw also takes longer to land (GrenadeSystem).
