@@ -526,7 +526,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     description: 'Start each run with +1 companion drone per level.',
     branch: 'command',
     rarity: 'rare',
-    cost: 200,
+    cost: 260,
     maxLevel: 2,
     apply: (p, level) => {
       p.droneCount += level;
@@ -814,7 +814,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     description: '+1 companion drone per level.',
     branch: 'command',
     rarity: 'rare',
-    cost: 160,
+    cost: 220,
     maxLevel: 2,
     apply: (p, level) => {
       p.droneCount += level;
@@ -939,6 +939,86 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     apply: (p, _level, _mods, effects) => {
       p.reviveCharges += 1;
       effects.addConditional((c) => ({ damageMult: 1 + 0.8 * (1 - c.hpFrac) }));
+    },
+  },
+  // ══ GRENADE nodes — develop the right-mouse secondary (T-grenade) ════════════
+  {
+    id: 'frag-pattern',
+    name: 'Frag Pattern',
+    description: 'GRENADE: +25% grenade damage and +0.5 blast radius per level.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.grenadeDamageMult += 0.25 * level;
+      mods.grenadeRadiusAdd += 0.5 * level;
+    },
+  },
+  {
+    id: 'bandolier',
+    name: 'Bandolier',
+    description: 'GRENADE: throw 15% faster per level — keep the lobs coming.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.grenadeCdMult *= Math.pow(0.85, level);
+    },
+  },
+  {
+    id: 'pocket-artillery',
+    name: 'Pocket Artillery',
+    description: 'GRENADE: +30% grenade damage and +30% knockback per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.grenadeDamageMult += 0.3 * level;
+      mods.grenadeKnockbackMult += 0.3 * level;
+    },
+  },
+  {
+    id: 'auto-loader',
+    name: 'Auto-Loader',
+    description: 'GRENADE: −12% cooldown and +0.3 radius per level.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.grenadeCdMult *= Math.pow(0.88, level);
+      mods.grenadeRadiusAdd += 0.3 * level;
+    },
+  },
+  {
+    id: 'vacuum-charge',
+    name: 'Vacuum Charge',
+    description:
+      'KEYSTONE: grenades IMPLODE — they suck the horde into a tight knot (then it burns).',
+    branch: 'mobility',
+    rarity: 'legendary',
+    cost: 360,
+    maxLevel: 1,
+    apply: (_p, _level, mods) => {
+      mods.grenadePull = true;
+      mods.grenadeRadiusAdd += 1;
+    },
+  },
+  {
+    id: 'daisy-cutter',
+    name: 'Daisy Cutter',
+    description: 'KEYSTONE: a huge fiery blast — +2.5 radius, +50% damage, and Molotov burn.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 400,
+    maxLevel: 1,
+    apply: (_p, _level, mods) => {
+      mods.grenadeRadiusAdd += 2.5;
+      mods.grenadeDamageMult += 0.5;
+      mods.grenadeMolotov = true;
     },
   },
 ];

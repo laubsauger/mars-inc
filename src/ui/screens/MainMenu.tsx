@@ -1055,14 +1055,38 @@ function weaponTradeoff(w: (typeof WEAPONS)[number]): string {
 }
 
 function ArsenalPanel() {
+  const discovered = useUiStore((s) => s.profile.discoveredWeapons);
+  const seen = new Set(discovered);
+  const foundCount = WEAPONS.filter((w) => seen.has(w.id)).length;
   return (
     <Panel title="ARSENAL">
-      <div className="mb-3 text-xs text-bone/60">
-        Every weapon trades power for a cost — no single gun wins. Weapons drop in-run; permanent
-        unlocks &amp; loadout selection are coming with the boss-gated weapon families.
+      <div className="mb-3 flex items-center justify-between gap-3 text-xs text-bone/60">
+        <span>
+          Every weapon trades power for a cost — no single gun wins. Slots stay ??? until you
+          DISCOVER each weapon by picking it up in a run.
+        </span>
+        <span className="shrink-0 font-black tabular-nums text-gold">
+          {foundCount}/{WEAPONS.length}
+        </span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {WEAPONS.map((w) => {
+          if (!seen.has(w.id)) {
+            // Undiscovered → a mystery slot. Reads as "something's here, go find it".
+            return (
+              <div
+                key={w.id}
+                className="relative flex min-h-[7.5rem] flex-col items-center justify-center overflow-hidden rounded-sm border border-dashed border-rust/45 bg-pit/55 p-3 text-center"
+                title="Undiscovered — find this weapon in a run to reveal it"
+              >
+                <div className="text-2xl font-black tracking-[0.3em] text-bone/25">???</div>
+                <div className="mt-1 text-[10px] uppercase tracking-widest text-bone/35">
+                  Locked contract
+                </div>
+                <div className="mt-0.5 text-[10px] text-bone/30">Discover it in the pit</div>
+              </div>
+            );
+          }
           const color = WEAPON_FAMILY_COLOR[w.family] ?? '#bbb';
           const dps = ((w.damage.base * (w.pellets ?? 1)) / w.cooldown).toFixed(0);
           const rate = (1 / w.cooldown).toFixed(1);

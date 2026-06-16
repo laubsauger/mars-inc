@@ -63,8 +63,9 @@ export function previewUpgrade(
 
   const changes: UpgradeChange[] = [];
   for (const [key, label, fmt] of MOD_FIELDS) {
-    const a = mods[key];
-    const b = sandboxMods[key];
+    // MOD_FIELDS only lists numeric mods (RunMods also has boolean flags now).
+    const a = mods[key] as number;
+    const b = sandboxMods[key] as number;
     if (a !== b) changes.push({ label, from: fmt(a), to: fmt(b) });
   }
   for (const [label, read, fmt] of PLAYER_FIELDS) {

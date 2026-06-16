@@ -22,6 +22,9 @@ export interface AreaDamageSpec {
   /** When set, floats a damage number on EVERY enemy this AoE hits — so splash,
    *  novas, triggers, and corpse blasts read like real hits, not silent damage. */
   fx?: FxQueue;
+  /** Linear distance falloff 0..1: at the blast edge, damage is `amount × (1 −
+   *  falloff)`. 0 (default) = flat damage everywhere; 1 = drops to 0 at the rim. */
+  falloff?: number;
 }
 
 export function applyAreaDamage(
@@ -42,11 +45,17 @@ export function applyAreaDamage(
     if (enemies.health[e]! <= 0 || enemies.state[e] !== EnemyState.Active) continue;
     const dx = enemies.posX[e]! - x;
     const dz = enemies.posZ[e]! - z;
-    if (dx * dx + dz * dz > r2) continue;
+    const d2 = dx * dx + dz * dz;
+    if (d2 > r2) continue;
+    // Distance falloff: full at the centre, less toward the edge (crowd-control
+    // splash instead of a flat one-shot ring).
+    const amount = spec.falloff
+      ? spec.amount * (1 - spec.falloff * (Math.sqrt(d2) / radius))
+      : spec.amount;
 
     const packet = makePacket({
       weaponId: 'aoe',
-      baseDamage: spec.amount,
+      baseDamage: amount,
       critChance: spec.critChance ?? 0,
       critMultiplier: spec.critMultiplier ?? 2,
       damageType: spec.damageType ?? 'explosive',

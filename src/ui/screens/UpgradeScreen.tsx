@@ -118,10 +118,12 @@ export function UpgradeScreen() {
           return (
             <div
               key={o.id}
-              className={`group/card relative flex w-72 max-w-[88vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-4 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : ''}`}
+              className={`group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : ''}`}
             >
               <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
-              <div className="pointer-events-none absolute right-3 top-10 rotate-6 border border-rust/70 px-2 py-1 text-[9px] font-black uppercase text-bone/18">
+              {/* Faint "approved" corner stamp — tucked into the very top-right corner,
+                  behind the controls (pointer-events-none watermark), not floating down. */}
+              <div className="pointer-events-none absolute right-1.5 top-1.5 rotate-12 border border-rust/40 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-bone/12">
                 Approved
               </div>
 

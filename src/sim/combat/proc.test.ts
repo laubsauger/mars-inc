@@ -111,6 +111,7 @@ describe('proc coefficient end-to-end (T69, V32 wiring + bound)', () => {
    *  step until the auto-firing sidearm lands a hit. Returns recorded ctx data. */
   function captureHits(w: World, onCtx: (depth: number, coef: number, chain: () => void) => void) {
     w.start();
+    w.autoShoot = true; // weapons no longer auto-fire by default — enable for the test
     w.effects.on('hit', (ctx) =>
       onCtx(ctx.depth, ctx.procCoef, () => ctx.procChain?.(ctx.targetIndex, false)),
     );

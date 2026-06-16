@@ -27,26 +27,6 @@ function HealthBar() {
   );
 }
 
-function SprintPips() {
-  const charges = useUiStore((s) => s.hud.sprintCharges);
-  const cd01 = useUiStore((s) => s.hud.sprintCooldown01);
-  const total = Math.max(charges, 1);
-  return (
-    <div className="absolute bottom-6 left-72 ml-4 flex items-end gap-1.5">
-      {Array.from({ length: total }).map((_, i) => {
-        const filled = i < charges;
-        return (
-          <div
-            key={i}
-            className={`h-6 w-2.5 rounded-sm border border-rust ${filled ? 'bg-ember' : 'bg-pit/70'}`}
-            style={!filled && i === charges ? { opacity: 0.3 + cd01 * 0.7 } : undefined}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 function ShieldPips() {
   const charges = useUiStore((s) => s.hud.shieldCharges);
   const max = useUiStore((s) => s.hud.shieldMax);
@@ -66,6 +46,98 @@ function ShieldPips() {
           }`}
         />
       ))}
+    </div>
+  );
+}
+
+/** One ARPG hotbar slot: icon + keybind, with a clockwise radial cooldown sweep
+ *  that clears as `progress` (0..1) fills; a ready glow at 1. */
+function AbilitySlot({
+  icon,
+  keyLabel,
+  name,
+  progress,
+  accent,
+  badge,
+}: {
+  icon: string;
+  keyLabel: string;
+  name: string;
+  progress: number; // 0..1 (1 = ready)
+  accent: string; // hex
+  badge?: string | undefined; // small count/state in the corner
+}) {
+  const ready = progress >= 1;
+  return (
+    <div
+      title={name}
+      className="relative flex h-14 w-14 items-center justify-center rounded-md border-2 bg-pit/82 font-mono shadow-[0_8px_24px_rgba(0,0,0,0.5),inset_0_0_0_1px_rgba(7,5,4,0.8)]"
+      style={{
+        borderColor: ready ? accent : 'rgba(143,63,36,0.7)',
+        boxShadow: ready ? `0 0 18px ${accent}66, inset 0 0 0 1px rgba(7,5,4,0.8)` : undefined,
+      }}
+    >
+      <span
+        className="text-2xl leading-none"
+        style={{ color: ready ? accent : 'rgba(244,228,212,0.45)' }}
+      >
+        {icon}
+      </span>
+      {!ready && (
+        // Dark wedge covers the REMAINING cooldown; shrinks clockwise as it fills.
+        <div
+          className="pointer-events-none absolute inset-0 rounded-md"
+          style={{
+            background: `conic-gradient(transparent ${progress * 360}deg, rgba(7,5,4,0.66) 0deg)`,
+          }}
+        />
+      )}
+      <span className="absolute -top-1.5 left-1 text-[9px] font-black uppercase tracking-widest text-bone/45">
+        {keyLabel}
+      </span>
+      {badge ? (
+        <span
+          className="absolute -bottom-1.5 -right-1.5 rounded-full border px-1 text-[10px] font-black tabular-nums"
+          style={{ borderColor: accent, color: accent, background: 'rgba(7,5,4,0.9)' }}
+        >
+          {badge}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function HotBar() {
+  const grenade01 = useUiStore((s) => s.hud.grenade01);
+  const charges = useUiStore((s) => s.hud.sprintCharges);
+  const sprintMax = useUiStore((s) => s.hud.sprintMax);
+  const sprintCd01 = useUiStore((s) => s.hud.sprintCooldown01);
+  const autoShoot = useUiStore((s) => s.hud.autoShoot);
+  // Sprint slot is "ready" while at least one charge is available; otherwise it
+  // shows the next charge's refill sweep.
+  const sprintProgress = charges > 0 ? 1 : sprintCd01;
+  return (
+    <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-end gap-3">
+      <AbilitySlot
+        icon="✸"
+        keyLabel="RMB"
+        name="Grenade — AoE knockback"
+        progress={grenade01}
+        accent="#ff5a36"
+      />
+      <AbilitySlot
+        icon="»"
+        keyLabel="SHIFT"
+        name="Sprint"
+        progress={sprintProgress}
+        accent="#32d7ff"
+        badge={sprintMax > 1 ? `${charges}/${sprintMax}` : undefined}
+      />
+      {autoShoot ? (
+        <div className="mb-1 self-center rounded-sm border border-toxic/70 bg-toxic/12 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-toxic">
+          Auto-fire
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -303,10 +375,80 @@ function ResetView() {
     <button
       onClick={resetView}
       title="Reset camera view (right-drag to orbit · scroll to zoom)"
-      className="pointer-events-auto absolute bottom-6 left-1/2 -translate-x-1/2 rounded-sm border border-rust bg-pit/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-bone/60 transition hover:border-gold hover:text-bone focus:outline-none"
+      className="pointer-events-auto absolute bottom-20 left-1/2 -translate-x-1/2 rounded-sm border border-rust bg-pit/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-bone/60 transition hover:border-gold hover:text-bone focus:outline-none"
     >
       ⟳ Reset view
     </button>
+  );
+}
+
+// First-run controls card. Shows once (localStorage), auto-dismisses, or "Got it".
+const CONTROL_ROWS: [string, string][] = [
+  ['WASD', 'Move'],
+  ['Left Click (hold)', 'Fire'],
+  ['Space', 'Toggle auto-fire'],
+  ['Right Click', 'Throw grenade'],
+  ['Shift', 'Sprint'],
+  ['E / F', 'Pick up weapon'],
+  ['Esc', 'Pause'],
+];
+
+function ControlsHint() {
+  const screen = useUiStore((s) => s.screen);
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem('mars:controls-seen') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Auto-dismiss after a while so it never lingers in the way.
+  useEffect(() => {
+    if (seen || screen !== 'arena') return;
+    const t = setTimeout(() => {
+      setSeen(true);
+      try {
+        localStorage.setItem('mars:controls-seen', '1');
+      } catch {
+        /* ignore */
+      }
+    }, 14000);
+    return () => clearTimeout(t);
+  }, [seen, screen]);
+  if (seen || screen !== 'arena') return null;
+  const dismiss = () => {
+    setSeen(true);
+    try {
+      localStorage.setItem('mars:controls-seen', '1');
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <div className="pointer-events-auto absolute left-1/2 top-[28%] w-80 -translate-x-1/2 border-2 border-gold/70 bg-pit/92 p-4 font-mono shadow-[0_18px_60px_rgba(0,0,0,0.72),inset_0_0_0_1px_rgba(240,200,121,0.12)]">
+      <div className="mb-0.5 text-center text-[10px] uppercase tracking-widest text-dust">
+        Mars Inc field briefing
+      </div>
+      <div className="mb-2.5 text-center text-sm font-black uppercase tracking-widest text-gold">
+        Controls
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {CONTROL_ROWS.map(([k, a]) => (
+          <div key={a} className="flex items-center justify-between gap-3 text-xs">
+            <span className="shrink-0 rounded-sm border border-rust bg-umber/80 px-2 py-0.5 font-black tracking-wide text-bone/90">
+              {k}
+            </span>
+            <span className="text-bone/70">{a}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={dismiss}
+        className="mt-3 w-full rounded-sm border border-gold/60 bg-gold/12 py-1.5 text-xs font-black uppercase tracking-widest text-gold transition hover:bg-gold/20 focus:outline-none"
+      >
+        Got it
+      </button>
+    </div>
   );
 }
 
@@ -315,7 +457,7 @@ export function Hud() {
     <>
       <HealthBar />
       <ShieldPips />
-      <SprintPips />
+      <HotBar />
       <Timer />
       <LevelXp />
       <EnemyCounter />
@@ -324,6 +466,7 @@ export function Hud() {
       <BossBar />
       <Announce />
       <Countdown />
+      <ControlsHint />
       <ResetView />
     </>
   );

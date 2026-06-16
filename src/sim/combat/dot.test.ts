@@ -41,6 +41,7 @@ describe('DoT scales as a fraction of the hit (T70, V33)', () => {
   function captureBurn(seed: number, dotCoef: number, duration: number) {
     const w = new World(seed);
     w.start();
+    w.autoShoot = true; // weapons no longer auto-fire by default — enable for the test
     let rec: { hit: number; dps: number } | null = null;
     w.effects.on('hit', (ctx) => {
       if (rec) return;

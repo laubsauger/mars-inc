@@ -9,6 +9,12 @@ export interface InputSnapshot {
   pause: boolean;
   /** Edge-triggered once per press: equip the weapon crate under the player. */
   pickup: boolean;
+  /** Primary fire held (left mouse). Auto-fire toggle ORs in via `autoFire`. */
+  fire: boolean;
+  /** Edge-triggered once per press (right mouse): throw a grenade at the cursor. */
+  grenade: boolean;
+  /** Edge-triggered once per press (Space): toggle persistent auto-fire. */
+  toggleAuto: boolean;
   /** Mouse position in CSS pixels; -1 when pointer never seen. */
   mouseX: number;
   mouseY: number;
@@ -35,6 +41,9 @@ export class Input {
   private down = new Set<string>();
   private pausePressed = false;
   private pickupPressed = false;
+  private leftDown = false; // primary fire held (left mouse button)
+  private grenadePressed = false; // edge: right mouse → grenade
+  private autoPressed = false; // edge: Space → toggle auto-fire
   private mouseX = -1;
   private mouseY = -1;
   private mouseInside = false;
@@ -47,6 +56,10 @@ export class Input {
       if (e.code === 'Escape' && !this.down.has('Escape')) this.pausePressed = true;
       if ((e.code === 'KeyE' || e.code === 'KeyF') && !this.down.has(e.code)) {
         this.pickupPressed = true;
+      }
+      if (e.code === 'Space') {
+        e.preventDefault(); // don't scroll the page
+        if (!this.down.has('Space')) this.autoPressed = true; // edge → toggle auto-fire
       }
       this.down.add(e.code);
     };
@@ -65,16 +78,31 @@ export class Input {
     const onLeave = (): void => {
       this.mouseInside = false;
     };
+    const onMouseDown = (e: MouseEvent): void => {
+      if (e.button === 0)
+        this.leftDown = true; // primary fire
+      else if (e.button === 2) this.grenadePressed = true; // right → grenade (edge)
+    };
+    const onMouseUp = (e: MouseEvent): void => {
+      if (e.button === 0) this.leftDown = false;
+    };
+    const onContext = (e: Event): void => e.preventDefault(); // no right-click menu
     target.addEventListener('keydown', onDown);
     target.addEventListener('keyup', onUp);
     target.addEventListener('blur', onBlur);
     target.addEventListener('mousemove', onMove);
+    target.addEventListener('mousedown', onMouseDown);
+    target.addEventListener('mouseup', onMouseUp);
+    target.addEventListener('contextmenu', onContext);
     target.document.addEventListener('mouseleave', onLeave);
     return () => {
       target.removeEventListener('keydown', onDown);
       target.removeEventListener('keyup', onUp);
       target.removeEventListener('blur', onBlur);
       target.removeEventListener('mousemove', onMove);
+      target.removeEventListener('mousedown', onMouseDown);
+      target.removeEventListener('mouseup', onMouseUp);
+      target.removeEventListener('contextmenu', onContext);
       target.document.removeEventListener('mouseleave', onLeave);
     };
   }
@@ -93,12 +121,19 @@ export class Input {
     this.pausePressed = false;
     const pickup = this.pickupPressed;
     this.pickupPressed = false;
+    const grenade = this.grenadePressed;
+    this.grenadePressed = false;
+    const toggleAuto = this.autoPressed;
+    this.autoPressed = false;
     return {
       moveX: Math.max(-1, Math.min(1, moveX)),
       moveZ: Math.max(-1, Math.min(1, moveZ)),
       sprint: this.down.has('ShiftLeft') || this.down.has('ShiftRight'),
       pause,
       pickup,
+      fire: this.leftDown,
+      grenade,
+      toggleAuto,
       mouseX: this.mouseX,
       mouseY: this.mouseY,
       mouseInside: this.mouseInside,

@@ -21,6 +21,9 @@ function scriptInput(t: number): InputSnapshot {
     sprint: t % 120 < 20,
     pause: false,
     pickup: false,
+    fire: true, // hold fire so the run shoots (default is manual now)
+    grenade: false,
+    toggleAuto: false,
     mouseX: -1,
     mouseY: -1,
     mouseInside: false,

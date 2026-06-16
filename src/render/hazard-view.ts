@@ -34,7 +34,7 @@ export class HazardView {
 
   constructor(scene: Scene, capacity: number = MAX_HAZARDS) {
     // Unit-radius ring + disc, laid flat on the floor (rotate onto XZ).
-    const ringGeo = new RingGeometry(0.86, 1.0, 40);
+    const ringGeo = new RingGeometry(0.93, 1.0, 44);
     ringGeo.rotateX(-Math.PI / 2);
     const fillGeo = new CircleGeometry(1, 40);
     fillGeo.rotateX(-Math.PI / 2);

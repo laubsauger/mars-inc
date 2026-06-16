@@ -114,11 +114,12 @@ export class WeaponSystem {
     fx: FxQueue,
     cond: ConditionalResult = NO_COND,
     onHit?: OnHit,
+    firing = true, // primary-fire held / auto-fire on (default true for headless)
   ): void {
     this.kills.length = 0;
     this.damageThisStep = 0;
     this.firedThisStep = false;
-    this.fire(player, enemies, mods, rng, dt, fx, cond);
+    this.fire(player, enemies, mods, rng, dt, fx, cond, firing);
     this.advanceProjectiles(enemies, hash, mods, rng, dt, fx, onHit);
     compactDead(enemies, this.kills, fx);
   }
@@ -131,10 +132,17 @@ export class WeaponSystem {
     dt: number,
     fx: FxQueue,
     cond: ConditionalResult,
+    firing: boolean,
   ): void {
     for (const w of this.weapons) {
       w.cooldownLeft -= dt;
       if (w.cooldownLeft > 0) continue;
+      // Not firing → the gun is ready but holds (no spawn); clamp so it doesn't
+      // bank negative cooldown and burst on release.
+      if (!firing) {
+        w.cooldownLeft = 0;
+        continue;
+      }
 
       const aim = resolveAim(w, player, enemies, mods.rangeMult);
       if (!aim) continue; // nothing to shoot at and no cursor aim

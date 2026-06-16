@@ -36,6 +36,9 @@ export interface ProfileView {
   byCombo: RecordRow[];
   /** True once the player has ever felled the Gatekeeper — gates Act 2 (T-Act). */
   bossDefeated: boolean;
+  /** Weapon ids DISCOVERED (started with or picked up in a run); the Arsenal shows
+   *  ??? for the rest until found (discovery progression). */
+  discoveredWeapons: string[];
 }
 
 /** Settings + accessibility, mirrored from the profile and editable (T36). */
@@ -90,6 +93,10 @@ export interface HudState {
   weapon: string; // current primary weapon display name (T33)
   shieldCharges: number; // current recharging-shield charges (T40)
   shieldMax: number; // 0 = no shield drafted yet
+  // Ability hotbar (ARPG-style): radial cooldown + ready state per slot.
+  sprintMax: number; // max sprint charges (slot pips)
+  grenade01: number; // 0..1 grenade cooldown progress (1 = ready to throw)
+  autoShoot: boolean; // persistent auto-fire toggle state (Space)
 }
 
 /** Hovered-enemy inspect panel (mini character sheet). Computed render-side from
@@ -295,6 +302,9 @@ const INITIAL_HUD: HudState = {
   weapon: 'Contractual Sidearm',
   shieldCharges: 0,
   shieldMax: 0,
+  sprintMax: 1,
+  grenade01: 1,
+  autoShoot: false,
 };
 
 const INITIAL_DRAFT: DraftState = {
@@ -311,6 +321,7 @@ const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
 const INITIAL_PROFILE: ProfileView = {
   bestTimeSec: 0,
   bossDefeated: false,
+  discoveredWeapons: [],
   bestLevel: 0,
   mostKills: 0,
   runCount: 0,

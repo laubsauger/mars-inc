@@ -369,4 +369,84 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
       mods.damageMult = Math.max(0.3, mods.damageMult - 0.2);
     },
   },
+  // ── Grenade (right-mouse secondary) — its own progression lane ──────────────
+  {
+    id: 'cluster-munitions',
+    name: 'Cluster Munitions',
+    description: 'GRENADE: -25% grenade cooldown per level — lob them faster.',
+    tags: ['grenade', 'explosive', 'aoe'],
+    grantsTags: ['grenade'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 6,
+    synergyWeight: 2,
+    apply: ({ mods }) => {
+      mods.grenadeCdMult *= 0.75;
+    },
+  },
+  {
+    id: 'heavy-ordnance',
+    name: 'Heavy Ordnance',
+    description: 'GRENADE: +50% grenade damage and +1 blast radius per level.',
+    tags: ['grenade', 'explosive', 'aoe', 'damage'],
+    grantsTags: ['grenade'],
+    rarity: 'rare',
+    maxLevel: 2,
+    baseWeight: 4,
+    synergyWeight: 3,
+    apply: ({ mods }) => {
+      mods.grenadeDamageMult += 0.5;
+      mods.grenadeRadiusAdd += 1;
+    },
+  },
+  {
+    id: 'concussion-charge',
+    name: 'Concussion Charge',
+    description: 'GRENADE: +60% grenade knockback — blow a lane through the horde.',
+    tags: ['grenade', 'kinetic', 'control'],
+    grantsTags: ['grenade'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 6,
+    synergyWeight: 2,
+    apply: ({ mods }) => {
+      mods.grenadeKnockbackMult += 0.6;
+    },
+  },
+  {
+    id: 'molotov-cocktail',
+    name: 'Molotov Cocktail',
+    description: 'GRENADE: your grenades set the blast zone on FIRE (burn).',
+    tags: ['grenade', 'burn', 'status', 'aoe'],
+    grantsTags: ['grenade', 'burn'],
+    rarity: 'rare',
+    maxLevel: 1,
+    baseWeight: 4,
+    synergyWeight: 3,
+    role: 'converter',
+    riskTier: 0,
+    apply: ({ mods }) => {
+      mods.grenadeMolotov = true;
+    },
+  },
+  {
+    id: 'napalm-doctrine',
+    name: 'Napalm Doctrine',
+    description: 'CAPSTONE: grenades become a wide WALL OF FIRE — +radius, +damage, molotov burn.',
+    tags: ['grenade', 'burn', 'aoe', 'explosive'],
+    grantsTags: ['grenade', 'burn'],
+    requiresAnyTags: ['grenade'],
+    rarity: 'legendary',
+    maxLevel: 1,
+    baseWeight: 2,
+    synergyWeight: 3,
+    role: 'catastrophe',
+    riskTier: 1,
+    apply: ({ mods }) => {
+      mods.grenadeMolotov = true;
+      mods.grenadeDamageMult += 0.6;
+      mods.grenadeRadiusAdd += 2;
+      mods.grenadeCdMult *= 0.85;
+    },
+  },
 ];

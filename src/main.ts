@@ -22,6 +22,7 @@ import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
 import { CorpseView } from './render/corpse-view';
+import { GrenadeView } from './render/grenade-view';
 import { PetView } from './render/pet-view';
 import { AimLineView } from './render/aim-line-view';
 import { Effects } from './render/effects';
@@ -156,6 +157,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const groundShadowView = new GroundShadowView(scene);
   const enemyHealthbars = new EnemyHealthbarView(scene);
   const projectileView = new ProjectileView(scene);
+  const grenadeView = new GrenadeView(scene);
   const enemyProjectileView = new EnemyProjectileView(scene);
   const hazardView = new HazardView(scene);
   const throwMarkerView = new ThrowMarkerView(scene);
@@ -222,6 +224,9 @@ async function boot(parent: HTMLElement): Promise<void> {
       runCount: save.current.runHistory.length,
       byCombo,
       bossDefeated: !!save.current.unlocks['boss-beaten'],
+      discoveredWeapons: Object.keys(save.current.unlocks)
+        .filter((k) => k.startsWith('weapon:') && save.current.unlocks[k])
+        .map((k) => k.slice('weapon:'.length)),
     });
     uiActions.setSettings({
       masterVolume: save.current.settings.masterVolume,
@@ -241,12 +246,25 @@ async function boot(parent: HTMLElement): Promise<void> {
   };
   pushProfile();
 
+  // Permanently reveal a weapon's Arsenal slot (started with or picked up). Cheap
+  // no-op once known; refreshes the store so the menu updates live.
+  const discoverWeapon = (id: string | undefined): void => {
+    if (!id) return;
+    const key = `weapon:${id}`;
+    if (save.current.unlocks[key]) return;
+    save.mutate((p) => {
+      p.unlocks[key] = true;
+    });
+    pushProfile();
+  };
+
   // Boot lands on the main menu over the rendered empty arena (§13.4).
   // Dev shortcut: `?play` (in dev builds) skips the menu and drops straight into
   // a run — fast iteration with hot reload, no clicking through the menu.
   const autostart = import.meta.env.DEV && new URLSearchParams(location.search).has('play');
   if (autostart) {
     world.start();
+    discoverWeapon(world.weaponSystem.primaryId);
     uiActions.setScreen('arena');
   } else {
     uiActions.setScreen('menu');
@@ -346,6 +364,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   uiActions.setEnterPit(() => {
     world.setPermanents(save.current.permanentUpgrades);
     world.start();
+    discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
@@ -365,6 +384,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   uiActions.setRestartRun(() => {
     world.setPermanents(save.current.permanentUpgrades); // apply any purchases
     world.start();
+    discoverWeapon(world.weaponSystem.primaryId);
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
@@ -457,6 +477,9 @@ async function boot(parent: HTMLElement): Promise<void> {
       const t0 = performance.now();
       world.step(dt);
       simMs = performance.now() - t0;
+      // Weapon discovery (Arsenal progression): picking up a crate reveals that
+      // weapon's slot permanently. The starting weapon is marked on run start.
+      if (world.weaponDrops.justPicked) discoverWeapon(world.weaponDrops.justPicked);
     },
     render(alpha) {
       const now = performance.now();
@@ -540,6 +563,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       statusMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
+      grenadeView.sync(world.grenades);
       floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
       hazardView.sync(world.enemyAttacks.hazards);
@@ -623,6 +647,9 @@ async function boot(parent: HTMLElement): Promise<void> {
         weapon: world.weaponSystem.weapons[0]?.def.displayName ?? '',
         shieldCharges: world.player.shieldCharges,
         shieldMax: world.player.shieldMax,
+        sprintMax: sp.maxCharges,
+        grenade01: world.grenadeCharge01,
+        autoShoot: world.autoShoot,
       });
       uiActions.setBoss(world.boss.snapshot());
       uiActions.setInspect(computeInspect(world));

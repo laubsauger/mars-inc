@@ -24,7 +24,7 @@ export class ThrowMarkerView {
   private dummy = new Object3D();
 
   constructor(scene: Scene, capacity: number = MAX_ENEMY_PROJECTILES) {
-    const geo = new RingGeometry(0.9, 1.0, 36);
+    const geo = new RingGeometry(0.95, 1.0, 40);
     geo.rotateX(-Math.PI / 2);
     this.mesh = new InstancedMesh(
       geo,

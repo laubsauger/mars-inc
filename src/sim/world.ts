@@ -16,6 +16,7 @@ import { WaveDirector, computeAdaptation, difficultyScale } from './director/wav
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
 import { CorpseSystem } from './combat/corpses';
+import { GrenadeSystem } from './combat/grenades';
 import { PetSystem } from './combat/pets';
 import { radialPush } from './combat/knockback';
 import { equip } from './combat/weapon';
@@ -96,6 +97,9 @@ const ZERO_INPUT: InputSnapshot = {
   sprint: false,
   pause: false,
   pickup: false,
+  fire: false,
+  grenade: false,
+  toggleAuto: false,
   mouseX: -1,
   mouseY: -1,
   mouseInside: false,
@@ -129,6 +133,8 @@ export class World {
   readonly drones = new DroneSystem();
   /** Overkill corpses: detonate/launch/chain/meteor build family (T65). */
   readonly corpses = new CorpseSystem();
+  /** Player grenades: right-mouse AoE+knockback lobs (crowd-parting tool). */
+  readonly grenades = new GrenadeSystem();
   /** Gravedigger pets: slain enemies rise to fight for you, then decay (T-necro). */
   readonly pets = new PetSystem();
   readonly shards: ShardPool;
@@ -156,6 +162,16 @@ export class World {
   /** False until the player enters the pit from the menu (T27). Sim idles. */
   started = false;
   input: InputSnapshot = ZERO_INPUT;
+  /** Persistent auto-fire (toggled by Space). Off by default — the player holds
+   *  left-mouse to fire; Space flips this on for hands-free fire. */
+  autoShoot = false;
+  /** Cooldown (s) until the next grenade can be thrown (right mouse, T-grenade). */
+  private grenadeCd = 0;
+  private grenadeCdMax = 1.2; // last throw's full cooldown (for the HUD radial)
+  /** Grenade cooldown progress 0..1 (1 = ready to throw) — for the ability hotbar. */
+  get grenadeCharge01(): number {
+    return this.grenadeCdMax > 0 ? Math.min(1, 1 - this.grenadeCd / this.grenadeCdMax) : 1;
+  }
   paused = false;
 
   // Run lifecycle (T22). `ended` latches on death; `result` is computed once.
@@ -339,6 +355,10 @@ export class World {
 
     // Dynamic build conditionals (T38): evaluate against live combat context.
     const cond = this.evalConditionals(dt);
+    // Fire control (T-input): hold left-mouse to fire; Space toggles persistent
+    // auto-fire. Default is manual so the player paces their own shots.
+    if (this.input.toggleAuto) this.autoShoot = !this.autoShoot;
+    const firing = this.input.fire || this.autoShoot;
     // On-hit hook (T38 hit/crit triggers + T39 on-hit status) only when needed.
     this.hitTriggerDamage = 0;
     const onHit =
@@ -356,6 +376,20 @@ export class World {
       this.fx,
       cond,
       onHit,
+      firing,
+    );
+    // Grenade (T-grenade): right-mouse lobs an AoE+knockback grenade at the cursor,
+    // on a cooldown — a crowd-parting tool. Reuses the pipeline (V3) + radial push.
+    this.grenadeCd = Math.max(0, this.grenadeCd - dt);
+    if (this.input.grenade && this.grenadeCd <= 0 && this.player.aim.has) {
+      this.throwGrenade();
+    }
+    const grenadeDmg = this.grenades.step(
+      this.enemies,
+      this.enemySystem.hash,
+      this.rng,
+      this.fx,
+      dt,
     );
     // On-shot trigger (T55 recoil family: Countermass shockwave, God-Kicker).
     if (this.weaponSystem.firedThisStep && this.effects.has('shot')) this.fireShotTrigger();
@@ -449,7 +483,8 @@ export class World {
       this.novaDamageThisStep +
       corpseDmg +
       petDmg +
-      xpResDmg;
+      xpResDmg +
+      grenadeDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
     this.stats.damageTaken += Math.max(0, healthBefore - this.player.health);
@@ -548,6 +583,44 @@ export class World {
     };
     this.effects.fire('hit', ctx);
     if (crit) this.effects.fire('crit', ctx);
+  }
+
+  /** Lob a grenade at the aim point (T-grenade). Damage scales modestly with the
+   *  build; radius picks up explosive blast mods. Sets the throw cooldown. */
+  private throwGrenade(): void {
+    const m = this.mods;
+    // Baseline is a CROWD-CONTROLLER: modest centre damage with hard falloff to the
+    // rim (aoe.ts), big knockback. Upgrades grow it into a damage dealer.
+    const dmg = (6 + 6 * m.damageMult) * m.grenadeDamageMult;
+    const radius = 3.6 + Math.min(2, m.blastRadius) + m.grenadeRadiusAdd;
+    // Vacuum Charge inverts the shove into a PULL (negative force → radialPush
+    // sucks enemies toward the blast — a gather tool instead of a scatter).
+    const knockback = 38 * m.grenadeKnockbackMult * (m.grenadePull ? -1 : 1);
+    this.grenades.configure(dmg, radius, knockback, m.grenadeMolotov);
+    // Clamp the throw to a max range (no infinite-distance lobs); constant sling
+    // speed means a longer throw also takes longer to land (GrenadeSystem).
+    const px = this.player.pos.x;
+    const pz = this.player.pos.z;
+    let tx = this.player.aim.x;
+    let tz = this.player.aim.z;
+    const ddx = tx - px;
+    const ddz = tz - pz;
+    const d = Math.hypot(ddx, ddz);
+    const MAX_THROW = 12;
+    if (d > MAX_THROW) {
+      tx = px + (ddx / d) * MAX_THROW;
+      tz = pz + (ddz / d) * MAX_THROW;
+    }
+    this.grenades.throwAt(px, pz, tx, tz);
+    this.grenadeCd = 1.2 * m.grenadeCdMult;
+    this.grenadeCdMax = this.grenadeCd;
+    this.fx.push(
+      'muzzle',
+      this.player.pos.x,
+      this.player.pos.z,
+      this.player.aim.x - this.player.pos.x,
+      this.player.aim.z - this.player.pos.z,
+    );
   }
 
   /** Fire the on-shot trigger once per step the player fired (T55). `x,z` is the
@@ -733,6 +806,9 @@ export class World {
     this.stationarySec = 0;
     this.director.reset();
     this.drones.reset();
+    this.grenades.reset();
+    this.grenadeCd = 0;
+    this.autoShoot = false;
     this.corpses.pool.clear();
     this.pets.reset();
     this.prevSprintActive = false;

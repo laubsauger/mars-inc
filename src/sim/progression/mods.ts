@@ -27,6 +27,13 @@ export interface RunMods {
   procCoefBonus: number; // added to the weapon's proc coefficient (T69/T70; status builds)
   statusDamageMult: number; // global DoT amplifier — burn/bleed × this (T35/T70 status lane)
   critDamageMult: number; // scales the crit BONUS damage (T35; 1 = weapon default)
+  // GRENADE (right-mouse) progression axis (T-grenade): a crowd-parting secondary.
+  grenadeCdMult: number; // throw cooldown × this (<1 = faster)
+  grenadeDamageMult: number; // grenade blast damage × this
+  grenadeRadiusAdd: number; // + blast radius (world units)
+  grenadeKnockbackMult: number; // outward shove × this
+  grenadeMolotov: boolean; // Molotov: the blast also sets the area on fire (burn)
+  grenadePull: boolean; // Vacuum Charge: the blast SUCKS enemies in instead of shoving them out
 }
 
 export function defaultMods(): RunMods {
@@ -51,6 +58,12 @@ export function defaultMods(): RunMods {
     procCoefBonus: 0,
     statusDamageMult: 1,
     critDamageMult: 1,
+    grenadeCdMult: 1,
+    grenadeDamageMult: 1,
+    grenadeRadiusAdd: 0,
+    grenadeKnockbackMult: 1,
+    grenadeMolotov: false,
+    grenadePull: false,
   };
 }
 
