@@ -213,6 +213,7 @@ export const BOSS_GATEKEEPER: EnemyType = {
   separationWeight: 0.3,
   variant: 2,
   threat: 250,
+  contactDamage: 22, // body-checks hurt — don't stand in the Gatekeeper
 };
 
 // Severance Lobber — first ranged class (T33). Hangs back (slow) and lobs a
@@ -318,6 +319,18 @@ export const AUDIT_BRUTE: EnemyType = {
   threat: 16,
   contactDamage: 16,
 };
+
+/** Display names by variant — for HUD intros / readouts (T33). */
+export const ENEMY_DISPLAY_NAME: readonly string[] = [
+  'Rust Mite',
+  'Debt Hound',
+  'Gatekeeper of Phobos',
+  'Severance Lobber',
+  'Repossession Marshal',
+  'Foreclosure Mortar',
+  'Riot Shotgunner',
+  'Audit Brute',
+];
 
 /** Variant index → enemy type, so SoA-pooled enemies recover their def (and
  *  attack profile) at runtime without storing it per instance. */

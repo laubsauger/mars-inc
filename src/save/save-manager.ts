@@ -6,6 +6,7 @@
 import {
   type PlayerProfile,
   type SettingsData,
+  type AccessibilityData,
   createDefaultProfile,
   normalizeProfile,
   serializeProfile,
@@ -72,6 +73,12 @@ export class SaveManager {
   /** Mutate settings and schedule a persist. */
   updateSettings(patch: Partial<SettingsData>): void {
     this.profile.settings = { ...this.profile.settings, ...patch };
+    this.scheduleSave();
+  }
+
+  /** Mutate accessibility options and schedule a persist (T36). */
+  updateAccessibility(patch: Partial<AccessibilityData>): void {
+    this.profile.accessibility = { ...this.profile.accessibility, ...patch };
     this.scheduleSave();
   }
 

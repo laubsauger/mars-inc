@@ -12,6 +12,7 @@ export interface RunMods {
   chainCount: number; // lightning arcs to N nearby enemies on hit (0 = off)
   chainRange: number; // max arc distance (world units)
   chainFalloff: number; // damage retained per arc hop (0..1)
+  blastRadius: number; // universal explosive radius added to every shot (0 = off)
 }
 
 export function defaultMods(): RunMods {
@@ -25,6 +26,7 @@ export function defaultMods(): RunMods {
     chainCount: 0,
     chainRange: 6,
     chainFalloff: 0.6,
+    blastRadius: 0,
   };
 }
 

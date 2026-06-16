@@ -5,16 +5,17 @@
 
 import {
   InstancedMesh,
-  PlaneGeometry,
+  CircleGeometry,
+  RingGeometry,
   MeshBasicMaterial,
   Object3D,
   Color,
   DynamicDrawUsage,
+  InstancedBufferAttribute,
   AdditiveBlending,
-  type Texture,
+  type BufferGeometry,
   type Scene,
 } from 'three';
-import { starTexture, ringTexture, puffTexture } from './art/effect-textures';
 import { COL } from './art/palette';
 import type { FxEvent } from '../sim/fx';
 
@@ -46,18 +47,26 @@ class EffectPool {
   private b: Float32Array;
   private yOffset: number;
 
-  constructor(scene: Scene, texture: Texture, capacity: number, yOffset: number) {
-    const geo = new PlaneGeometry(1, 1);
-    geo.rotateX(-Math.PI / 2); // lie flat on the arena floor
+  constructor(scene: Scene, geo: BufferGeometry, capacity: number, yOffset: number) {
+    // Solid additive geometry (no texture). CanvasTexture maps don't bind under
+    // the WebGPU backend here; flat discs/rings render reliably like the
+    // projectile/enemy instanced meshes do. The dummy tilts each instance flat.
     const mat = new MeshBasicMaterial({
-      map: texture,
       transparent: true,
       blending: AdditiveBlending,
+      // depthWrite off (glows don't occlude), but depthTest ON so the player /
+      // enemies in front of a ground effect correctly occlude it (trails read as
+      // behind him). They sit just above the floor so inlays never hide them.
       depthWrite: false,
+      depthTest: true,
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    // Pre-create instanceColor (lazy setColorAt is unreliable under WebGPU).
+    const colorBuf = new Float32Array(capacity * 3).fill(1);
+    this.mesh.instanceColor = new InstancedBufferAttribute(colorBuf, 3);
+    this.mesh.instanceColor.setUsage(DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     this.yOffset = yOffset;
@@ -138,17 +147,25 @@ class EffectPool {
 }
 
 const _tmp = new Color();
+// Muted cyan for the sprint wake — additive shieldCyan at full is too loud.
+const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
 
 export class Effects {
   private muzzle: EffectPool;
   private impact: EffectPool;
   private dust: EffectPool;
   private sprintTimer = 0;
+  /** Accessibility flash reduction (T36): dampen muzzle/impact brightness + density. */
+  reduceFlash = false;
 
   constructor(scene: Scene) {
-    this.muzzle = new EffectPool(scene, starTexture(), 256, 0.6);
-    this.impact = new EffectPool(scene, ringTexture(), 512, 0.12);
-    this.dust = new EffectPool(scene, puffTexture(), 1024, 0.3);
+    // Disc flash for muzzle/dust, an actual annulus for impact shockwaves.
+    this.muzzle = new EffectPool(scene, new CircleGeometry(0.5, 14), 256, 0.6);
+    // Impact ring: a full, evenly-segmented annulus lifted a touch off the floor
+    // so it isn't clipped by ground inlays. Kept modest so the top-down ellipse
+    // doesn't read as a stretched smear.
+    this.impact = new EffectPool(scene, new RingGeometry(0.34, 0.5, 40), 512, 0.7);
+    this.dust = new EffectPool(scene, new CircleGeometry(0.5, 16), 1024, 0.3);
   }
 
   /** Spawn from drained sim FX events. */
@@ -156,12 +173,14 @@ export class Effects {
     for (const e of events) {
       switch (e.kind) {
         case 'muzzle':
+          // Flash reduction: skip the bright muzzle flash, keep gameplay readable.
+          if (this.reduceFlash) break;
           this.muzzle.spawn({
             x: e.x,
             z: e.z,
-            s0: 1.4,
-            s1: 2.2,
-            life: 0.09,
+            s0: 2.6,
+            s1: 1.2,
+            life: 0.11,
             spin: 8,
             color: COL.kineticGold,
           });
@@ -170,20 +189,20 @@ export class Effects {
           this.impact.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.6,
-            s1: 2.0,
-            life: 0.22,
+            s0: 0.8,
+            s1: 2.6,
+            life: 0.28,
             spin: 0,
             color: COL.sunHigh,
           });
           this.dust.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.5,
-            s1: 1.4,
-            life: 0.3,
+            s0: 1.4,
+            s1: 2.6,
+            life: 0.32,
             spin: 3,
-            color: COL.brass,
+            color: COL.kineticGold,
           });
           break;
         case 'death':
@@ -191,20 +210,20 @@ export class Effects {
           this.dust.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.8,
-            s1: 3.2,
-            life: 0.4,
+            s0: 1.6,
+            s1: 5,
+            life: 0.45,
             spin: 4,
             color: e.variant === 1 ? COL.healthRed : COL.marsDust,
           });
           this.impact.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.4,
-            s1: 2.4,
-            life: 0.3,
+            s0: 0.6,
+            s1: 3.2,
+            life: 0.4,
             spin: 0,
-            color: COL.marsDust,
+            color: COL.sunHigh,
           });
           break;
       }
@@ -212,12 +231,13 @@ export class Effects {
   }
 
   /** Cyan sprint trail commas (art doc). reduceFlash dampens via fewer puffs. */
-  sprintTrail(x: number, z: number, active: boolean, dt: number, reduceFlash: boolean): void {
+  sprintTrail(x: number, z: number, active: boolean, dt: number): void {
     if (!active) return;
     this.sprintTimer -= dt;
     if (this.sprintTimer > 0) return;
-    this.sprintTimer = reduceFlash ? 0.08 : 0.03;
-    this.dust.spawn({ x, z, s0: 1.0, s1: 0.2, life: 0.35, spin: 6, color: COL.shieldCyan });
+    // Slick, low-key wake: small puffs that shrink + fade fast (readable, ⊥ loud).
+    this.sprintTimer = this.reduceFlash ? 0.07 : 0.035;
+    this.dust.spawn({ x, z, s0: 0.7, s1: 0.15, life: 0.26, spin: 4, color: TRAIL_CYAN });
   }
 
   update(dt: number): void {

@@ -10,10 +10,21 @@ export interface RunStats {
   timeSurvived: number; // seconds (= world.elapsed at death)
   level: number; // level reached
   upgradesTaken: number; // draft picks applied
+  bossKills: number; // bosses felled this run
+  killsByVariant: number[]; // kills bucketed by enemy variant (for the summary)
 }
 
 export function newRunStats(): RunStats {
-  return { kills: 0, damageDealt: 0, damageTaken: 0, timeSurvived: 0, level: 1, upgradesTaken: 0 };
+  return {
+    kills: 0,
+    damageDealt: 0,
+    damageTaken: 0,
+    timeSurvived: 0,
+    level: 1,
+    upgradesTaken: 0,
+    bossKills: 0,
+    killsByVariant: [],
+  };
 }
 
 export function resetRunStats(s: RunStats): void {
@@ -23,6 +34,8 @@ export function resetRunStats(s: RunStats): void {
   s.timeSurvived = 0;
   s.level = 1;
   s.upgradesTaken = 0;
+  s.bossKills = 0;
+  s.killsByVariant.length = 0;
 }
 
 /** Derived post-game summary shown on the result screen. */
@@ -35,22 +48,25 @@ export interface RunResult {
   upgradesTaken: number;
   dps: number; // damage per second over the run
   killsPerMin: number;
+  won: boolean; // true if the run ended by defeating the boss (T33)
 }
 
 /**
  * Martian Glory awarded for a run (T26, §9.5). Rewards how FAR you got, not just
  * showing up: depth (level) scales quadratically while time/kills are small drips
- * — a tier-1 death pays a pittance, a deep run pays real money. Progression
- * unlocks possibilities, not raw power. Pure & deterministic from the result.
+ * — a tier-1 death pays a pittance, a deep run pays real money. Beating the boss
+ * pays a victory bounty. Progression unlocks possibilities, not raw power. Pure
+ * & deterministic from the result.
  */
 export function gloryFor(result: RunResult): number {
+  const win = result.won ? 200 : 0;
   return Math.floor(
-    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6,
+    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6 + win,
   );
 }
 
 /** Pure projection of accumulated stats into the result summary (V20). */
-export function computeResult(stats: RunStats): RunResult {
+export function computeResult(stats: RunStats, won = false): RunResult {
   const t = Math.max(stats.timeSurvived, 0);
   // Guard divide-by-zero for instant deaths; rates collapse to 0, not NaN.
   const perSec = t > 0 ? 1 / t : 0;
@@ -63,5 +79,6 @@ export function computeResult(stats: RunStats): RunResult {
     upgradesTaken: stats.upgradesTaken,
     dps: stats.damageDealt * perSec,
     killsPerMin: stats.kills * perSec * 60,
+    won,
   };
 }

@@ -7,6 +7,7 @@ import { computeResult, newRunStats, resetRunStats, type RunStats } from './run'
 describe('computeResult', () => {
   it('echoes counts/damage/time/level/upgrades verbatim', () => {
     const stats: RunStats = {
+      ...newRunStats(),
       kills: 42,
       damageDealt: 1200,
       damageTaken: 88,
@@ -25,6 +26,7 @@ describe('computeResult', () => {
 
   it('derives dps and kills/min from time', () => {
     const r = computeResult({
+      ...newRunStats(),
       kills: 30,
       damageDealt: 600,
       damageTaken: 0,
@@ -41,6 +43,13 @@ describe('computeResult', () => {
     expect(r.dps).toBe(0);
     expect(r.killsPerMin).toBe(0);
     expect(Number.isNaN(r.dps)).toBe(false);
+  });
+});
+
+describe('won flag', () => {
+  it('defaults to false (death) and is set on a boss-kill win', () => {
+    expect(computeResult(newRunStats()).won).toBe(false);
+    expect(computeResult(newRunStats(), true).won).toBe(true);
   });
 });
 

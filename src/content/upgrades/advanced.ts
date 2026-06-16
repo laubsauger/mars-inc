@@ -19,18 +19,20 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     apply: ({ effects }) =>
       effects.addConditional((c) => (c.hpFrac < 0.35 ? { damageMult: 1.6 } : {})),
   },
-  // CONDITIONAL — ramp build: reward sustained fire (rotary/beam direction).
+  // CONDITIONAL — brawler build: reward fighting up close (the risk lane,
+  // opposite of the kiting-reward Restraining Order). Auto-fire means uptime is
+  // your positioning, not a trigger.
   {
-    id: 'overdraft-engine',
-    name: 'Overdraft Engine',
-    description: '+5% damage per second of sustained fire (max +50%).',
-    tags: ['ramp', 'damage', 'heat'],
+    id: 'point-blank-clause',
+    name: 'Point-Blank Clause',
+    description: '+50% damage to enemies at point-blank range.',
+    tags: ['conditional', 'damage', 'risk'],
     rarity: 'rare',
     maxLevel: 2,
     baseWeight: 4,
     synergyWeight: 2,
     apply: ({ effects }) =>
-      effects.addConditional((c) => ({ damageMult: 1 + Math.min(0.5, c.firingRampSec * 0.05) })),
+      effects.addConditional((c) => (c.nearestDist < 5 ? { damageMult: 1.5 } : {})),
   },
   // CONDITIONAL — crowd build: crit harder against swarms.
   {

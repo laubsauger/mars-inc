@@ -1,9 +1,11 @@
 // Slice upgrade registry (T18). In-world names per docs/art-direction.md.
 // Effects mutate the run mod layer / player stats — never content defs.
+// The deep catalog (T33/T40, all rarities) is appended from `./catalog`.
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
+import { CATALOG_UPGRADES } from './catalog';
 
-export const UPGRADES: UpgradeDefinition[] = [
+const BASE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'overcharge',
     name: 'Overcharge Clause',
@@ -182,3 +184,6 @@ export const UPGRADES: UpgradeDefinition[] = [
     },
   },
 ];
+
+/** Full base draft catalog: starter set + the deep multi-rarity catalog. */
+export const UPGRADES: UpgradeDefinition[] = [...BASE_UPGRADES, ...CATALOG_UPGRADES];

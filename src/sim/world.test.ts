@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { World } from './world';
-import { EnemyState, RUST_MITE } from './enemies';
+import { EnemyState, RUST_MITE, BOSS_GATEKEEPER } from './enemies';
 
 const DT = 1 / 60;
 
@@ -47,6 +47,37 @@ describe('World death', () => {
     const t = w.elapsed;
     w.step(DT);
     expect(w.elapsed).toBe(t);
+  });
+});
+
+describe('boss reward (T43)', () => {
+  it('defeating the boss opens a major reward and freezes the run, not ends it', () => {
+    const w = new World(0x1234);
+    w.start();
+    w.countdown = 0;
+    const bi = w.enemies.spawn(BOSS_GATEKEEPER, 6, 0, 0, 0);
+    w.enemies.state[bi] = EnemyState.Active;
+    w.step(DT);
+    expect(w.boss.active).toBe(true);
+
+    // Kill it; within a couple steps the boss compacts out and the reward opens.
+    w.enemies.health[bi] = 0;
+    for (let t = 0; t < 4 && !w.bossReward; t++) w.step(DT);
+
+    expect(w.ended).toBe(false); // a boss kill is a hinge, not the end of the run
+    expect(w.bossReward).toBe(true); // 3-choice overlay is open
+    expect(w.bossRewardChoices.length).toBeGreaterThan(0);
+
+    // The frozen run holds until a reward is chosen.
+    const tick = w.tick;
+    w.step(DT);
+    expect(w.tick).toBe(tick);
+
+    // Choose one → resume.
+    w.chooseBossReward(0);
+    expect(w.bossReward).toBe(false);
+    w.step(DT);
+    expect(w.tick).toBe(tick + 1);
   });
 });
 

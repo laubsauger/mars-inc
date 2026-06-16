@@ -33,10 +33,12 @@ test('die → earn Glory → buy permanent → next run applies it (T26)', async
   const baseMax = await page.evaluate(
     () => (window as unknown as { __MARS__: Hook }).__MARS__.world.player.maxHealth,
   );
+  // Buy Reinforced Plating (+20 max health) via the meta path, then start a fresh
+  // run and confirm the permanent applied (higher starting max health).
   await page.evaluate(() => {
     const w = window as unknown as {
       __MARS__: Hook & {
-        world: { setPermanents: (p: Record<string, number>) => void };
+        world: { setPermanents: (p: Record<string, number>) => void; start: () => void };
         save: {
           current: { permanentUpgrades: Record<string, number> };
           mutate: (f: (p: { permanentUpgrades: Record<string, number> }) => void) => void;
@@ -47,10 +49,8 @@ test('die → earn Glory → buy permanent → next run applies it (T26)', async
       p.permanentUpgrades['reinforced-plating'] = 1;
     });
     w.__MARS__.world.setPermanents(w.__MARS__.save.current.permanentUpgrades);
+    w.__MARS__.world.start(); // fresh run applies owned permanents
   });
-
-  // Restart and confirm the permanent took effect (higher starting max health).
-  await page.getByRole('button', { name: 'RESTART' }).click();
   await page.waitForFunction(
     (prev) => (window as unknown as { __MARS__: Hook }).__MARS__.world.player.maxHealth > prev,
     baseMax,

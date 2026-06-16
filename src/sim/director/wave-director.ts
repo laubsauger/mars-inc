@@ -18,10 +18,28 @@ import {
 import type { Rng } from '../../core/rng';
 import { ARENA_RADIUS, GATE_COUNT } from '../constants';
 
-const TELEGRAPH = 0.6;
+const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
 const CHEAPEST = RUST_MITE.threat;
 const HARD_CAP = 1200; // absolute ceiling regardless of curve (≤ pool capacity, V8)
 const BOSS_AT = 90; // seconds → Gatekeeper milestone spawn (T33/T29)
+
+// Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
+// not a constant fill. Early waves are small groups from 2 of the 4 gates; the
+// gap shrinks, groups grow, and more gates open as the run escalates.
+const WAVE_GAP_START = 2.5; // seconds between waves at the open
+const WAVE_GAP_MIN = 1.0; // late-game floor
+
+// Directional spawn patterns. Kiting makes WHERE enemies come from the real
+// pressure dial: a wave from one gate is easy to lead away from; opposing gates
+// pincer you; a clockwise sweep keeps rotating the threat; surround removes the
+// escape. Patterns escalate from kiteable to overwhelming over the run.
+const enum Pattern {
+  Single = 0, // one gate — low pressure
+  Adjacent = 1, // two neighbours — push from one side
+  Opposing = 2, // two opposite gates — pincer, breaks straight-line kiting
+  Sweep = 3, // single gate rotating clockwise each wave — rotating pressure
+  Surround = 4, // all four gates — nowhere to run
+}
 
 export interface SpawnBudget {
   threatPoints: number; // accrual rate (points/sec) at this time
@@ -71,9 +89,10 @@ export function computeAdaptation(b: AdaptInput): Adaptation {
 /** Budget as a function of elapsed run seconds. Tunable curve (§8.3). */
 export function budgetAt(elapsed: number): SpawnBudget {
   return {
-    // Gentler opening: less threat/sec and a lower concurrent floor early so the
-    // first minute breathes; still ramps to a heavy late game (monotonic).
-    threatPoints: 1.0 + elapsed * 0.12,
+    // Opening accrual must fund the first clustered pulses (waveGroup × gates),
+    // else the bank trickle starves the waves and almost nothing spawns in the
+    // first minute. Still gentle vs late game and monotonic (V8).
+    threatPoints: 4.5 + elapsed * 0.25,
     maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(8 + elapsed * 2.1)),
     eliteBudget: Math.floor(elapsed / 30),
     rangedBudget: 0,
@@ -85,11 +104,15 @@ export class WaveDirector {
   private bank = 0;
   private phase = 0;
   private boss = false; // Gatekeeper milestone fired this run
+  private waveTimer = 1.0; // first wave lands shortly after the countdown
+  private sweepGate = 0; // clockwise cursor for the Sweep pattern
 
   reset(): void {
     this.bank = 0;
     this.phase = 0;
     this.boss = false;
+    this.waveTimer = 1.0;
+    this.sweepGate = 0;
   }
 
   /** Current bank of unspent threat points (dev overlay). */
@@ -134,8 +157,11 @@ export class WaveDirector {
 
   private spawnAtGate(pool: EnemyPool, rng: Rng, type: EnemyType): boolean {
     const gate = rng.int(0, GATE_COUNT - 1);
-    const angle = (gate / GATE_COUNT) * Math.PI * 2 + rng.range(-0.15, 0.15);
-    const r = ARENA_RADIUS - 1.5;
+    const angle = (gate / GATE_COUNT) * Math.PI * 2 + rng.range(-0.12, 0.12);
+    // Appear INSIDE the recessed portal tunnel (behind the blast doors); the
+    // telegraph walk then carries them out through the opening into the arena, so
+    // they read as marching out of the gate, not popping in front of it (T40).
+    const r = ARENA_RADIUS + 2.5;
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
     return pool.spawn(type, x, z, TELEGRAPH, this.phase++) >= 0;
@@ -161,21 +187,104 @@ export class WaveDirector {
       if (this.spawnAtGate(pool, rng, BOSS_GATEKEEPER)) this.boss = true;
     }
 
-    while (pool.count < cap && this.bank >= CHEAPEST) {
-      const type = this.pickType(rng, elapsed, houndBias);
-      if (this.bank < type.threat) {
-        // Can't afford the rolled type this tick; spend on the cheapest instead
-        // so the bank keeps flowing rather than stalling on an expensive roll.
-        if (this.bank < CHEAPEST) break;
-        if (!this.spawnAtGate(pool, rng, RUST_MITE)) break;
-        this.bank -= RUST_MITE.threat;
-        continue;
-      }
-      if (!this.spawnAtGate(pool, rng, type)) break; // pool full
-      this.bank -= type.threat;
+    // Wave rhythm: hold spawns between pulses (the breather), then release a
+    // clustered burst from a growing subset of gates. The bank built up during
+    // the breather is what funds the burst — so waves naturally scale with the
+    // budget curve while the arena gets moments to breathe.
+    this.waveTimer -= dt;
+    if (this.waveTimer <= 0) {
+      this.waveTimer = waveGap(elapsed);
+      this.spawnWave(pool, rng, elapsed, houndBias, cap);
     }
 
-    // Clamp so idle frames can't accumulate an unbounded burst (V8 bounded).
+    // Clamp so a long breather can't accumulate an unbounded burst (V8 bounded).
     this.bank = Math.min(this.bank, b.threatPoints * 4 + CHEAPEST);
   }
+
+  /** Release one wave: tight clustered groups from the gates a directional
+   *  pattern selects (the pressure shape — single / pincer / sweep / surround). */
+  private spawnWave(
+    pool: EnemyPool,
+    rng: Rng,
+    elapsed: number,
+    houndBias: number,
+    cap: number,
+  ): void {
+    const gates = this.gatesFor(this.choosePattern(rng, elapsed), rng);
+    const perGate = waveGroup(elapsed);
+    // Round-robin across the chosen gates so a small early bank spreads to all
+    // sides (2 units from 2 gates) instead of piling onto the first gate.
+    for (let k = 0; k < perGate; k++) {
+      for (const gate of gates) {
+        if (pool.count >= cap || this.bank < CHEAPEST) return;
+        const rolled = this.pickType(rng, elapsed, houndBias);
+        const type = this.bank >= rolled.threat ? rolled : RUST_MITE;
+        if (this.bank < type.threat) return;
+        if (!this.spawnCluster(pool, rng, gate, type)) return; // pool full
+        this.bank -= type.threat;
+      }
+    }
+  }
+
+  /** Choose this wave's pressure shape — gentle/kiteable early, relentless late. */
+  private choosePattern(rng: Rng, elapsed: number): Pattern {
+    const r = rng.next();
+    // Open with two-sided pressure (a couple units from two gates) so the very
+    // first pulse already reads as a fight, not a lone straggler.
+    if (elapsed < 20) return r < 0.6 ? Pattern.Adjacent : Pattern.Opposing;
+    if (elapsed < 45) {
+      return r < 0.25
+        ? Pattern.Adjacent
+        : r < 0.55
+          ? Pattern.Opposing
+          : r < 0.85
+            ? Pattern.Sweep
+            : Pattern.Surround;
+    }
+    return r < 0.3 ? Pattern.Opposing : r < 0.6 ? Pattern.Sweep : Pattern.Surround;
+  }
+
+  /** Resolve a pattern to the gate indices it spawns from this wave. */
+  private gatesFor(pattern: Pattern, rng: Rng): number[] {
+    switch (pattern) {
+      case Pattern.Single:
+        return [rng.int(0, GATE_COUNT - 1)];
+      case Pattern.Adjacent: {
+        const g = rng.int(0, GATE_COUNT - 1);
+        return [g, (g + 1) % GATE_COUNT];
+      }
+      case Pattern.Opposing: {
+        const g = rng.int(0, 1); // 0&2 or 1&3 — directly opposed
+        return [g, g + 2];
+      }
+      case Pattern.Sweep: {
+        const g = this.sweepGate;
+        this.sweepGate = (this.sweepGate + 1) % GATE_COUNT; // rotate clockwise
+        return [g];
+      }
+      case Pattern.Surround:
+        return [0, 1, 2, 3];
+    }
+  }
+
+  /** Spawn one enemy tightly clustered at a single gate (small arc + depth jitter). */
+  private spawnCluster(pool: EnemyPool, rng: Rng, gate: number, type: EnemyType): boolean {
+    const angle = (gate / GATE_COUNT) * Math.PI * 2 + rng.range(-0.05, 0.05);
+    // Inside the portal tunnel, behind the doors (T40); slight depth stagger keeps
+    // the cluster from overlapping. The telegraph walk marches them out the gate.
+    const r = ARENA_RADIUS + 2.5 - rng.range(0, 1.5);
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    return pool.spawn(type, x, z, TELEGRAPH, this.phase++) >= 0;
+  }
+}
+
+/** Seconds between waves — long at the open, shrinking to a floor. */
+function waveGap(elapsed: number): number {
+  return Math.max(WAVE_GAP_MIN, WAVE_GAP_START - elapsed * 0.035);
+}
+
+/** Max enemies per gate this wave — small groups that grow over the run. */
+function waveGroup(elapsed: number): number {
+  return 3 + Math.floor(elapsed / 18);
 }

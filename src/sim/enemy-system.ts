@@ -36,6 +36,16 @@ export class EnemySystem {
       if (p.state[i] === EnemyState.Telegraph) {
         p.prevX[i] = p.posX[i]!;
         p.prevZ[i] = p.posZ[i]!;
+        // Walk in: during the telegraph the enemy marches inward from inside the
+        // portal tunnel, through the opening doors, into the arena — so it reads
+        // as walking out of the gate rather than popping in (T40). Full speed so
+        // it clears the wall before going active (no clamp-snap). Intangible.
+        const d = Math.hypot(p.posX[i]!, p.posZ[i]!);
+        if (d > 1e-3) {
+          const inSpeed = p.speed[i]!;
+          p.posX[i]! -= (p.posX[i]! / d) * inSpeed * dt;
+          p.posZ[i]! -= (p.posZ[i]! / d) * inSpeed * dt;
+        }
         p.stateTimer[i]! -= dt;
         if (p.stateTimer[i]! <= 0) p.state[i] = EnemyState.Active;
         continue;

@@ -1,5 +1,11 @@
-// Rust Crown arena render view (T5). Circular floor, outer wall, four gates,
-// central emblem, lighting. V2: pure render view — holds no sim state.
+// Rust Crown arena view (T5 + T37 art pass). Pure render (V2): builds the floor,
+// outer wall, central emblem, spectator tier, lighting, and the four gatehouses
+// whose blast doors ANIMATE open while enemies telegraph nearby — so fodder reads
+// as walking in through the gate, not popping in. The open signal is derived from
+// sim enemy state each frame (render reads sim, never mutates it).
+//
+// Art direction: warm dusty floor vs. cool gunmetal structures for contrast and
+// readability (gameplay reads over the muted floor; gold trim only as accent).
 
 import {
   AmbientLight,
@@ -7,209 +13,473 @@ import {
   BoxGeometry,
   CircleGeometry,
   CylinderGeometry,
+  Color,
   type Scene,
   DirectionalLight,
   Group,
   Mesh,
   MeshStandardMaterial,
+  Object3D,
+  PointLight,
   RingGeometry,
+  SpotLight,
 } from 'three';
 import { ARENA_RADIUS, GATE_COUNT } from '../sim/constants';
+import { EnemyState, type EnemyPool } from '../sim/enemies';
 import { COL, OUTLINE as OUTLINE_W } from './art/palette';
 
-const RUST = COL.oxidizedIron;
+// Warm floor family (dusty Mars), cool structural family (gunmetal), gold accent.
 const FLOOR = COL.umberShadow;
 const FLOOR_PANEL = COL.oldRust;
 const FLOOR_LINE = COL.warmLine;
 const EMBLEM = COL.brass;
-const HAZARD = COL.kineticGold;
+const TRIM = COL.kineticGold;
 const OUTLINE = COL.nearBlack;
+const STEEL_DARK = new Color('#23262c');
+const STEEL = new Color('#363b44');
+const STEEL_LIT = new Color('#525a66');
+const WALL = new Color('#3a2d28'); // warm-tinted iron so wall ties floor to steel
+const CROWD = new Color('#140f0d');
+const PORTAL_FLOOR = new Color('#0c0a0b'); // near-black tunnel floor (reads as depth)
+const PORTAL_BACK = new Color('#1a0f0c'); // dim back wall
+const PORTAL_GLOW = new Color('#ff5a2a'); // ominous warm light enemies emerge from
 
-function addOutlineHull(mesh: Mesh, thickness: number): Mesh {
-  // Inverted-hull outline (§11.3) for hero props. Render-only.
+const GATE_GAP = 0.14; // angular half-gap cut in the wall at each gate (portal opening)
+const PORTAL_DEPTH = 9; // how far the spawn chamber extends out through the wall
+
+const GATE_HALF_WIDTH = 4.6; // opening half-width — wide enough for the boss (r 2.4)
+const GATE_HEIGHT = 6.5;
+const DOOR_OPEN_RANGE = 7; // a telegraphing enemy within this of a gate opens it
+
+function mat(color: Color, roughness = 0.85, metalness = 0.12): MeshStandardMaterial {
+  return new MeshStandardMaterial({ color, roughness, metalness });
+}
+
+function outlineHull(mesh: Mesh, thickness: number): void {
   const hull = new Mesh(
     mesh.geometry,
     new MeshStandardMaterial({ color: OUTLINE, side: BackSide }),
   );
   hull.scale.multiplyScalar(1 + thickness);
   mesh.add(hull);
-  return hull;
 }
 
-function makeStandard(color: typeof COL.umberShadow, roughness = 0.85, metalness = 0.12) {
-  return new MeshStandardMaterial({ color, roughness, metalness });
+interface GateDoors {
+  angle: number;
+  cx: number;
+  cz: number;
+  tx: number; // tangent (slide axis)
+  tz: number;
+  left: Mesh;
+  right: Mesh;
+  open: number; // 0 closed … 1 open (animated)
 }
 
-function addFloorDisc(
-  group: Group,
-  radius: number,
-  color: typeof COL.umberShadow,
-  y: number,
-): Mesh {
-  const disc = new Mesh(new CircleGeometry(radius, 96), makeStandard(color, 0.95, 0.04));
-  disc.rotation.x = -Math.PI / 2;
-  disc.position.y = y;
-  disc.receiveShadow = true;
-  group.add(disc);
-  return disc;
-}
+export class ArenaView {
+  readonly group = new Group();
+  private gates: GateDoors[] = [];
 
-function addFloorRing(
-  group: Group,
-  innerRadius: number,
-  outerRadius: number,
-  color: typeof COL.umberShadow,
-  y: number,
-): Mesh {
-  const ring = new Mesh(
-    new RingGeometry(innerRadius, outerRadius, 128),
-    makeStandard(color, 0.9, 0.08),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = y;
-  ring.receiveShadow = true;
-  group.add(ring);
-  return ring;
-}
-
-function addRadialInlay(
-  group: Group,
-  angle: number,
-  startRadius: number,
-  endRadius: number,
-  width: number,
-  color: typeof COL.umberShadow,
-  y: number,
-): Mesh {
-  const length = endRadius - startRadius;
-  const midRadius = startRadius + length * 0.5;
-  const inlay = new Mesh(new BoxGeometry(width, 0.04, length), makeStandard(color, 0.92, 0.08));
-  inlay.position.set(Math.cos(angle) * midRadius, y, Math.sin(angle) * midRadius);
-  inlay.rotation.y = Math.PI / 2 - angle;
-  inlay.receiveShadow = true;
-  group.add(inlay);
-  return inlay;
-}
-
-function addGateApproach(group: Group, angle: number): void {
-  const approachRadius = ARENA_RADIUS - 2.5;
-  const pad = new Mesh(new BoxGeometry(5.2, 0.08, 7.5), makeStandard(FLOOR_PANEL, 0.88, 0.16));
-  pad.position.set(Math.cos(angle) * approachRadius, 0.09, Math.sin(angle) * approachRadius);
-  pad.rotation.y = Math.PI / 2 - angle;
-  pad.receiveShadow = true;
-  group.add(pad);
-
-  for (const offset of [-1.2, 1.2]) {
-    const stripe = new Mesh(new BoxGeometry(0.35, 0.09, 6.6), makeStandard(HAZARD, 0.72, 0.1));
-    stripe.position.set(
-      Math.cos(angle) * approachRadius + Math.cos(angle + Math.PI / 2) * offset,
-      0.13,
-      Math.sin(angle) * approachRadius + Math.sin(angle + Math.PI / 2) * offset,
-    );
-    stripe.rotation.y = Math.PI / 2 - angle;
-    stripe.receiveShadow = true;
-    group.add(stripe);
-  }
-}
-
-export function buildArena(scene: Scene): Group {
-  const group = new Group();
-
-  // Floor — flat disc on the x,z plane (V4: y is visual only). Layered rings and
-  // inlays break up the old flat "brown pancake" placeholder without changing sim.
-  addFloorDisc(group, ARENA_RADIUS, FLOOR, 0);
-  addFloorRing(group, ARENA_RADIUS * 0.22, ARENA_RADIUS * 0.235, FLOOR_LINE, 0.035);
-  addFloorRing(group, ARENA_RADIUS * 0.48, ARENA_RADIUS * 0.492, FLOOR_LINE, 0.03);
-  addFloorRing(group, ARENA_RADIUS * 0.72, ARENA_RADIUS * 0.735, FLOOR_PANEL, 0.025);
-
-  for (let i = 0; i < 16; i++) {
-    const angle = (i / 16) * Math.PI * 2;
-    addRadialInlay(group, angle, ARENA_RADIUS * 0.2, ARENA_RADIUS * 0.9, 0.08, FLOOR_LINE, 0.04);
+  constructor(scene: Scene) {
+    this.buildFloor();
+    this.buildWallAndCrowd();
+    this.buildEmblem();
+    for (let i = 0; i < GATE_COUNT; i++) this.buildGate((i / GATE_COUNT) * Math.PI * 2);
+    this.buildLighting(scene);
+    scene.add(this.group);
   }
 
-  // Central emblem / spawn plate. Kept muted so the player and pickups read over it.
-  addFloorRing(group, ARENA_RADIUS * 0.095, ARENA_RADIUS * 0.145, FLOOR_PANEL, 0.06);
-  addFloorRing(group, ARENA_RADIUS * 0.045, ARENA_RADIUS * 0.052, EMBLEM, 0.08);
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    addRadialInlay(group, angle, ARENA_RADIUS * 0.055, ARENA_RADIUS * 0.13, 0.1, EMBLEM, 0.09);
+  private buildFloor(): void {
+    const disc = new Mesh(new CircleGeometry(ARENA_RADIUS, 96), mat(FLOOR, 0.95, 0.04));
+    disc.rotation.x = -Math.PI / 2;
+    disc.receiveShadow = true;
+    this.group.add(disc);
+
+    // Concentric inlay rings + radial seams break up the flat floor (readable).
+    const ring = (inner: number, outer: number, color: Color, y: number): void => {
+      const m = new Mesh(new RingGeometry(inner, outer, 128), mat(color, 0.9, 0.06));
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = y;
+      m.receiveShadow = true;
+      this.group.add(m);
+    };
+    ring(ARENA_RADIUS * 0.24, ARENA_RADIUS * 0.255, FLOOR_LINE, 0.03);
+    ring(ARENA_RADIUS * 0.5, ARENA_RADIUS * 0.515, FLOOR_LINE, 0.028);
+    ring(ARENA_RADIUS * 0.74, ARENA_RADIUS * 0.752, FLOOR_PANEL, 0.024);
+    ring(ARENA_RADIUS * 0.9, ARENA_RADIUS * 0.912, TRIM, 0.02); // thin gold boundary
+
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const len = ARENA_RADIUS * 0.7;
+      const midR = ARENA_RADIUS * 0.2 + len * 0.5;
+      const seam = new Mesh(new BoxGeometry(0.06, 0.03, len), mat(FLOOR_LINE, 0.92, 0.05));
+      seam.position.set(Math.cos(a) * midR, 0.022, Math.sin(a) * midR);
+      seam.rotation.y = Math.PI / 2 - a;
+      seam.receiveShadow = true;
+      this.group.add(seam);
+    }
   }
 
-  // Outer wall ring.
-  const wall = new Mesh(
-    new RingGeometry(ARENA_RADIUS, ARENA_RADIUS + 2.5, 96),
-    new MeshStandardMaterial({ color: RUST, roughness: 0.8, metalness: 0.3 }),
-  );
-  wall.rotation.x = -Math.PI / 2;
-  wall.position.y = 0.05;
-  wall.receiveShadow = true;
-  group.add(wall);
-
-  // Four gates at cardinal points.
-  for (let i = 0; i < GATE_COUNT; i++) {
-    const angle = (i / GATE_COUNT) * Math.PI * 2;
-    addGateApproach(group, angle);
-
-    const gate = new Mesh(
-      new BoxGeometry(6, 4, 1.5),
-      new MeshStandardMaterial({ color: RUST, roughness: 0.7, metalness: 0.4 }),
+  private buildEmblem(): void {
+    // Just an outline ring + a tiny centre pip — NOT a filled bright plate, so the
+    // dark floor (which receives shadows) shows through and the player reads over
+    // the centre instead of being lost on a glowing orange disc.
+    const outline = new Mesh(
+      new RingGeometry(ARENA_RADIUS * 0.13, ARENA_RADIUS * 0.145, 64),
+      new MeshStandardMaterial({ color: EMBLEM, emissive: EMBLEM, emissiveIntensity: 0.35 }),
     );
-    gate.position.set(
-      Math.cos(angle) * (ARENA_RADIUS + 1),
-      2,
-      Math.sin(angle) * (ARENA_RADIUS + 1),
+    outline.rotation.x = -Math.PI / 2;
+    outline.position.y = 0.025;
+    this.group.add(outline);
+
+    const pip = new Mesh(
+      new RingGeometry(ARENA_RADIUS * 0.018, ARENA_RADIUS * 0.03, 24),
+      new MeshStandardMaterial({ color: EMBLEM, emissive: EMBLEM, emissiveIntensity: 0.3 }),
     );
-    gate.lookAt(0, 2, 0);
-    gate.castShadow = true;
-    gate.receiveShadow = true;
-    addOutlineHull(gate, OUTLINE_W.prop);
-    group.add(gate);
+    pip.rotation.x = -Math.PI / 2;
+    pip.position.y = 0.025;
+    this.group.add(pip);
   }
 
-  // Decorative wall posts (crown silhouette) every 30°.
-  for (let i = 0; i < 12; i++) {
-    const angle = (i / 12) * Math.PI * 2;
-    const x = Math.cos(angle) * (ARENA_RADIUS + 1.5);
-    const z = Math.sin(angle) * (ARENA_RADIUS + 1.5);
-    const socket = new Mesh(
-      new CylinderGeometry(0.92, 1.05, 0.28, 8),
-      new MeshStandardMaterial({ color: OUTLINE, roughness: 0.95, metalness: 0.05 }),
-    );
-    socket.position.set(x, 0.14, z);
-    socket.castShadow = true;
-    socket.receiveShadow = true;
-    group.add(socket);
+  private buildWallAndCrowd(): void {
+    // Outer wall: a taller banked ring with vertical buttresses → mass + shadow.
+    // Built as four ARCS with a gap at each gate so you can see THROUGH the
+    // opening into the recessed portal tunnel (the wall no longer caps the mouth).
+    const wallMat = new MeshStandardMaterial({
+      color: WALL,
+      roughness: 0.85,
+      metalness: 0.2,
+      side: BackSide,
+    });
+    const span = (Math.PI * 2) / GATE_COUNT;
+    for (let g = 0; g < GATE_COUNT; g++) {
+      const start = g * span + GATE_GAP;
+      const len = span - GATE_GAP * 2;
+      const wall = new Mesh(
+        new CylinderGeometry(ARENA_RADIUS + 2.6, ARENA_RADIUS + 1.8, 5.5, 26, 1, true, start, len),
+        wallMat,
+      );
+      wall.position.y = 2.75;
+      wall.receiveShadow = true;
+      this.group.add(wall);
 
-    const post = new Mesh(
-      new CylinderGeometry(0.6, 0.8, 5, 8),
-      new MeshStandardMaterial({ color: RUST, roughness: 0.85 }),
+      // Lip arc. RingGeometry rotated -π/2 sweeps clockwise in world, so mirror
+      // thetaStart (−(start+len)) to land the gap on the same arc as the wall.
+      const lip = new Mesh(
+        new RingGeometry(ARENA_RADIUS + 2.4, ARENA_RADIUS + 3.4, 26, 1, -(start + len), len),
+        mat(STEEL, 0.7, 0.4),
+      );
+      lip.rotation.x = -Math.PI / 2;
+      lip.position.y = 5.5;
+      this.group.add(lip);
+    }
+
+    // Buttress ribs around the wall — but SKIP the gate openings so nothing pokes
+    // through a gatehouse (the gate clip the player saw).
+    const gateSkip = 0.32; // rad on either side of each cardinal gate
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      if (this.nearGate(a, gateSkip)) continue;
+      const rib = new Mesh(
+        new BoxGeometry(0.5, 5.4, 0.9),
+        mat(i % 2 ? STEEL : STEEL_DARK, 0.8, 0.35),
+      );
+      rib.position.set(Math.cos(a) * (ARENA_RADIUS + 2.3), 2.7, Math.sin(a) * (ARENA_RADIUS + 2.3));
+      rib.rotation.y = -a;
+      rib.castShadow = true;
+      rib.receiveShadow = true;
+      this.group.add(rib);
+    }
+
+    // Spectator tier: a dark raised band suggesting a packed, unlit crowd.
+    const tier = new Mesh(
+      new CylinderGeometry(ARENA_RADIUS + 9, ARENA_RADIUS + 4, 4, 64, 1, true),
+      new MeshStandardMaterial({ color: CROWD, roughness: 1, metalness: 0, side: BackSide }),
     );
-    post.position.set(x, 2.5, z);
-    post.castShadow = true;
-    post.receiveShadow = true;
-    group.add(post);
+    tier.position.y = 6.5;
+    this.group.add(tier);
   }
 
-  // Lighting (§24 Epic B).
-  scene.add(new AmbientLight('#553322', 0.85));
-  const key = new DirectionalLight('#ffd9a0', 2.2);
-  key.position.set(20, 40, 12);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  key.shadow.bias = -0.00035;
-  key.shadow.normalBias = 0.01;
-  key.shadow.camera.left = -ARENA_RADIUS - 8;
-  key.shadow.camera.right = ARENA_RADIUS + 8;
-  key.shadow.camera.top = ARENA_RADIUS + 8;
-  key.shadow.camera.bottom = -ARENA_RADIUS - 8;
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 90;
-  key.shadow.camera.updateProjectionMatrix();
-  scene.add(key);
-  const rim = new DirectionalLight('#32d7ff', 0.72);
-  rim.position.set(-25, 18, -20);
-  scene.add(rim);
+  /** True if angle `a` is within `tol` of any cardinal gate angle. */
+  private nearGate(a: number, tol: number): boolean {
+    for (let g = 0; g < GATE_COUNT; g++) {
+      const ga = (g / GATE_COUNT) * Math.PI * 2;
+      const d = Math.abs(((a - ga + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (d < tol) return true;
+    }
+    return false;
+  }
 
-  scene.add(group);
-  return group;
+  private buildGate(angle: number): void {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const tx = -sin; // tangent (door slide axis)
+    const tz = cos;
+    const wallR = ARENA_RADIUS + 1.2;
+    const cx = cos * wallR;
+    const cz = sin * wallR;
+    const faceY = Math.PI / 2 - angle; // face the arena centre
+
+    // Approach apron on the floor inside the gate (hazard-striped landing).
+    const apron = new Mesh(
+      new BoxGeometry(GATE_HALF_WIDTH * 2 + 1, 0.06, 8),
+      mat(STEEL_DARK, 0.85, 0.3),
+    );
+    const apronR = ARENA_RADIUS - 3.5;
+    apron.position.set(cos * apronR, 0.06, sin * apronR);
+    apron.rotation.y = faceY;
+    apron.receiveShadow = true;
+    this.group.add(apron);
+    for (const o of [-(GATE_HALF_WIDTH - 0.6), GATE_HALF_WIDTH - 0.6]) {
+      const stripe = new Mesh(new BoxGeometry(0.4, 0.08, 7), mat(TRIM, 0.7, 0.1));
+      stripe.position.set(cos * apronR + tx * o, 0.1, sin * apronR + tz * o);
+      stripe.rotation.y = faceY;
+      this.group.add(stripe);
+    }
+
+    // Gatehouse frame: two pillars + a lintel forming a tall opening.
+    const pillar = (side: number): void => {
+      const px = cx + tx * side * (GATE_HALF_WIDTH + 0.7);
+      const pz = cz + tz * side * (GATE_HALF_WIDTH + 0.7);
+      const p = new Mesh(new BoxGeometry(1.4, GATE_HEIGHT + 1.5, 2.6), mat(STEEL, 0.75, 0.45));
+      p.position.set(px, (GATE_HEIGHT + 1.5) / 2, pz);
+      p.rotation.y = faceY;
+      p.castShadow = true;
+      p.receiveShadow = true;
+      outlineHull(p, OUTLINE_W.prop);
+      this.group.add(p);
+      const cap = new Mesh(new BoxGeometry(1.7, 0.6, 3), mat(TRIM, 0.6, 0.5));
+      cap.position.set(px, GATE_HEIGHT + 1.5, pz);
+      cap.rotation.y = faceY;
+      this.group.add(cap);
+    };
+    pillar(-1);
+    pillar(1);
+
+    // Recessed portal tunnel behind the doors: a dark room extending OUTWARD
+    // through the wall gap, so the gate reads as a real opening you can see into.
+    // Enemies spawn inside it (behind the blast doors) and march out through the
+    // gate (T37/T40 walk-in). Floor + ceiling + side walls + a faintly glowing
+    // back wall, with an inner light that silhouettes enemies as they emerge.
+    // The chamber is WIDER than the opening, so through the gate you peek into a
+    // real room (not a corridor). Opening stays GATE_HALF_WIDTH; the room flares.
+    const roomHalf = GATE_HALF_WIDTH + 1.6;
+    const innerMid = ARENA_RADIUS + 1.0 + PORTAL_DEPTH / 2;
+    const backR = ARENA_RADIUS + 1.0 + PORTAL_DEPTH;
+
+    const tFloor = new Mesh(
+      new BoxGeometry(roomHalf * 2, 0.2, PORTAL_DEPTH),
+      mat(PORTAL_FLOOR, 1, 0.05),
+    );
+    tFloor.position.set(cos * innerMid, -0.02, sin * innerMid);
+    tFloor.rotation.y = faceY;
+    tFloor.receiveShadow = true;
+    this.group.add(tFloor);
+
+    // Glowing threshold strip on the room floor at the door line — marks where
+    // they emerge, and adds a warm read to the chamber.
+    const sill = new Mesh(
+      new BoxGeometry(GATE_HALF_WIDTH * 2, 0.06, 0.5),
+      new MeshStandardMaterial({ color: PORTAL_GLOW, emissive: PORTAL_GLOW, emissiveIntensity: 0.6 }),
+    );
+    sill.position.set(cos * (ARENA_RADIUS + 1.4), 0.12, sin * (ARENA_RADIUS + 1.4));
+    sill.rotation.y = faceY;
+    this.group.add(sill);
+
+    const ceil = new Mesh(
+      new BoxGeometry(roomHalf * 2 + 0.8, 0.8, PORTAL_DEPTH),
+      mat(STEEL_DARK, 1, 0.1),
+    );
+    ceil.position.set(cos * innerMid, GATE_HEIGHT + 0.1, sin * innerMid);
+    ceil.rotation.y = faceY;
+    ceil.castShadow = true;
+    this.group.add(ceil);
+
+    for (const side of [-1, 1]) {
+      const sw = new Mesh(
+        new BoxGeometry(0.8, GATE_HEIGHT + 0.4, PORTAL_DEPTH),
+        mat(STEEL_DARK, 1, 0.12),
+      );
+      sw.position.set(
+        cos * innerMid + tx * side * (roomHalf + 0.4),
+        (GATE_HEIGHT + 0.4) / 2,
+        sin * innerMid + tz * side * (roomHalf + 0.4),
+      );
+      sw.rotation.y = faceY;
+      sw.receiveShadow = true;
+      this.group.add(sw);
+    }
+
+    const back = new Mesh(
+      new BoxGeometry(roomHalf * 2 + 0.8, GATE_HEIGHT + 0.4, 0.8),
+      new MeshStandardMaterial({
+        color: PORTAL_BACK,
+        emissive: PORTAL_GLOW,
+        emissiveIntensity: 0.55,
+        roughness: 1,
+      }),
+    );
+    back.position.set(cos * backR, (GATE_HEIGHT + 0.4) / 2, sin * backR);
+    back.rotation.y = faceY;
+    this.group.add(back);
+
+    // Inner light: ominous warm pool deep in the chamber that backlights enemies
+    // as they walk out (alive arena, §3.1). Short range so it stays a local glow.
+    const portalLight = new PointLight(PORTAL_GLOW, 18, 20, 2);
+    portalLight.position.set(cos * (backR - 1.8), GATE_HEIGHT * 0.5, sin * (backR - 1.8));
+    this.group.add(portalLight);
+
+    // Jamb slabs flush with the wall, flanking the opening — mask the buttress
+    // seam beside the pillars WITHOUT covering the opening itself.
+    for (const side of [-1, 1]) {
+      const jamb = new Mesh(
+        new BoxGeometry(3.0, GATE_HEIGHT + 2.4, 1.4),
+        mat(STEEL_DARK, 0.85, 0.3),
+      );
+      jamb.position.set(
+        cos * (ARENA_RADIUS + 1.6) + tx * side * (halfW + 2.2),
+        (GATE_HEIGHT + 2.4) / 2,
+        sin * (ARENA_RADIUS + 1.6) + tz * side * (halfW + 2.2),
+      );
+      jamb.rotation.y = faceY;
+      jamb.castShadow = true;
+      jamb.receiveShadow = true;
+      this.group.add(jamb);
+    }
+
+    const lintel = new Mesh(
+      new BoxGeometry(GATE_HALF_WIDTH * 2 + 2.8, 1.6, 2.6),
+      mat(STEEL_LIT, 0.7, 0.5),
+    );
+    lintel.position.set(cx, GATE_HEIGHT + 0.3, cz);
+    lintel.rotation.y = faceY;
+    lintel.castShadow = true;
+    outlineHull(lintel, OUTLINE_W.prop);
+    this.group.add(lintel);
+
+    // Gate number plate (glowing) on the lintel.
+    const plate = new Mesh(
+      new BoxGeometry(2, 0.9, 0.2),
+      new MeshStandardMaterial({ color: TRIM, emissive: TRIM, emissiveIntensity: 0.5 }),
+    );
+    plate.position.set(cx - cos * 1.4, GATE_HEIGHT + 0.3, cz - sin * 1.4);
+    plate.rotation.y = faceY;
+    this.group.add(plate);
+
+    // Two blast doors that slide apart into the pillars.
+    const doorGeo = new BoxGeometry(GATE_HALF_WIDTH + 0.2, GATE_HEIGHT, 1);
+    const doorMat = (): MeshStandardMaterial => mat(STEEL, 0.7, 0.55);
+    const makeDoor = (): Mesh => {
+      const d = new Mesh(doorGeo, doorMat());
+      d.castShadow = true;
+      d.receiveShadow = true;
+      // gold hazard chevrons (a couple of thin trims on the face)
+      for (const cy of [-1.6, 0, 1.6]) {
+        const chev = new Mesh(
+          new BoxGeometry(GATE_HALF_WIDTH - 0.4, 0.35, 0.12),
+          mat(TRIM, 0.65, 0.2),
+        );
+        chev.position.set(0, cy, 0.55);
+        d.add(chev);
+      }
+      outlineHull(d, OUTLINE_W.prop);
+      this.group.add(d);
+      return d;
+    };
+    const left = makeDoor();
+    const right = makeDoor();
+
+    const gate: GateDoors = { angle, cx, cz, tx, tz, left, right, open: 0 };
+    this.gates.push(gate);
+    this.placeDoors(gate, 0);
+
+    // Two angled spotlights from the gate's arena-facing top corners, coning down
+    // onto the approach plate — fakes volumetric beams + lights the entry so new
+    // enemies read as they walk in (§3.1 subtle reactive arena).
+    // Two UPLIGHTS at the front (arena-side) corners of the entry plate, raking
+    // up at the gate. Casts dramatic shadows up the walls and silhouettes enemies
+    // as they pass through the beam — more alive than a flat top-down wash.
+    const aim = new Object3D();
+    aim.position.set(cos * (ARENA_RADIUS + 0.5), GATE_HEIGHT * 0.6, sin * (ARENA_RADIUS + 0.5));
+    this.group.add(aim);
+    const plateFrontR = apronR - 3.6; // front edge of the plate, toward the arena
+    for (const side of [-1, 1]) {
+      const spot = new SpotLight('#ffcf9a', 40, 28, 0.34, 0.4, 1.3);
+      spot.position.set(
+        cos * plateFrontR + tx * side * (GATE_HALF_WIDTH - 0.3),
+        0.45,
+        sin * plateFrontR + tz * side * (GATE_HALF_WIDTH - 0.3),
+      );
+      spot.target = aim;
+      spot.castShadow = true;
+      spot.shadow.mapSize.set(512, 512);
+      this.group.add(spot);
+    }
+  }
+
+  /** Position both doors for a given open amount (0 closed → 1 slid into pillars). */
+  private placeDoors(g: GateDoors, open: number): void {
+    const closedOffset = (GATE_HALF_WIDTH + 0.2) / 2; // half a door from centre
+    const slide = open * (GATE_HALF_WIDTH + 0.1); // how far each door retracts
+    const y = GATE_HEIGHT / 2;
+    const faceY = Math.PI / 2 - g.angle;
+    const offL = -(closedOffset + slide);
+    const offR = closedOffset + slide;
+    g.left.position.set(g.cx + g.tx * offL, y, g.cz + g.tz * offL);
+    g.right.position.set(g.cx + g.tx * offR, y, g.cz + g.tz * offR);
+    g.left.rotation.y = faceY;
+    g.right.rotation.y = faceY;
+  }
+
+  /** Animate gate doors: open while an enemy is telegraphing near the gate (T37). */
+  update(enemies: EnemyPool, dt: number): void {
+    for (const g of this.gates) {
+      let wantOpen = false;
+      const r2 = DOOR_OPEN_RANGE * DOOR_OPEN_RANGE;
+      // Inner mouth of the gate (where enemies appear).
+      const mouthR = ARENA_RADIUS - 1.5;
+      const mx = (g.cx / (ARENA_RADIUS + 1.2)) * mouthR;
+      const mz = (g.cz / (ARENA_RADIUS + 1.2)) * mouthR;
+      for (let i = 0; i < enemies.count; i++) {
+        // Any telegraphing enemy near this gate keeps it open; so do active
+        // enemies still inside the mouth (walking through).
+        const dx = enemies.posX[i]! - mx;
+        const dz = enemies.posZ[i]! - mz;
+        if (dx * dx + dz * dz < r2) {
+          if (enemies.state[i] === EnemyState.Telegraph) {
+            wantOpen = true;
+            break;
+          }
+          wantOpen = true; // active & still in the mouth → keep open
+        }
+      }
+      const target = wantOpen ? 1 : 0;
+      const speed = wantOpen ? 5 : 2.2; // open fast, close slower
+      g.open += (target - g.open) * Math.min(1, speed * dt);
+      this.placeDoors(g, g.open);
+    }
+  }
+
+  private buildLighting(scene: Scene): void {
+    scene.add(new AmbientLight('#46342a', 0.8));
+    const key = new DirectionalLight('#ffe0b0', 2.3);
+    key.position.set(20, 44, 12);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.00035;
+    key.shadow.normalBias = 0.012;
+    key.shadow.camera.left = -ARENA_RADIUS - 12;
+    key.shadow.camera.right = ARENA_RADIUS + 12;
+    key.shadow.camera.top = ARENA_RADIUS + 12;
+    key.shadow.camera.bottom = -ARENA_RADIUS - 12;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 110;
+    key.shadow.camera.updateProjectionMatrix();
+    scene.add(key);
+    const rim = new DirectionalLight('#3aa0ff', 0.85); // cool rim separates steel from floor
+    rim.position.set(-26, 20, -22);
+    scene.add(rim);
+    const fill = new DirectionalLight('#c46a2b', 0.35);
+    fill.position.set(0, 12, 30);
+    scene.add(fill);
+  }
 }

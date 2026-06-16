@@ -11,7 +11,7 @@ const MARGIN = 1.12; // keep arena edge off the screen border
 // Perspective foreshortens the far (top) half, so a circle centered at origin
 // projects with its centroid below screen center → arena drifts down. Aim the
 // camera slightly toward its near side to recenter the projected ellipse (V7).
-const AIM_Z = ARENA_RADIUS * 0.16;
+export const AIM_Z = ARENA_RADIUS * 0.16;
 
 /**
  * Distance from arena center along the view axis so a circle of `radius` fits

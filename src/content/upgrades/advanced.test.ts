@@ -26,10 +26,10 @@ describe('advanced upgrades drive the build engine (T38)', () => {
     expect(e.evalConditionals({ ...BASE, hpFrac: 0.2 }).damageMult).toBeCloseTo(1.6, 6);
   });
 
-  it('Overdraft Engine: ramps damage with sustained fire', () => {
-    const e = apply('overdraft-engine');
-    expect(e.evalConditionals({ ...BASE, firingRampSec: 0 }).damageMult).toBe(1);
-    expect(e.evalConditionals({ ...BASE, firingRampSec: 6 }).damageMult).toBeCloseTo(1.3, 6);
+  it('Point-Blank Clause: +50% damage only when an enemy is close', () => {
+    const e = apply('point-blank-clause');
+    expect(e.evalConditionals({ ...BASE, nearestDist: 12 }).damageMult).toBe(1);
+    expect(e.evalConditionals({ ...BASE, nearestDist: 3 }).damageMult).toBeCloseTo(1.5, 6);
   });
 
   it('Crowd Control Clause: crit only against 12+ enemies', () => {

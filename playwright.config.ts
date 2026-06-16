@@ -5,7 +5,13 @@ import { defineConfig, devices } from '@playwright/test';
 // initializes, not just the unsupported fallback.
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // Serialize: each spec drives a real headed WebGPU window and asserts on
+  // wall-clock sim progression (RAF-paced). Chrome throttles requestAnimationFrame
+  // in BACKGROUNDED windows, so running specs in parallel starves the sim of the
+  // backgrounded ones and time-based assertions (player moved, enemies spawned)
+  // flake. One worker keeps the window focused and the sim real-time.
+  fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: 'http://localhost:5173',
     channel: 'chrome',

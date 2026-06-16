@@ -2,12 +2,17 @@
 // interpolation (V1, V2 — view only, never mutates sim).
 
 import {
-  Group,
-  Mesh,
+  AdditiveBlending,
+  BackSide,
   CapsuleGeometry,
   ConeGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
-  BackSide,
+  Object3D,
+  RingGeometry,
+  SpotLight,
   type Scene,
 } from 'three';
 import type { Player } from '../sim/player';
@@ -51,6 +56,35 @@ export class PlayerView {
     this.facingMesh.add(nose);
 
     this.group.add(body, this.facingMesh);
+
+    // Diablo-style hero light: a soft warm spotlight from above + a ground glow
+    // pool, both parented to the player group so they track him → you always read
+    // where the character is, even in the crowd.
+    const halo = new SpotLight('#fff2d6', 11, 16, 0.62, 0.9, 1.3);
+    halo.position.set(0, 11, 0);
+    const haloTarget = new Object3D();
+    this.group.add(halo, haloTarget);
+    halo.target = haloTarget;
+
+    // Foot ring (not a filled disc — a solid disc is too intense and washes the
+    // floor). A thin soft ring reads as "here he is" without dominating. Sits
+    // above the gate aprons (y 0.16) so it never renders under those plates.
+    const glow = new Mesh(
+      new RingGeometry(1.15, 1.55, 48),
+      new MeshBasicMaterial({
+        color: ACCENT,
+        transparent: true,
+        opacity: 0.32,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.16;
+    glow.renderOrder = 2;
+    this.group.add(glow);
+
     scene.add(this.group);
   }
 

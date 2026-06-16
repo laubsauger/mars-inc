@@ -192,7 +192,7 @@ Projectile/effect atlas:
 Keep meshes simple and readable from above. Shape language matters more than polygon
 detail.
 
-Mara Vex:
+Lilu Tubs:
 
 - silhouette: compact armored runner with one oversized shoulder plate and a thruster
   pack.
@@ -206,18 +206,92 @@ Rust Mite:
 - small fast enemy; triangular scrap shell, single glowing eye, two front cutters.
 - top-down read: wedge shape points toward movement.
 - color: rust body, cyan eye, black underside.
+- implementation: low triangular carapace mesh, two tiny cutter mandibles, one emissive
+  eye disk. Keep it squat so crowds read as sharp moving scrap, not people.
 
 Debt Hound:
 
 - medium chaser; long low body, jaw silhouette, spiked invoice plates along back.
 - top-down read: rectangle with aggressive head wedge.
 - color: dark iron, red mouth/weak point, yellow hazard stripe.
+- implementation: four-legged debt-collector drone/dog hybrid. Use a long dark chassis,
+  oversized clamp jaw, and two back spikes shaped like receipt hooks. Animation can be a
+  simple bob plus jaw snap.
+
+Severance Lobber:
+
+- ranged grenade enemy; hunchback clerk silhouette carrying a comically oversized
+  pneumatic tube.
+- top-down read: small body with a tall rear tank and one raised throwing/cannon arm.
+- color: pale accounting-paper armor, cyan visor, orange fuse light on the tube.
+- attack-read prop: the lobber's tube should flash/wind up before launch; the projectile
+  should look like a stamped liability canister, not a generic ball.
+- implementation: capsule torso, backpack cylinder, angled barrel, thin legs. Keep the
+  barrel silhouette visible from above so players learn "tube means lob".
+
+Repossession Marshal:
+
+- ranged gunner; lean enforcement officer with a long straight rifle and a bright badge.
+- top-down read: narrow body plus a clear horizontal/diagonal gun line pointing at the
+  player.
+- color: black coat plates, gold badge, cyan muzzle/visor.
+- attack-read prop: rifle muzzle should snap bright cyan/white during windup/fire so the
+  player distinguishes straight shots from lobs.
+- implementation: capsule body with one long box/cylinder rifle mesh parented forward.
+  Avoid bulk; the Marshal's identity is thin, precise, and bureaucratically mean.
+
+Foreclosure Mortar:
+
+- artillery zoner; squat walking tripod with a huge vertical mortar bell and foreclosure
+  stamp plates.
+- top-down read: round base, three stabilizer legs, big circular barrel opening.
+- color: dark rust shell, gold warning stripe, magenta/red armed light.
+- attack-read prop: mortar bell should open/glow before firing; shell arcs should feel
+  heavy and slow, with a branded warning ring at landing.
+- implementation: low cylinder base, three leg struts, tilted mortar cup. Make it taller
+  than other ranged enemies so it reads as artillery even when idle.
+
+Riot Shotgunner:
+
+- close-range burst enemy; bulky security brawler with a wide riot shield and short
+  scatter cannon.
+- top-down read: broad shield wedge in front, short fat gun protrusion.
+- color: dark iron shield, red visor slit, yellow riot chevrons.
+- attack-read prop: the wide shield/front wedge tells players "do not face-tank this";
+  pellet spread should be a visible fan.
+- implementation: shield can be the main silhouette, body tucked behind it. Rotate shield
+  with facing if/when enemy facing exists; until then, use a front-biased wedge mesh.
+
+Audit Brute:
+
+- slow melee wall; huge collector/executor carrying a stamped safe-door slab or crushing
+  ledger gauntlet.
+- top-down read: large circular/hex body with one oversized arm/plate, much bigger than
+  normal mobs.
+- color: oxidized iron, bone paperwork labels, red weak-point seams.
+- attack-read prop: contact danger comes from mass. Use heavy shadow/contact grime,
+  cracked floor dust puffs, and a red chest stamp so it never blends with Debt Hounds.
+- implementation: scaled capsule/cylinder body, shoulder slab, big fist block. Keep it
+  broad, slow, and readable from the fixed camera.
 
 Gatekeeper of Phobos:
 
 - boss built from a gate mechanism, ceremonial crown ring, and industrial crusher arms.
 - top-down read: huge circular body with four rotating gate-shield quadrants.
 - humor note: behaves like a sacred emperor, branded like a municipal toll machine.
+- implementation: central toll-core cylinder, four shield quadrants, crown antennae, and
+  two crusher arms. Phase damage should crack quadrants and expose cyan/magenta machinery.
+
+Enemy Silhouette Rules:
+
+- tiny/fodder = wedge; fast pressure = long low rectangle; ranged lob = tube/backpack;
+  straight shooter = thin rifle line; artillery = circular mortar cup; shotgun = shield
+  wedge; brute = big asymmetric mass; boss = arena machinery.
+- each type needs one readable top-down signature prop. Do not rely on color alone.
+- all repeated enemies still render through pooled/instanced paths. Use variant-driven
+  mesh parts/material regions where possible; do not create a unique material per enemy.
+- health/damage states should alter the signature prop: cracked shell, broken shield,
+  smoking mortar cup, flickering visor, exposed weak seams.
 
 ## Weapon Visual Briefs
 

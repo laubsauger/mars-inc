@@ -10,7 +10,8 @@ export interface SettingsData {
   musicVolume: number;
   screenShake: number; // 0..1
   reduceFlash: boolean;
-  uiScale: number;
+  uiScale: number; // 0.8..1.4
+  pauseOnFocusLoss: boolean;
 }
 
 export interface AccessibilityData {
@@ -85,6 +86,7 @@ export function defaultSettings(): SettingsData {
     screenShake: 1,
     reduceFlash: false,
     uiScale: 1,
+    pauseOnFocusLoss: true,
   };
 }
 

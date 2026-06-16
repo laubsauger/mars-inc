@@ -3,10 +3,13 @@
 
 import { Rng } from '../core/rng';
 import { type Player, createPlayer, stepPlayer, resetPlayer } from './player';
-import { EnemyPool } from './enemies';
+import { EnemyPool, ENEMY_DISPLAY_NAME } from './enemies';
 import { EnemySystem } from './enemy-system';
 import { EnemyAttackSystem } from './enemy-attacks';
+import { BossController } from './boss';
 import { WeaponDropSystem } from './weapon-drops';
+import { availableEvolution } from '../content/weapons/evolutions';
+import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
 import { WaveDirector, computeAdaptation } from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
 import { equip } from './combat/weapon';
@@ -32,6 +35,14 @@ import type { InputSnapshot } from '../core/input';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38). */
 const DRAFT_POOL: UpgradeDefinition[] = [...UPGRADES, ...ADVANCED_UPGRADES];
+
+/** Rich post-game summary (T23) — what the run actually became. */
+export interface RunSummary {
+  weapon: string;
+  bossKills: number;
+  killsByType: { name: string; count: number }[];
+  upgrades: { name: string; level: number }[];
+}
 
 const COUNTDOWN_SECONDS = 3;
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
@@ -63,6 +74,10 @@ export class World {
   readonly enemyAttacks = new EnemyAttackSystem();
   /** Weapon-crate drops + pickup → primary-weapon swap (T33). */
   readonly weaponDrops = new WeaponDropSystem();
+  /** Gatekeeper boss fight controller — phases + telegraphed attacks (T33). */
+  readonly boss = new BossController();
+  /** Set to the evolved weapon's name the step it evolves (T34); HUD announces. */
+  justEvolved: string | null = null;
   readonly weaponSystem: WeaponSystem;
   readonly shards: ShardPool;
   readonly mods: RunMods;
@@ -92,6 +107,12 @@ export class World {
   draft: UpgradeDefinition[] = [];
   draftId = 0; // bumps each time a draft opens / re-rolls (UI refresh key)
   pendingLevelUps = 0;
+
+  // Boss reward (T43, V22). While `bossReward`, the sim freezes for the 3-choice.
+  bossReward = false;
+  bossRewardChoices: BossReward[] = [];
+  bossRewardId = 0; // bumps when the overlay opens (UI refresh key)
+  private bossRewarded = false; // a kill grants its reward once
   rerollsLeft = STARTING_REROLLS;
   banishesLeft = STARTING_BANISHES;
   private readonly banished = new Set<string>();
@@ -135,11 +156,11 @@ export class World {
     if (this.ended) return;
     // Any death (in-step damage or external) latches the run as over (V20).
     if (!this.alive) {
-      this.end();
+      this.end(false);
       return;
     }
     if (this.input.pause) this.paused = !this.paused;
-    if (this.paused || this.leveling) return;
+    if (this.paused || this.leveling || this.bossReward) return;
 
     // Pre-combat countdown: player can orient; no spawns; run clock held at 0.
     if (this.countdown > 0) {
@@ -158,6 +179,8 @@ export class World {
     // Adapt composition/pace to the build (bounded, V12) — never per-enemy stats.
     this.director.step(this.enemies, this.rng, this.elapsed, dt, computeAdaptation(this.mods));
     this.enemySystem.step(this.player, this.tick, dt);
+    // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
+    this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
     this.enemyAttacks.step(this.enemies, this.player, this.rng, dt, this.fx);
 
@@ -186,11 +209,21 @@ export class World {
     const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx);
     emitShards(this.shards, this.weaponSystem.kills);
     // Weapon crates drop from kills; collecting one swaps the primary weapon (T33).
-    this.weaponDrops.step(this.player, this.weaponSystem.kills, this.weaponSystem, this.rng, this.fx);
+    this.weaponDrops.step(
+      this.player,
+      this.weaponSystem.kills,
+      this.weaponSystem,
+      this.rng,
+      this.fx,
+    );
     this.pendingLevelUps += stepXp(this.shards, this.player, dt);
 
     // Accumulate run stats from this step's authoritative events (V20).
     this.stats.kills += this.weaponSystem.kills.length;
+    for (const k of this.weaponSystem.kills) {
+      const v = k.variant;
+      this.stats.killsByVariant[v] = (this.stats.killsByVariant[v] ?? 0) + 1;
+    }
     this.stats.damageDealt +=
       this.weaponSystem.damageThisStep + triggerDmg + this.hitTriggerDamage + statusDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
@@ -201,8 +234,10 @@ export class World {
 
     if (this.pendingLevelUps > 0 && !this.leveling) this.openDraft();
 
-    // Death ends the run after the step that killed the player (V15 → result).
-    if (!this.alive) this.end();
+    // Death ends the run (loss). A boss kill is the progression hinge: it opens a
+    // major in-run reward (freezes the sim) and the run continues, harder (V22).
+    if (!this.alive) this.end(false);
+    else if (this.boss.defeated && !this.bossRewarded) this.openBossReward();
   }
 
   /** Build the conditional context for this step and combine all modifiers (T38). */
@@ -304,11 +339,12 @@ export class World {
     return dealt;
   }
 
-  /** Latch the run as over and compute the post-game result once (T22, V20). */
-  private end(): void {
+  /** Latch the run as over and compute the post-game result once (T22, V20).
+   *  `won` = the boss was defeated (vs. player death). */
+  private end(won: boolean): void {
     if (this.ended) return;
     this.ended = true;
-    this.result = computeResult(this.stats);
+    this.result = computeResult(this.stats, won);
   }
 
   /** Restart in place — no page reload (V15). Reseed for determinism (V16). */
@@ -322,6 +358,9 @@ export class World {
     this.leveling = false;
     this.draft = [];
     this.pendingLevelUps = 0;
+    this.bossReward = false;
+    this.bossRewardChoices = [];
+    this.bossRewarded = false;
     this.banished.clear();
     this.countdown = COUNTDOWN_SECONDS;
     this.started = false;
@@ -335,6 +374,8 @@ export class World {
     this.enemies.count = 0;
     this.enemyAttacks.reset();
     this.weaponDrops.reset();
+    this.boss.reset();
+    this.justEvolved = null;
     this.shards.count = 0;
     this.fx.clear();
     resetMods(this.mods);
@@ -421,9 +462,72 @@ export class World {
       this.upgradeLevels,
     );
     this.stats.upgradesTaken += 1; // run stat (V20)
+    this.maybeEvolve(); // a pick may complete a weapon-evolution combo (T34, V18)
     this.pendingLevelUps -= 1;
     this.draft = [];
     this.leveling = false;
     if (this.pendingLevelUps > 0) this.openDraft();
+  }
+
+  /** If the just-applied upgrade completes the primary weapon's evolution combo,
+   *  transform it (V18: gated by the combo, never weapon level alone). */
+  private maybeEvolve(): void {
+    const id = this.weaponSystem.primaryId;
+    if (!id) return;
+    const evo = availableEvolution(id, this.upgradeLevels);
+    if (!evo) return;
+    this.weaponSystem.setPrimary(evo.evolved);
+    this.justEvolved = evo.evolved.displayName;
+  }
+
+  private rewardCtx(): RewardCtx {
+    return {
+      player: this.player,
+      mods: this.mods,
+      effects: this.effects,
+      weapons: this.weaponSystem,
+    };
+  }
+
+  /** Boss kill → open the 3-choice major reward and freeze the sim (T43, V22). */
+  private openBossReward(): void {
+    this.bossRewarded = true;
+    this.stats.bossKills += 1;
+    this.bossRewardChoices = rollBossRewards(this.rewardCtx(), this.rng);
+    if (this.bossRewardChoices.length === 0) return; // nothing to offer → run continues
+    this.bossRewardId += 1;
+    this.bossReward = true;
+  }
+
+  /** Rich post-game summary for the end screen (T23): final weapon, the build
+   *  (upgrades taken), kills broken down by enemy type, bosses felled. */
+  runSummary(): RunSummary {
+    const killsByType = this.stats.killsByVariant
+      .map((count, v) => ({ name: ENEMY_DISPLAY_NAME[v] ?? `Variant ${v}`, count: count ?? 0 }))
+      .filter((k) => k.count > 0)
+      .sort((a, b) => b.count - a.count);
+    const upgrades = Object.entries(this.upgradeLevels)
+      .map(([id, level]) => ({ name: DRAFT_POOL.find((u) => u.id === id)?.name ?? id, level }))
+      .sort((a, b) => b.level - a.level);
+    return {
+      weapon: this.weaponSystem.weapons[0]?.def.displayName ?? '—',
+      bossKills: this.stats.bossKills,
+      killsByType,
+      upgrades,
+    };
+  }
+
+  /** Apply the chosen boss reward and resume the run (harder). */
+  chooseBossReward(index: number): void {
+    if (!this.bossReward) return;
+    const r = this.bossRewardChoices[index];
+    if (!r) return;
+    r.apply(this.rewardCtx());
+    this.justEvolved =
+      r.kind === 'evolution'
+        ? (this.weaponSystem.weapons[0]?.def.displayName ?? null)
+        : this.justEvolved;
+    this.bossRewardChoices = [];
+    this.bossReward = false;
   }
 }

@@ -6,6 +6,8 @@ Codename: MARS PIT. Browser fixed-arena survivors-like shooter. Direct movement,
 
 Ship browser top-down circular-arena shooter: WASD move + sprint, auto-targeting weapons, XP draft upgrades, escalating wave director, boss, death→stats→permanent currency→meta unlock→restart. First milestone = playable vertical slice "The Rust Crown". Companion art-direction notes for T37 live in `docs/art-direction.md`; SPEC remains authoritative.
 
+Bosses are the progression HINGE, not bonus currency: normal combat → levels within a run; a boss kill grants ONE major in-run power jump + advances the run to a higher power tier; permanently, bosses gate WHICH Glory upgrades the player may access. (Boss-progression epic: §V22-26, §T43-50.)
+
 ## §C CONSTRAINTS
 
 - Stack locked: Vite + strict TypeScript + Three.js `WebGPURenderer`. WebGPU-only — ⊥ WebGL2 fallback. No-WebGPU device → clear unsupported message, ⊥ degraded render path.
@@ -40,6 +42,7 @@ Ship browser top-down circular-arena shooter: WASD move + sprint, auto-targeting
 - curve: `xpRequired(level) = 8 + level*4 + floor(level^1.55)` — loaded from balance data, ⊥ hardcoded in systems.
 - dev overlay: FPS, frame/sim/render time, enemy/projectile/particle count, draw calls, hash occupancy, spawn budget, player DPS, incoming DPS, XP/min, upgrade history, seed. Controls: spawn enemy/boss, add XP, select/evolve, set speed, toggle invuln/AI, clear arena, benchmark, force tier, export log.
 - currency: Martian Glory (meta), Red Dust (prestige).
+- economy hierarchy (3 layers, non-competing): **Martian Glory** = universal permanent upgrade currency (earned survival/kills/boss/difficulty/challenge/extraction; spent skill-tree/slots/rerolls/loadout/economy). **Boss Trophies** = tracked COUNTS (achievement/progression keys; ⊥ spendable wallet, ⊥ shown as a balance) that GATE boss-themed nodes which Glory pays for. **Red Dust** = prestige / rule-change. ⊥ per-boss spendable currency. Rule: normal combat makes Glory; bosses gate which Glory upgrades are accessible; prestige → Red Dust.
 
 ## §V INVARIANTS
 
@@ -64,6 +67,11 @@ V18: weapon evolution gated by combo requirements, ⊥ level-5 alone.
 V19: ∀ core math system (damage/upgrade-stack/xp/spawn-budget/drop/prestige/target-select/status-timing/evo-req) → unit test.
 V20: post-game stats accurately describe run (counts/damage/time match sim events).
 V21: build effects/triggers/conditionals/status (T38/T39) resolve via the V3 pipeline in fixed order, pooled (V5), deterministic under seed (V16). ⊥ an upgrade bypassing the pipeline or adding nondeterminism.
+V22: boss kill → exactly ONE in-run major reward from {weapon-evolution, system-expansion (weapon/passive/drone/sprint/ultimate slot), character-mutation (run-defining ability), boss-artifact (power + drawback)}. ⊥ zero, ⊥ silent.
+V23: boss kill ALWAYS advances the run phase (↑roster / new hazard / ↑elite-freq / arena light-geo shift / ↑drops / ↑upgrade-rarity unlocked) — the build graduates to the next power tier.
+V24: boss trophies + first-kill unlocks bank IMMEDIATELY (⊥ require surviving the run). A secured portion of boss Glory banks immediately; the rest → a run-pot with an extraction multiplier, partially lost on death.
+V25: a boss-gated node requires (trophy mastery threshold + Glory cost + ? achievement). Trophies GATE, Glory PAYS. ⊥ trophies-as-cash.
+V26: boss mastery = feat-based (defeat / fast / no-damage / specific-weapon-family / enraged / arena-modifier), ⊥ health-scaling padding.
 
 ## §T TASKS
 
@@ -73,7 +81,7 @@ T2|x|Three.js WebGPURenderer init + WebGPU support detect → unsupported screen
 T3|x|render loop + fixed sim loop (accumulator, alpha) + resize|V1,V4
 T4|~|quality tier detect + dev overlay (metrics+controls)|V17,§I
 T5|x|circular floor + collision boundary + fixed cam + lighting/shadows + 4 gates + floor material + basic outline. art refs: `docs/art-direction.md` arena/texture/shadow direction|V7,§I.url
-T6|x|player: load placeholder, WASD accel move, boundary response, health, anim state. art refs: `docs/art-direction.md` Mara Vex + player health plate|§I.input,V4
+T6|x|player: load placeholder, WASD accel move, boundary response, health, anim state. art refs: `docs/art-direction.md` Lilu Tubs + player health plate|§I.input,V4
 T7|x|sprint: charge/duration/cooldown/multiplier + collision forgiveness + recharge UI (pips). thruster-trail visual → T37; art refs: `docs/art-direction.md` sprint trail/HUD|§I.input
 T8|x|recoil impulse capped (applyRecoil + tests). weapon wiring → T14|V10
 T9|x|entity model: SoA archetype pool (EnemyPool) + documented system order. generic ECS deferred (rule 7)|V2
@@ -94,16 +102,16 @@ T23|x|post-game stats page (counts/damage/derived). art refs: `docs/art-directio
 T24|x|save: versioned PlayerProfile schema + normalizeProfile (forward-compat, ⊥ throw) + IndexedDB store + localStorage boot pointer + SaveManager (debounced flush, load-fallback) + settings persist. e2e: survives refresh|V14,§I.save
 T25|x|versioned migration runner (chained, loop-guarded) + corruption recovery (quarantine bad data, fresh default, ⊥ crash) + export/import text + rolling timestamped backups (pruned)|V14
 T26|x|award Martian Glory on death (gloryFor) + records/runHistory + 2 permanent upgrades (data) applied at run start + buy panel on game-over → next run applies. closes the §25 meta loop|V15,§I.save
-T27|x|main menu over live arena (8 signage items) + Warrior(Mara Vex)/Records/Settings(volume) live, Arsenal/GloryTree/Challenges coming-soon, Credits. run starts on Enter-the-Pit (world.started gated at driver, step() stays headless), game-over → Restart/Menu. dev `?play` autostart. art refs: `docs/art-direction.md` HUD/menu direction|§I.menu
+T27|x|main menu over live arena (8 signage items) + Warrior(Lilu Tubs)/Records/Settings(volume) live, Arsenal/GloryTree/Challenges coming-soon, Credits. run starts on Enter-the-Pit (world.started gated at driver, step() stays headless), game-over → Restart/Menu. dev `?play` autostart. art refs: `docs/art-direction.md` HUD/menu direction|§I.menu
 T28|x|determinism: seeded RNG threaded through sim|V16
 T29|x|headless sim tests: bounded counts, runs terminate, boss spawns, pool ⊥ empty, dmg bands|V8,V19
 T30|~|unit tests: damage/upgrade-stack/xp/spawn-budget/drop/target-select/status/evo-req|V19
 T31|.|Playwright: boot→menu→run→move→pause→upgrade→death→restart→save persist→no-WebGPU unsupported screen→viewport→focus-loss|V15
 T32|x|perf benchmark scenes 500/1k/2k enemies + projectile storm + crowd; record sim/render/draws/alloc (sim+alloc headless; render/draws → T31 GPU bench)|V5,V17
-T33|.|slice content: arena Rust Crown, char Mara Vex, 6 weapons, 8 enemies, boss Gatekeeper of Phobos, 34 upgrades. art refs: `docs/art-direction.md` model/weapon/humor briefs|§I.data,V18
-T34|.|weapon evolution combo gating (e.g. Rust Devil Minigun). art refs: `docs/art-direction.md` weapon evolution read|V18
-T35|.|small Arsenal + Mobility permanent branches + Glory Tree UI. art refs: `docs/art-direction.md` menu/contract UI direction|§I.menu,§I.save
-T36|.|accessibility pass (rebind/controller/shake/flash/colorblind/UI scale/volumes/focus pause). art refs: `docs/art-direction.md` flash/shake/health readability notes|§C
+T33|.|slice content: arena Rust Crown, char Lilu Tubs, 6 weapons, 8 enemies, boss Gatekeeper of Phobos, 34 upgrades. art refs: `docs/art-direction.md` model/weapon/humor briefs|§I.data,V18
+T34|x|weapon evolution combo gating: data-driven EVOLUTIONS (base weapon id → evolved def behind upgrade-combo requirements) + availableEvolution checker; world.choose auto-evolves the primary when the combo completes (⊥ weapon level alone); evolved Rust Devil Apex / Tesla Cascade; HUD evolution banner. art refs: `docs/art-direction.md` weapon evolution read|V18
+T35|x|Glory Tree menu (3 branches Arsenal/Biology/Mobility, buy w/ Glory) + Arsenal(House Odds reroll, Blacklist Rights banish, Lucky Streak luck) + Mobility(Fleet-Footed speed) permanents. draft-resource bonuses (player.bonusRerolls/Banishes) flow into world.reset. art refs: `docs/art-direction.md` menu/contract UI|§I.menu,§I.save
+T36|~|accessibility pass. DONE: settings panel (master/sfx volume, screen-shake, UI-scale sliders + reduce-flash/hold-to-sprint/auto-pause toggles) persisted via save; wired master+sfx volume, camera shake (`render/camera-shake.ts`, FX-driven, setting-scaled, V7-bounded), reduce-flash (effects), UI-scale (root font), pause-on-focus-loss. TODO: key rebind, controller, colorblind palettes, hold-to-sprint behavior. art refs: `docs/art-direction.md` flash/shake/health readability|§C
 T37|~|art direction (Martian Pulp Brutalism, `docs/art-direction.md`). DONE: render-side art tokens (`render/art/palette.ts`) + recolor all views to palette + in-world enemy naming. TODO: TSL toon/ink material, atlases, pooled particles (after T16), contact/grounding shadow polish, reactive arena, accent discipline.|§C
 
 # DEPTH DEBT — progression is a SHALLOW PLACEHOLDER (T18/T19/T26 = thin vertical slice).
@@ -119,7 +127,16 @@ T39|x|STATUS EFFECTS — per-enemy status component in EnemyPool SoA (burn/chill
 T40|.|UPGRADE CATALOG DEPTH — replace shallow T18 set. Wide catalog across ALL 6 rarities (common/uncommon/rare/legendary/corrupted/prototype) producing DISTINCT directions: ballistic-crit, rotary heat/recoil-mobility, explosive cluster/chain, drone swarm, energy beam-geometry, orbital strike, infection/spore, shield/overkill, glass-cannon, bruiser/tank, summoner, economy/greed. Curses (corrupted: big upside + real downside), capstones (legendary), experimental (prototype). Anti-synergy/exclusivity webs. Diverging scaling (additive vs mult vs threshold-unlock). ≥80 upgrades.|V11,§I.data
 T41|x|DRAFT DEPTH — rarity-weighted roll (`rarityWeight` by level+player.luck, rarer tiers lift late); reroll (keeps locked) / banish (per-run, never reoffered) / skip→heal, each a bounded per-run resource; UpgradeScreen rarity-colored cards + lock/banish/reroll/skip + keyboard. omen/evolution-offers → later. |V11,§13.5
 T42|.|WEAPON-FAMILY MECHANICS DEPTH — give the 6 families distinct identity systems (rotary spin-up+heat+recoil-mobility; explosive min-safe-distance+chain; drone formation/interception; energy overheat/refraction; orbital telegraph-strike) so weapons PLAY differently, not stat reskins. Ties T33/T34.|§I.data,V18
+T43|x|BOSS REWARD — boss kill now opens a 3-choice major reward (sim-freeze overlay) + applies it, then the run CONTINUES (no auto-win; that's T50). Rewards: Field Evolution / Munitions Bay + Overclocked Servos (system) / Volatile Crits + Adrenal Surge (mutation) / Phobos Reactor Heart (artifact, power+drawback). `sim/boss-rewards.ts` + BossRewardScreen + store slice + main bridge. End-screen redesigned (T23): rich one-page run summary (spoils: glory earned/bosses felled/level; survival/offense; loadout; build = upgrades taken; kills-by-type) — Glory buying moved to the menu Glory Tree.|V22,§I.data
+T44|.|RUN-PHASE ESCALATION — per-boss-kill tier bump: stronger roster, new environmental hazard, ↑elite-freq, arena lighting/geometry shift, ↑resource drops, ↑upgrade-rarity unlocked. Director + arena read current tier. Deps: T20/T21 director, T33|V23,V8
+T45|.|BOSS TROPHIES + BANKING — PlayerProfile tracked trophy counts per boss; banking/extraction economy: secured Glory (immediate) vs run-pot Glory (extraction multiplier, death partial-loss); trophies+first-kill bank immediately. Deps: T24/T26 save+Glory|V24,§I.save
+T46|.|BOSS MASTERY TRACKS — per-boss feat track (defeat / fast / no-damage / specific-weapon-family / enraged / arena-modifier); progress in PlayerProfile; ⊥ health-scaling padding. Deps: T45|V26,§I.save
+T47|.|BOSS-GATED GLORY-TREE BRANCHES — boss victory reveals themed Glory-tree section; nodes require (mastery threshold + Glory cost + ? achievement). e.g. Gatekeeper Arsenal: rotary unlock, recoil→proj-dmg, Gatekeeper Cannon evo. Deps: T35 Glory Tree, T45/T46|V25,§I.menu,§I.save
+T48|.|FIRST-KILL UNLOCKS — first boss victory unlocks BREADTH (weapon family / character / arena / upgrade category / challenge mode / new tree branch), banked immediately. Deps: T45|V24,§I.save
+T49|.|DIFFICULTY-MILESTONE REWARDS — table: 1st-kill→major content, D2→artifact, D4→weapon-evo, D6→char-mutation, no-damage-kill→special upgrade, timed-kill→challenge modifier, max-diff→prestige node/cosmetic. Deps: T44/T46|V22,§I.save
+T50|.|FINAL-BOSS CONCLUSION — run-end choice {Extract (bank all) / Overrun endless (↑currency-mult, ↑enemies, ↓heal, unbanked-at-risk) / Sacrifice build→research blueprint (remember-upgrade / boost-synergy-rate / echo-warrior / prestige-by-dominant-tags)}. Deps: T45 banking, prestige|V24,§G
 
 ## §B BUGS
 
 id|date|cause|fix
+B1|2026-06-16|pooled effects (muzzle/impact/death/sprint) never visible — `CanvasTexture` map ⊥ bind under WebGPU backend; also lazy `setColorAt` unreliable. fx count >0 but nothing drew|swap textured plane → solid additive `CircleGeometry`/`RingGeometry` + pre-created `instanceColor` (like projectile/enemy views). depthTest:false + renderOrder so floor inlays ⊥ occlude. ∴ ⊥ CanvasTexture for instanced FX under WebGPU

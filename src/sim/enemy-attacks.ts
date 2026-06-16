@@ -158,31 +158,9 @@ export class EnemyAttackSystem {
     a: { range: number; speed: number; damage: number; spread: number; burst?: number },
     rng: Rng,
   ): void {
-    const pr = this.projectiles;
-    // Straight shot(s) at the player; a spread cone (and burst) so a moving
-    // target can slip the volley. burst > 1 = a shotgun-style spray.
-    const baseAngle = Math.atan2(player.pos.x - ex, player.pos.z - ez);
     const pellets = Math.max(1, a.burst ?? 1);
     for (let b = 0; b < pellets; b++) {
-      if (pr.count >= MAX_ENEMY_PROJECTILES) return;
-      const angle = baseAngle + (rng.next() - 0.5) * a.spread;
-      const dx = Math.sin(angle);
-      const dz = Math.cos(angle);
-      const i = pr.count++;
-      pr.posX[i] = ex;
-      pr.posZ[i] = ez;
-      pr.prevX[i] = ex;
-      pr.prevZ[i] = ez;
-      pr.velX[i] = dx * a.speed;
-      pr.velZ[i] = dz * a.speed;
-      pr.startX[i] = ex;
-      pr.startZ[i] = ez;
-      pr.elapsed[i] = 0;
-      pr.flightTime[i] = a.range / a.speed; // travel time to max range, then expire
-      pr.kind[i] = ProjKind.Gun;
-      pr.damage[i] = a.damage;
-      pr.blastRadius[i] = 0;
-      pr.fuse[i] = 0;
+      this.gunShot(ex, ez, player.pos.x, player.pos.z, a.speed, a.damage, a.spread, a.range, rng);
     }
   }
 
@@ -193,28 +171,80 @@ export class EnemyAttackSystem {
     a: { speed: number; fuse: number; blastRadius: number; damage: number },
     rng: Rng,
   ): void {
-    const pr = this.projectiles;
-    if (pr.count >= MAX_ENEMY_PROJECTILES) return;
     // Aim at the player's ground point with a little scatter so it's dodgeable.
     const tx = player.pos.x + (rng.next() - 0.5) * 2;
     const tz = player.pos.z + (rng.next() - 0.5) * 2;
+    this.lobAt(ex, ez, tx, tz, a.speed, a.fuse, a.blastRadius, a.damage);
+  }
+
+  // ---- Public spawn primitives (shared by initiate + the boss, T33) ----------
+
+  /** Lob a grenade from (ex,ez) to ground point (tx,tz); cooks off into AoE. */
+  lobAt(
+    ex: number,
+    ez: number,
+    tx: number,
+    tz: number,
+    speed: number,
+    fuse: number,
+    blastRadius: number,
+    damage: number,
+  ): void {
+    const pr = this.projectiles;
+    if (pr.count >= MAX_ENEMY_PROJECTILES) return;
     const dist = Math.hypot(tx - ex, tz - ez) || 1e-3;
-    const flight = dist / a.speed;
     const i = pr.count++;
     pr.posX[i] = ex;
     pr.posZ[i] = ez;
     pr.prevX[i] = ex;
     pr.prevZ[i] = ez;
-    pr.velX[i] = ((tx - ex) / dist) * a.speed;
-    pr.velZ[i] = ((tz - ez) / dist) * a.speed;
+    pr.velX[i] = ((tx - ex) / dist) * speed;
+    pr.velZ[i] = ((tz - ez) / dist) * speed;
     pr.startX[i] = ex;
     pr.startZ[i] = ez;
     pr.elapsed[i] = 0;
-    pr.flightTime[i] = flight;
+    pr.flightTime[i] = dist / speed;
     pr.kind[i] = ProjKind.Lob;
-    pr.damage[i] = a.damage;
-    pr.blastRadius[i] = a.blastRadius;
-    pr.fuse[i] = a.fuse;
+    pr.damage[i] = damage;
+    pr.blastRadius[i] = blastRadius;
+    pr.fuse[i] = fuse;
+  }
+
+  /** Fire one straight round from (ex,ez) toward (tx,tz) with a spread cone. */
+  gunShot(
+    ex: number,
+    ez: number,
+    tx: number,
+    tz: number,
+    speed: number,
+    damage: number,
+    spread: number,
+    range: number,
+    rng: Rng,
+  ): void {
+    const pr = this.projectiles;
+    if (pr.count >= MAX_ENEMY_PROJECTILES) return;
+    const angle = Math.atan2(tx - ex, tz - ez) + (rng.next() - 0.5) * spread;
+    const i = pr.count++;
+    pr.posX[i] = ex;
+    pr.posZ[i] = ez;
+    pr.prevX[i] = ex;
+    pr.prevZ[i] = ez;
+    pr.velX[i] = Math.sin(angle) * speed;
+    pr.velZ[i] = Math.cos(angle) * speed;
+    pr.startX[i] = ex;
+    pr.startZ[i] = ez;
+    pr.elapsed[i] = 0;
+    pr.flightTime[i] = range / speed;
+    pr.kind[i] = ProjKind.Gun;
+    pr.damage[i] = damage;
+    pr.blastRadius[i] = 0;
+    pr.fuse[i] = 0;
+  }
+
+  /** Arm a ground hazard directly (the boss slam shockwave). */
+  hazardAt(x: number, z: number, radius: number, fuse: number, damage: number): void {
+    this.hazards.spawn(x, z, radius, fuse, damage);
   }
 
   private advanceProjectiles(player: Player, dt: number, fx: FxQueue): void {

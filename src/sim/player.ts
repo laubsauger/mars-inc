@@ -15,8 +15,8 @@ import type { InputSnapshot } from '../core/input';
 import { ARENA_RADIUS } from './constants';
 import { xpRequired } from '../content/balance/xp-curve';
 
-// Mara Vex, Human Scrapper — balanced (§22).
-export const MARA_STATS: MovementStats = {
+// Lilu Tubs, Human Scrapper — balanced (§22).
+export const LILU_STATS: MovementStats = {
   moveSpeed: 8, // slower base; speed upgrades + sprint earn the mobility back
   acceleration: 14,
   deceleration: 22,
@@ -54,9 +54,9 @@ export interface Player {
   bonusBanishes: number;
 }
 
-export function createPlayer(stats: MovementStats = MARA_STATS): Player {
+export function createPlayer(stats: MovementStats = LILU_STATS): Player {
   // Clone stats: upgrades mutate player.stats in-run; must never touch the
-  // shared MARA_STATS constant (would leak across runs).
+  // shared LILU_STATS constant (would leak across runs).
   const own = { ...stats };
   return {
     pos: { x: 0, z: 0 },
@@ -82,7 +82,7 @@ export function createPlayer(stats: MovementStats = MARA_STATS): Player {
 
 /** Reset a player to a fresh-run baseline in place (T22 restart, no reload).
  *  Mutates the existing object so render views holding the reference stay valid. */
-export function resetPlayer(p: Player, stats: MovementStats = MARA_STATS): void {
+export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void {
   p.pos.x = 0;
   p.pos.z = 0;
   p.prevPos.x = 0;

@@ -9,10 +9,12 @@ const MAX_VOICES = 16;
 export class AudioBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private sfx: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private voices = 0;
   private lastAt: Partial<Record<FxKind, number>> = {};
   masterVolume = 0.5;
+  sfxVolume = 1;
 
   /** Lazily create the context; call from a user-gesture handler. */
   resume(): void {
@@ -22,12 +24,19 @@ export class AudioBus {
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctor();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.masterVolume;
       this.master.connect(this.ctx.destination);
+      this.sfx = this.ctx.createGain(); // SFX bus → master (separate volume, T36)
+      this.sfx.connect(this.master);
       this.noise = this.makeNoise(this.ctx);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.applyVolumes();
+  }
+
+  /** Apply master + per-bus volumes (T36 accessibility). */
+  applyVolumes(): void {
     if (this.master) this.master.gain.value = this.masterVolume;
+    if (this.sfx) this.sfx.gain.value = this.sfxVolume;
   }
 
   private makeNoise(ctx: AudioContext): AudioBuffer {
@@ -72,16 +81,32 @@ export class AudioBus {
   private muzzleSfx(now: number): void {
     if (!this.claim()) return;
     const ctx = this.ctx!;
-    const osc = ctx.createOscillator();
+    // Dull, suppressed "thwip" — a low-passed noise burst + a soft low thump.
+    // Deliberately NOT a pitched square wave (no space-blaster pew).
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, now);
+    lp.frequency.exponentialRampToValueAtTime(500, now + 0.05);
     const g = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(720, now);
-    osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
-    g.gain.setValueAtTime(0.18, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-    osc.connect(g).connect(this.master!);
-    osc.start(now);
-    this.release(osc, now, 0.1);
+    g.gain.setValueAtTime(0.09, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    src.connect(lp).connect(g).connect(this.sfx!);
+
+    const thump = ctx.createOscillator();
+    const tg = ctx.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(150, now);
+    thump.frequency.exponentialRampToValueAtTime(70, now + 0.05);
+    tg.gain.setValueAtTime(0.06, now);
+    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    thump.connect(tg).connect(this.sfx!);
+
+    src.start(now);
+    thump.start(now);
+    thump.stop(now + 0.08); // not voice-counted; src.release tracks the voice
+    this.release(src, now, 0.07);
   }
 
   private impactSfx(now: number): void {
@@ -95,7 +120,7 @@ export class AudioBus {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.12, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-    src.connect(bp).connect(g).connect(this.master!);
+    src.connect(bp).connect(g).connect(this.sfx!);
     src.start(now);
     this.release(src, now, 0.07);
   }
@@ -112,7 +137,7 @@ export class AudioBus {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.2, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    src.connect(lp).connect(g).connect(this.master!);
+    src.connect(lp).connect(g).connect(this.sfx!);
     src.start(now);
     this.release(src, now, 0.2);
   }

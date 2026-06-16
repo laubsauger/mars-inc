@@ -132,7 +132,7 @@ export class WeaponSystem {
           p.lifetime,
           pierce,
           dmg,
-          w.def.explosiveRadius ?? 0,
+          Math.max(w.def.explosiveRadius ?? 0, mods.blastRadius),
         );
       }
 

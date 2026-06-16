@@ -6,6 +6,7 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { Unsupported } from './screens/Unsupported';
 import { UpgradeScreen } from './screens/UpgradeScreen';
+import { BossRewardScreen } from './screens/BossRewardScreen';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { MainMenu } from './screens/MainMenu';
 import { Hud } from './Hud';
@@ -24,6 +25,7 @@ function App() {
         <>
           <Hud />
           <UpgradeScreen />
+          <BossRewardScreen />
         </>
       );
     case 'gameover':

@@ -5,22 +5,62 @@
 import { useEffect, useState } from 'react';
 import { useUiStore } from '../store';
 
-const RARITY_RING: Record<string, string> = {
-  common: 'border-bone/40',
-  uncommon: 'border-cyan',
-  rare: 'border-gold',
-  legendary: 'border-elite',
-  corrupted: 'border-bleed',
-  prototype: 'border-toxic',
+const RARITY_STYLE: Record<
+  string,
+  { border: string; text: string; bar: string; glow: string; bg: string }
+> = {
+  common: {
+    border: 'border-bone/45',
+    text: 'text-bone/70',
+    bar: 'bg-bone/45',
+    glow: 'hover:shadow-[0_0_36px_rgba(244,228,212,0.14)]',
+    bg: 'from-umber to-pit',
+  },
+  uncommon: {
+    border: 'border-cyan',
+    text: 'text-cyan',
+    bar: 'bg-cyan',
+    glow: 'hover:shadow-[0_0_42px_rgba(50,215,255,0.24)]',
+    bg: 'from-umber to-cyan/18',
+  },
+  rare: {
+    border: 'border-gold',
+    text: 'text-gold',
+    bar: 'bg-gold',
+    glow: 'hover:shadow-[0_0_46px_rgba(255,210,63,0.28)]',
+    bg: 'from-umber to-gold/20',
+  },
+  legendary: {
+    border: 'border-elite',
+    text: 'text-elite',
+    bar: 'bg-elite',
+    glow: 'hover:shadow-[0_0_50px_rgba(216,76,255,0.3)]',
+    bg: 'from-umber to-elite/20',
+  },
+  corrupted: {
+    border: 'border-bleed',
+    text: 'text-bleed',
+    bar: 'bg-bleed',
+    glow: 'hover:shadow-[0_0_46px_rgba(255,59,48,0.28)]',
+    bg: 'from-umber to-bleed/20',
+  },
+  prototype: {
+    border: 'border-toxic',
+    text: 'text-toxic',
+    bar: 'bg-toxic',
+    glow: 'hover:shadow-[0_0_46px_rgba(131,240,79,0.28)]',
+    bg: 'from-umber to-toxic/20',
+  },
 };
-const RARITY_TEXT: Record<string, string> = {
-  common: 'text-bone/60',
-  uncommon: 'text-cyan',
-  rare: 'text-gold',
-  legendary: 'text-elite',
-  corrupted: 'text-bleed',
-  prototype: 'text-toxic',
-};
+
+function styleFor(rarity: string) {
+  return RARITY_STYLE[rarity] ?? RARITY_STYLE.common!;
+}
+
+function contractClause(tags: readonly string[]): string {
+  const primary = tags[0] ?? 'run';
+  return `Clause ${primary.toUpperCase()}: payable in survival.`;
+}
 
 export function UpgradeScreen() {
   const draft = useUiStore((s) => s.draft);
@@ -55,62 +95,101 @@ export function UpgradeScreen() {
     });
 
   return (
-    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-pit/70 font-mono">
+    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-pit/90 px-4 font-mono backdrop-blur-md">
       <div className="mb-6 text-center">
-        <div className="text-sm tracking-[0.3em] text-cyan">LEVEL {draft.level}</div>
-        <div className="text-2xl font-bold tracking-widest text-bone">CHOOSE A CONTRACT</div>
+        <div className="mx-auto mb-2 flex w-fit items-center gap-2 border border-cyan/45 bg-pit/70 px-3 py-1 text-xs uppercase text-cyan shadow-[0_0_24px_rgba(50,215,255,0.16)]">
+          <span className="h-1.5 w-1.5 bg-cyan" />
+          LEVEL {draft.level}
+          <span className="h-1.5 w-1.5 bg-cyan" />
+        </div>
+        <div className="text-3xl font-black text-bone drop-shadow-[0_0_20px_rgba(196,106,43,0.45)]">
+          CHOOSE A CONTRACT
+        </div>
+        <div className="mt-2 text-xs uppercase text-dust">Mars Inc authorization pending</div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex max-w-full flex-col gap-4 md:flex-row">
         {draft.options.map((o, i) => {
           const isLocked = locked.has(o.id);
+          const style = styleFor(o.rarity);
           return (
             <div
               key={o.id}
-              className={`relative flex w-60 flex-col gap-3 rounded-md border-2 ${
-                RARITY_RING[o.rarity] ?? 'border-bone/40'
-              } bg-umber/90 p-5 ${isLocked ? 'ring-2 ring-gold' : ''}`}
+              className={`group/card relative flex w-72 max-w-[88vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-4 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : ''}`}
             >
+              <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
+              <div className="pointer-events-none absolute right-3 top-10 rotate-6 border border-rust/70 px-2 py-1 text-[9px] font-black uppercase text-bone/18">
+                Approved
+              </div>
+
               <div className="flex items-center justify-between">
-                <span className={`text-xs uppercase tracking-widest ${RARITY_TEXT[o.rarity]}`}>
-                  {o.rarity}
-                </span>
-                <div className="flex items-center gap-1">
+                <div>
+                  <div className={`text-xs font-black uppercase tracking-widest ${style.text}`}>
+                    {o.rarity}
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase text-bone/42">Mars Inc contract</div>
+                </div>
+                <div className="flex items-center gap-1.5">
                   <button
                     title={isLocked ? 'Unlock' : 'Lock across reroll'}
                     onClick={() => toggleLock(o.id)}
-                    className={`flex h-5 w-5 items-center justify-center rounded border text-[10px] ${
+                    className={`flex h-7 w-7 items-center justify-center rounded-sm border bg-pit/82 text-xs font-black transition hover:border-gold hover:text-gold focus:border-gold focus:outline-none ${
                       isLocked ? 'border-gold text-gold' : 'border-bone/30 text-bone/50'
                     }`}
                   >
                     {isLocked ? '◆' : '◇'}
                   </button>
-                  <span className="flex h-5 w-5 items-center justify-center rounded border border-bone/30 text-[10px] text-bone/70">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-bone/30 bg-pit/76 text-xs font-black text-bone/70">
                     {i + 1}
                   </span>
                 </div>
               </div>
 
-              <button onClick={() => choose(i)} className="flex flex-col gap-3 text-left">
-                <div className="text-lg font-bold text-bone">{o.name}</div>
-                <div className="text-sm text-bone/70">{o.description}</div>
-                <div className="mt-1 flex flex-wrap gap-1">
+              <button
+                onClick={() => choose(i)}
+                className="my-3 flex flex-1 flex-col gap-3 border-y border-rust/45 py-4 text-left focus:outline-none"
+              >
+                <div className="text-xl font-black leading-tight text-bone group-hover/card:text-sun">
+                  {o.name}
+                </div>
+                <div className="min-h-16 text-sm leading-5 text-bone/76">{o.description}</div>
+                <div className="mt-auto flex flex-wrap gap-1">
                   {o.tags.map((t) => (
-                    <span key={t} className="rounded bg-pit/60 px-1.5 py-0.5 text-[10px] text-gold">
+                    <span
+                      key={t}
+                      className="rounded-sm border border-rust/60 bg-pit/82 px-1.5 py-0.5 text-[10px] uppercase text-gold"
+                    >
                       {t}
                     </span>
                   ))}
                 </div>
               </button>
 
-              {draft.banishesLeft > 0 && !isLocked && (
+              <div className="text-[10px] uppercase text-bone/38">{contractClause(o.tags)}</div>
+
+              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
                 <button
-                  onClick={() => banish(i)}
-                  className="mt-auto text-[10px] uppercase tracking-widest text-bleed/70 hover:text-bleed"
+                  onClick={() => choose(i)}
+                  className={`rounded-sm border px-3 py-2 text-xs font-black uppercase tracking-widest transition ${style.border} ${style.text} bg-pit/82 hover:bg-bone/10 focus:outline-none`}
                 >
-                  ✕ banish
+                  Select
                 </button>
-              )}
+                {draft.banishesLeft > 0 && !isLocked && (
+                  <button
+                    onClick={() => banish(i)}
+                    className="flex items-center justify-center gap-1.5 rounded-sm border border-bleed/55 bg-pit/82 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-bleed/85 transition hover:border-bleed hover:bg-bleed/12 hover:text-bleed focus:border-bleed focus:outline-none"
+                  >
+                    <span className="text-xs leading-none">×</span>
+                    <span>Banish</span>
+                  </button>
+                )}
+              </div>
+
+              {draft.banishesLeft <= 0 || isLocked ? (
+                <div className="mt-2 h-[2.125rem] text-center text-[10px] uppercase text-bone/32">
+                  {isLocked ? 'Locked across reroll' : 'No banishes left'}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -120,13 +199,13 @@ export function UpgradeScreen() {
         <button
           disabled={draft.rerollsLeft <= 0}
           onClick={() => reroll([...locked])}
-          className="rounded border border-cyan/60 px-4 py-1.5 tracking-widest text-cyan transition enabled:hover:bg-cyan/10 disabled:opacity-40"
+          className="rounded-sm border border-cyan/60 bg-pit/58 px-4 py-2 tracking-widest text-cyan transition enabled:hover:border-cyan enabled:hover:bg-cyan/12 disabled:opacity-40"
         >
           REROLL ({draft.rerollsLeft})
         </button>
         <button
           onClick={skip}
-          className="rounded border border-rust px-4 py-1.5 tracking-widest text-bone/70 transition hover:border-gold hover:text-bone"
+          className="rounded-sm border border-rust bg-pit/58 px-4 py-2 tracking-widest text-bone/70 transition hover:border-gold hover:bg-gold/10 hover:text-bone"
         >
           SKIP → HEAL
         </button>
