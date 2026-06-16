@@ -17,7 +17,7 @@ export const contractualSidearm: WeaponDefinition = {
     base: 6,
     additive: 0,
     multiplier: 1,
-    critChance: 0.1,
+    critChance: 0.04,
     critMultiplier: 2,
     type: 'energy',
   },

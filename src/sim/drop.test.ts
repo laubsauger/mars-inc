@@ -36,15 +36,16 @@ describe('emitShards (drop)', () => {
     expect(total).toBeCloseTo(SHARD_VALUE[1]!, 4); // Debt Hound = 3 total
   });
 
-  it('falls back to a total value of 1 for a variant with no balance entry', () => {
-    // Boss (variant 2) has no SHARD_VALUE entry yet — the default keeps the drop
-    // coherent. The full value is still spread across its (many) shards.
+  it('scales XP by enemy threat when there is no explicit SHARD_VALUE entry', () => {
+    // Boss (variant 2) has no SHARD_VALUE entry — its XP derives from threat
+    // (capped) so a tanky enemy actually pays out, instead of the old flat 1 that
+    // brick-walled tier-3/4 leveling. Value still spread across its shards.
     expect(SHARD_VALUE[2]).toBeUndefined();
     const pool = new ShardPool();
     emitShards(pool, [kill(0, 0, 2)]);
     let total = 0;
     for (let i = 0; i < pool.count; i++) total += pool.value[i]!;
-    expect(total).toBeCloseTo(1, 4);
+    expect(total).toBeGreaterThan(1); // threat-scaled, not the old flat 1
   });
 
   it('respects pool capacity — drops past the cap are dropped, not overflowed', () => {

@@ -17,9 +17,10 @@ describe('Phase Stalker teleporter (T33+)', () => {
     const pool = new EnemyPool();
     const rng = new Rng(3);
     const fx = new FxQueue();
-    // Step ~30s of run time starting past the teleport unlock (60s).
-    for (let t = 0; t < 30; t += 1 / 60) {
-      d.step(pool, rng, 65 + t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
+    // Teleport unlock is stretched: TELE_AT 60 × TIMELINE_STRETCH 3 = 180s real.
+    // Step ~40s of run time starting just past that so a teleport wave fires.
+    for (let t = 0; t < 40; t += 1 / 60) {
+      d.step(pool, rng, 185 + t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
     }
     let teleporters = 0;
     for (let i = 0; i < pool.count; i++) {
@@ -44,9 +45,13 @@ describe('Phase Stalker teleporter (T33+)', () => {
 });
 
 describe('difficultyScale (T44 run-phase escalation)', () => {
-  it('grows with time AND steps up per boss kill', () => {
+  it('stays flat pre-boss, then grows with time + steps up per boss kill', () => {
+    // §G hinge: no time-based growth until the first boss falls.
     expect(difficultyScale(0, 0)).toBe(1);
-    expect(difficultyScale(120, 0)).toBeGreaterThan(difficultyScale(30, 0));
+    expect(difficultyScale(120, 0)).toBe(1); // pre-boss: still base HP
+    expect(difficultyScale(30, 0)).toBe(1);
+    // After a boss: time ramp re-enables and each kill steps up.
+    expect(difficultyScale(360, 1)).toBeGreaterThan(difficultyScale(60, 1));
     expect(difficultyScale(60, 1)).toBeGreaterThan(difficultyScale(60, 0) + 0.5);
   });
 

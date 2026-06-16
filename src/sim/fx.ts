@@ -11,7 +11,9 @@ export type FxKind =
   | 'chain'
   | 'blood'
   | 'teleport'
-  | 'levelup';
+  | 'levelup'
+  | 'bounty'
+  | 'ember'; // visual-only status flecks (burn) — NEVER plays a sound
 
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family

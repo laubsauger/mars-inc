@@ -36,7 +36,7 @@ describe('V8 director bounds', () => {
       const rng = new Rng(seed);
       const director = new WaveDirector();
       let elapsed = 0;
-      // ~120s: long enough to pass the boss milestone and reach a large cap.
+      // ~120s: deep enough into the stretched ramp to exercise growing caps + bank.
       for (let t = 0; t < 7200; t++) {
         elapsed += DT;
         director.step(pool, rng, elapsed, DT);
@@ -55,8 +55,8 @@ describe('V8 director bounds', () => {
     const rng = new Rng(99);
     const director = new WaveDirector();
     let elapsed = 0;
-    for (let t = 0; t < 6600; t++) {
-      // ~110s, just past the 90s milestone
+    // ~290s: just past the stretched boss milestone (BOSS_AT 90 × TIMELINE_STRETCH 3 = 270s).
+    for (let t = 0; t < 17400; t++) {
       elapsed += DT;
       director.step(pool, rng, elapsed, DT);
     }

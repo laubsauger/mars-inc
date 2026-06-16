@@ -6,8 +6,25 @@ import {
   updateSprint,
   newSprintState,
   applyRecoil,
+  knockbackVelocity,
   type MovementStats,
 } from './movement';
+import { createPlayer, stepPlayer } from './player';
+import type { InputSnapshot } from '../core/input';
+
+const NO_INPUT: InputSnapshot = {
+  moveX: 0,
+  moveZ: 0,
+  sprint: false,
+  pause: false,
+  pickup: false,
+  mouseX: -1,
+  mouseY: -1,
+  mouseInside: false,
+  aimX: 0,
+  aimZ: 0,
+  hasAim: false,
+};
 
 const STATS: MovementStats = {
   moveSpeed: 10,
@@ -132,5 +149,45 @@ describe('applyRecoil (V10 capped)', () => {
   it('zero direction → no change', () => {
     const v = applyRecoil({ x: 1, z: 2 }, 0, 0, 10, 0, 1 / 60, 1);
     expect(v).toEqual({ x: 1, z: 2 });
+  });
+});
+
+describe('knockbackVelocity (player body-check shove)', () => {
+  it('pushes along the given (enemy→player) direction, normalized to force', () => {
+    const v = knockbackVelocity(3, 0, 9, 0); // dir +x, magnitude only from force
+    expect(v.x).toBeCloseTo(9, 6);
+    expect(v.z).toBeCloseTo(0, 6);
+  });
+  it('resistance scales the shove down (1 = immovable)', () => {
+    const full = knockbackVelocity(0, 1, 10, 0);
+    const half = knockbackVelocity(0, 1, 10, 0.5);
+    expect(half.z).toBeCloseTo(full.z * 0.5, 6);
+    expect(knockbackVelocity(0, 1, 10, 1)).toEqual({ x: 0, z: 0 });
+    expect(knockbackVelocity(0, 1, 10, 2)).toEqual({ x: 0, z: 0 }); // clamped, never reversed
+  });
+  it('zero direction or force → no shove', () => {
+    expect(knockbackVelocity(0, 0, 10, 0)).toEqual({ x: 0, z: 0 });
+    expect(knockbackVelocity(1, 0, 0, 0)).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe('recoil impulse survives movement input (oversteer fix, V10)', () => {
+  it('recoil still displaces the player when steering AGAINST it', () => {
+    const withRecoil = createPlayer();
+    const noRecoil = createPlayer();
+    withRecoil.recoilVel = { x: 6, z: 0 }; // kicked toward +x
+    // Both hold LEFT (−x) — the recoil player must still end up further +x,
+    // i.e. the held input does NOT fully cancel the kick (the old bug).
+    const input: InputSnapshot = { ...NO_INPUT, moveX: -1 };
+    stepPlayer(withRecoil, input, 1 / 60);
+    stepPlayer(noRecoil, input, 1 / 60);
+    expect(withRecoil.pos.x).toBeGreaterThan(noRecoil.pos.x);
+  });
+
+  it('the recoil impulse decays toward zero (controllable, never permanent)', () => {
+    const p = createPlayer();
+    p.recoilVel = { x: 6, z: 0 };
+    for (let i = 0; i < 120; i++) stepPlayer(p, NO_INPUT, 1 / 60); // ~2s
+    expect(Math.hypot(p.recoilVel.x, p.recoilVel.z)).toBe(0);
   });
 });

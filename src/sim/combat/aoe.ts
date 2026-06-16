@@ -7,6 +7,7 @@ import type { EnemyPool } from '../enemies';
 import { EnemyState } from '../enemies';
 import type { SpatialHash } from '../spatial-hash';
 import type { Rng } from '../../core/rng';
+import type { FxQueue } from '../fx';
 import { makePacket, computeOutgoing, applyMitigation, type DamageType } from './damage';
 
 const _scratch: number[] = [];
@@ -18,6 +19,9 @@ export interface AreaDamageSpec {
   damageType?: DamageType;
   /** Skip this enemy index (e.g. the one that already took the direct hit). */
   exclude?: number;
+  /** When set, floats a damage number on EVERY enemy this AoE hits — so splash,
+   *  novas, triggers, and corpse blasts read like real hits, not silent damage. */
+  fx?: FxQueue;
 }
 
 export function applyAreaDamage(
@@ -49,8 +53,12 @@ export function applyAreaDamage(
     });
     const out = computeOutgoing(packet, rng);
     const mit = applyMitigation(out.amount, 0, 0);
-    dealt += Math.min(mit.toHealth, enemies.health[e]!);
+    const removed = Math.min(mit.toHealth, enemies.health[e]!);
+    dealt += removed;
     enemies.health[e]! -= mit.toHealth;
+    // Per-enemy damage number so AoE never deals "silent" damage (V3 reads).
+    if (spec.fx)
+      spec.fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, removed, 0, out.crit ? 1 : 0);
   }
   return dealt;
 }

@@ -82,6 +82,14 @@ export interface TriggerCtx {
   dealArea: (x: number, z: number, radius: number, amount: number) => number;
   /** Apply a status to an enemy index (T39). No-op for invalid indices. */
   applyStatus: (index: number, type: StatusType, opts: StatusOpts) => void;
+  /** Firing weapon's proc coefficient for this event (T69, V32); on hit/crit it
+   *  scales this ctx's status/magnitude. 1 for non-weapon events (kill/shot/reaction). */
+  procCoef: number;
+  /** Proc-chain re-entry depth (V32); 0 = primary hit, bounded by `MAX_PROC_DEPTH`. */
+  depth: number;
+  /** Re-roll on-hit triggers on another enemy at a reduced (inherited) coefficient,
+   *  depth-bounded (V32). Present only on hit/crit contexts. */
+  procChain?: (index: number, crit: boolean) => void;
 }
 
 export type TriggerHandler = (ctx: TriggerCtx) => void;

@@ -175,3 +175,24 @@ export function applyRecoil(
   const mag = Math.min(force * (1 - resistance) * dt, maxKick);
   return { x: vel.x + (dirX / len) * mag, z: vel.z + (dirZ / len) * mag };
 }
+
+/**
+ * Knockback impulse delivered to the PLAYER when an enemy body-checks them
+ * (T contact). Returns the velocity to ADD to the player's recoil-impulse channel
+ * along (dirX,dirZ) — the push direction (enemy → player). `force` is the raw
+ * shove; `resistance` (player.knockbackResistance, clamped to [0,1]) scales it
+ * down, so Thick-Hide-style nodes actually reduce how far you get launched.
+ * One-shot (not dt-scaled): a contact hit already gates on i-frames, so this fires
+ * once per hit, not every overlapping step.
+ */
+export function knockbackVelocity(
+  dirX: number,
+  dirZ: number,
+  force: number,
+  resistance: number,
+): Vec2 {
+  const len = Math.hypot(dirX, dirZ);
+  if (len < 1e-6 || force <= 0) return { x: 0, z: 0 };
+  const mag = force * Math.max(0, 1 - resistance);
+  return { x: (dirX / len) * mag, z: (dirZ / len) * mag };
+}

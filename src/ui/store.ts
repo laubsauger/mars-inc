@@ -18,11 +18,22 @@ export type MenuView =
   | 'credits';
 
 /** Records shown in the menu, mirrored from the saved profile. */
+/** One best-of row for an (arena × character) combo (records breakdown). */
+export interface RecordRow {
+  id: string;
+  arena: string;
+  character: string;
+  bestTimeSec: number;
+  bestLevel: number;
+  mostKills: number;
+}
+
 export interface ProfileView {
   bestTimeSec: number;
   bestLevel: number;
   mostKills: number;
   runCount: number;
+  byCombo: RecordRow[];
 }
 
 /** Settings + accessibility, mirrored from the profile and editable (T36). */
@@ -174,6 +185,7 @@ export interface PermanentView {
   name: string;
   description: string;
   branch: string;
+  rarity: string; // 'common' | 'rare' | 'legendary' — drives Glory Tree node visuals
   cost: number;
   owned: number;
   maxLevel: number;
@@ -282,6 +294,7 @@ const INITIAL_PROFILE: ProfileView = {
   bestLevel: 0,
   mostKills: 0,
   runCount: 0,
+  byCombo: [],
 };
 const INITIAL_SETTINGS: SettingsView = {
   masterVolume: 0.6,

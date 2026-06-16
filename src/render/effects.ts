@@ -317,6 +317,49 @@ export class Effects {
             color: COL.kineticGold,
           });
           break;
+        case 'ember':
+          // Tiny rising fire fleck on a burn tick — subtle, no sound.
+          this.muzzle.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.5,
+            s1: 0.12,
+            life: 0.22,
+            spin: 5,
+            color: COL.marsDust,
+          });
+          break;
+        case 'bounty':
+          // Relic collected: a gold bloom + cyan shock ring claim the spot before
+          // the draft opens (mirrors the level-up beat, tinted to the relic).
+          this.muzzle.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.4,
+            s1: 4.6,
+            life: 0.32,
+            spin: 4,
+            color: COL.kineticGold,
+          });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.8,
+            s1: 6.5,
+            life: 0.46,
+            spin: 2,
+            color: COL.shieldCyan,
+          });
+          this.dust.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.6,
+            s1: 5.5,
+            life: 0.44,
+            spin: 4,
+            color: COL.kineticGold,
+          });
+          break;
       }
     }
   }

@@ -19,6 +19,7 @@ export const INK = {
   nearBlack: '#070504',
   warmLine: '#241814',
   sunHigh: '#f0c879',
+  bone: '#f5ede0', // brightest paper highlight — medkit cross, reads over blood
 } as const;
 
 /** Gameplay accents — saturated, reserved for combat state readability. */
@@ -50,6 +51,7 @@ export const COL = {
   nearBlack: new Color(INK.nearBlack),
   warmLine: new Color(INK.warmLine),
   sunHigh: new Color(INK.sunHigh),
+  bone: new Color(INK.bone),
   kineticGold: new Color(ACCENT.kineticGold),
   shieldCyan: new Color(ACCENT.shieldCyan),
   healthRed: new Color(ACCENT.healthRed),

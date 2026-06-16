@@ -21,6 +21,7 @@ import {
 } from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
 import { corrodeAmp } from './status';
+import { procCoefOf } from './proc';
 import { applyAreaDamage } from './aoe';
 import { knockbackFrom } from './knockback';
 import type { RunMods } from '../progression/mods';
@@ -56,8 +57,9 @@ export interface KillEvent {
 }
 
 /** Called at hit time (before compaction) so the enemy index is still valid —
- *  on-hit triggers + status application hang off this (T38/T39). */
-export type OnHit = (enemy: number, crit: boolean) => void;
+ *  on-hit triggers + status application hang off this (T38/T39). `procCoef` is the
+ *  firing weapon's proc coefficient (T69, V32), scaling on-hit effect strength. */
+export type OnHit = (enemy: number, crit: boolean, procCoef: number) => void;
 
 const RECOIL_CAP = 0.4; // max per-shot velocity kick (V10)
 const RICOCHET_RETAIN = 0.8; // damage kept per ricochet bounce
@@ -161,6 +163,7 @@ export class WeaponSystem {
       const arc = w.def.spreadArc ?? mods.spreadArc;
       const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
       const profile = impactProfile(w.def.family); // per-family hit FX (T37)
+      const procCoef = procCoefOf(w.def); // proc strength rides the projectile (T69, V32)
       // Fan multishot evenly across the arc; single shot gets random jitter.
       for (let s = 0; s < shots; s++) {
         const fan = shots > 1 ? (s / (shots - 1) - 0.5) * arc : 0;
@@ -180,6 +183,7 @@ export class WeaponSystem {
           Math.max(w.def.explosiveRadius ?? 0, mods.blastRadius),
           profile,
           Math.max(0, Math.floor(mods.ricochet)),
+          procCoef,
         );
       }
 
@@ -187,8 +191,12 @@ export class WeaponSystem {
       fx.push('muzzle', player.pos.x + aim.x * muzzle, player.pos.z + aim.z * muzzle, aim.x, aim.z);
 
       player.facing = Math.atan2(-aim.x, -aim.z); // match player-view nose convention
-      player.vel = applyRecoil(
-        player.vel,
+      // Recoil kicks a SEPARATE impulse velocity (`recoilVel`), not the movement
+      // velocity — otherwise a held WASD input lerps the kick away the same step
+      // and recoil is invisible while moving. recoilVel decays on its own in
+      // stepPlayer and is added to position on top of movement (still V10-capped).
+      player.recoilVel = applyRecoil(
+        player.recoilVel,
         -aim.x,
         -aim.z,
         w.def.recoil * mods.recoilMult, // recoil build scales the kick (still V10-capped)
@@ -287,7 +295,8 @@ export class WeaponSystem {
           // Floating damage number at the enemy (amount in dx, crit flag in variant).
           fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
           // On-hit hook (before compaction → index valid): triggers + status (T38/T39).
-          if (onHit) onHit(e, out.crit);
+          // Proc coefficient rides the projectile → scales on-hit effects (T69, V32).
+          if (onHit) onHit(e, out.crit, pr.procCoef[i]!);
 
           // Chain lightning: arc reduced damage to nearby enemies (Arc Garnishment).
           if (mods.chainCount > 0) {
@@ -309,13 +318,12 @@ export class WeaponSystem {
                 critMultiplier: pr.critMult[i]!,
                 damageType: 'explosive',
                 exclude: e,
+                fx, // per-enemy splash numbers (replaces the old aggregate)
               },
               rng,
             );
             this.damageThisStep += blastDealt;
             fx.push('impact', pr.posX[i]!, pr.posZ[i]!, 0, 0, ImpactProfile.Blast);
-            // One aggregated number at the blast centre for the splash.
-            if (blastDealt > 0) fx.push('dmg', pr.posX[i]!, pr.posZ[i]!, blastDealt, 0, 0);
             dead = true;
             break;
           }
@@ -474,7 +482,13 @@ function emitBlood(fx: FxQueue, enemies: EnemyPool, e: number, hx: number, hz: n
   const v = enemies.variant[e]!;
   if (!ENEMY_BY_VARIANT[v]?.gore) return;
   const l = Math.hypot(hx, hz) || 1;
-  fx.push('blood', enemies.posX[e]!, enemies.posZ[e]!, hx / l, hz / l, v);
+  const ux = hx / l;
+  const uz = hz / l;
+  // Emit from the body SURFACE on the exit side (center + dir*radius), not the
+  // center — on big units a center spawn buries the spray inside the mesh where
+  // it gets occluded ("swallowed"). Push it just past the surface so it clears.
+  const r = enemies.radius[e]! * 0.9;
+  fx.push('blood', enemies.posX[e]! + ux * r, enemies.posZ[e]! + uz * r, ux, uz, v);
 }
 
 /** Returns a unit aim direction (x,z) for the weapon, or null if no target.

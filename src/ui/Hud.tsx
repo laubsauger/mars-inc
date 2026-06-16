@@ -52,7 +52,7 @@ function ShieldPips() {
   const max = useUiStore((s) => s.hud.shieldMax);
   if (max <= 0) return null; // hidden until a shield upgrade is taken
   return (
-    <div className="absolute bottom-12 left-6 flex items-center gap-1.5">
+    <div className="absolute bottom-[3.9rem] left-6 flex items-center gap-1.5">
       <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-cyan/70">
         Shield
       </span>

@@ -54,6 +54,8 @@ function makeTriggerCtx(over: Partial<TriggerCtx> = {}): TriggerCtx {
     variant: 0,
     magnitude: 0,
     targetIndex: -1,
+    procCoef: 1,
+    depth: 0,
     dealArea: (_x, _z, _r, amount) => amount,
     applyStatus: () => {},
     ...over,

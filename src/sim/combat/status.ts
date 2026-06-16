@@ -136,7 +136,9 @@ export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): 
         pool.burnTime[i] = 0;
         pool.burnDps[i] = 0;
       } else if (rng.next() < 0.25) {
-        fx.push('impact', pool.posX[i]!, pool.posZ[i]!); // occasional ember tick
+        // Visual-only ember fleck — 'ember' never triggers a sound (the per-tick
+        // 'impact' sfx on burning crowds was an awful per-frame fire drone).
+        fx.push('ember', pool.posX[i]!, pool.posZ[i]!);
       }
     }
 

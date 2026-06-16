@@ -205,7 +205,15 @@ export class CorpseSystem {
         ? MOONSHOT_RADIUS
         : Math.min(BLAST_MAX, BLAST_BASE + stored * BLAST_PER_STORE);
       const amount = stored * DMG_FRAC * (meteor ? MOONSHOT_DMG_MULT : 1);
-      dealt = applyAreaDamage(enemies, hash, x, z, radius, { amount, damageType: 'explosive' }, rng);
+      dealt = applyAreaDamage(
+        enemies,
+        hash,
+        x,
+        z,
+        radius,
+        { amount, damageType: 'explosive', fx },
+        rng,
+      );
       fx.push('impact', x, z, 0, 0, 4 /* ImpactProfile.Blast */);
       if (meteor) fx.push('death', x, z, 0, 0, p.variant[i]!); // extra punch
 

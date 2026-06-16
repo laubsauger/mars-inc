@@ -58,11 +58,12 @@ export interface RunResult {
  * pays a victory bounty. Progression unlocks possibilities, not raw power. Pure
  * & deterministic from the result.
  */
-export function gloryFor(result: RunResult): number {
+export function gloryFor(result: RunResult, gloryMult = 1): number {
   const win = result.won ? 200 : 0;
-  return Math.floor(
-    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6 + win,
-  );
+  const base =
+    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6 + win;
+  // Harder Acts pay more (T-Act): the growth outlet for Glory-Tree investment.
+  return Math.floor(base * gloryMult);
 }
 
 /** Pure projection of accumulated stats into the result summary (V20). */

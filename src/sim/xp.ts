@@ -18,6 +18,8 @@ export class ShardPool {
   readonly prevZ: Float32Array;
   readonly value: Float32Array;
   readonly state: Uint8Array;
+  /** Seconds a shard has sat LOOSE — drives Compound Interest / Margin Call (T58). */
+  readonly age: Float32Array;
 
   constructor(capacity: number = MAX_SHARDS) {
     this.capacity = capacity;
@@ -27,6 +29,7 @@ export class ShardPool {
     this.prevZ = new Float32Array(capacity);
     this.value = new Float32Array(capacity);
     this.state = new Uint8Array(capacity);
+    this.age = new Float32Array(capacity);
   }
 
   spawn(x: number, z: number, value: number): number {
@@ -38,6 +41,7 @@ export class ShardPool {
     this.prevZ[i] = z;
     this.value[i] = value;
     this.state[i] = ShardState.Loose;
+    this.age[i] = 0;
     return i;
   }
 
@@ -50,6 +54,7 @@ export class ShardPool {
       this.prevZ[i] = this.prevZ[last]!;
       this.value[i] = this.value[last]!;
       this.state[i] = this.state[last]!;
+      this.age[i] = this.age[last]!;
     }
   }
 }

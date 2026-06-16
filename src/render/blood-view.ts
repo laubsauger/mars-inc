@@ -231,7 +231,9 @@ export class BloodView {
       const sp = (4 + rnd() * 7) * force * reach;
       const i = this.dCount++;
       this.px[i] = x;
-      this.py[i] = 0.7 + rnd() * 0.4; // body height
+      // Body height, lifted for bigger enemies so the spray exits near their mass
+      // instead of starting at ankle height inside a tall brute (gets swallowed).
+      this.py[i] = 0.7 + rnd() * 0.4 + Math.max(0, sizeMul - 1) * 0.7;
       this.pz[i] = z;
       this.vx[i] = Math.cos(ang) * sp;
       this.vy[i] = (2.4 + rnd() * 3.4) * force;

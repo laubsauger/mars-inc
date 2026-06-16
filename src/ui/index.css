@@ -21,6 +21,7 @@
   --color-bleed: #ff3b30;
   --color-toxic: #83f04f;
   --color-elite: #d84cff;
+  --color-legendary: #ff8c1a; /* vivid orange — Glory Tree legendary keystones */
 
   /* legacy alias kept so existing classes resolve; maps to Mars dust */
   --color-ember: #c46a2b;

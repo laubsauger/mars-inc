@@ -14,6 +14,10 @@ import type { InputSnapshot } from '../core/input';
 import { clampToArena } from './arena';
 import { xpRequired } from '../content/balance/xp-curve';
 
+// Recoil impulse decay rate (per second). ~0.35s to settle — a felt shove, not a
+// slide. Higher = snappier recovery (V10: recoil never makes you uncontrollable).
+const RECOIL_DECAY = 8;
+
 // Lilu Tubs, Human Scrapper — balanced (§22).
 export const LILU_STATS: MovementStats = {
   moveSpeed: 8, // slower base; speed upgrades + sprint earn the mobility back
@@ -32,7 +36,8 @@ export const LILU_STATS: MovementStats = {
 export interface Player {
   pos: Vec2;
   prevPos: Vec2; // for render interpolation (V1)
-  vel: Vec2;
+  vel: Vec2; // movement velocity (steered by input each step)
+  recoilVel: Vec2; // separate recoil impulse — decays, added on top of vel (T55/V10)
   facing: number; // radians on x,z plane
   health: number;
   maxHealth: number;
@@ -84,6 +89,12 @@ export interface Player {
   corpseChain: boolean; // Chain of Evidence: detonations seed a decaying child corpse
   corpsePlayerDanger: boolean; // liability downside: blasts can singe the player
   corpseMeteorThreshold: number; // Moonshot: stored ≥ this → telegraphed orbital strike (0 = off)
+  /** XP-as-resource build (T58). Off until the family's cards are drafted. */
+  xpInterestRate: number; // Compound Interest: loose shards gain this frac/s (0 = off)
+  xpMagnetar: boolean; // Magnetar: loose shards orbit the player and zap enemies
+  xpLiquidation: number; // Liquidation: shards fired as projectiles per sprint (0 = off)
+  xpMarginCall: boolean; // liability: fatter interest, but old loose shards crash (decay)
+  xpMarketCrash: boolean; // catastrophe: periodic collapse of all loose shards → AoE + mega-pickup
 }
 
 export function createPlayer(stats: MovementStats = LILU_STATS): Player {
@@ -94,6 +105,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     pos: { x: 0, z: 0 },
     prevPos: { x: 0, z: 0 },
     vel: { x: 0, z: 0 },
+    recoilVel: { x: 0, z: 0 },
     facing: 0,
     health: 100,
     maxHealth: 100,
@@ -132,6 +144,11 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     corpseChain: false,
     corpsePlayerDanger: false,
     corpseMeteorThreshold: 0,
+    xpInterestRate: 0,
+    xpMagnetar: false,
+    xpLiquidation: 0,
+    xpMarginCall: false,
+    xpMarketCrash: false,
   };
 }
 
@@ -144,6 +161,8 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.prevPos.z = 0;
   p.vel.x = 0;
   p.vel.z = 0;
+  p.recoilVel.x = 0;
+  p.recoilVel.z = 0;
   p.facing = 0;
   p.health = 100;
   p.maxHealth = 100;
@@ -184,6 +203,11 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.corpseChain = false;
   p.corpsePlayerDanger = false;
   p.corpseMeteorThreshold = 0;
+  p.xpInterestRate = 0;
+  p.xpMagnetar = false;
+  p.xpLiquidation = 0;
+  p.xpMarginCall = false;
+  p.xpMarketCrash = false;
 }
 
 /** Advance the player one fixed step. */
@@ -222,9 +246,21 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
     p.stats.moveSpeed * (p.sprint.active ? p.stats.sprintMultiplier : 1) * p.chillMult;
   p.vel = integrateVelocity(p.vel, dir, maxSpeed, p.stats.acceleration, p.stats.deceleration, dt);
 
-  p.pos.x += p.vel.x * dt;
-  p.pos.z += p.vel.z * dt;
+  // Recoil impulse decays on its own timescale and is added ON TOP of movement,
+  // so a held WASD input can't instantly steer it away (the recoil-as-mobility
+  // build actually reads, T55) — but it's capped + fades, so never uncontrollable
+  // (V10). ~0.35s to settle.
+  const rdecay = Math.max(0, 1 - RECOIL_DECAY * dt);
+  p.recoilVel.x *= rdecay;
+  p.recoilVel.z *= rdecay;
+  if (Math.abs(p.recoilVel.x) < 1e-3) p.recoilVel.x = 0;
+  if (Math.abs(p.recoilVel.z) < 1e-3) p.recoilVel.z = 0;
 
+  p.pos.x += (p.vel.x + p.recoilVel.x) * dt;
+  p.pos.z += (p.vel.z + p.recoilVel.z) * dt;
+
+  // pos already includes the recoil shove, so clamping it keeps recoil from
+  // pushing through the wall; slide on the movement velocity as before.
   const clamped = clampToArena(p.pos, p.vel, p.stats.collisionRadius);
   p.pos = clamped.pos;
   p.vel = clamped.vel;

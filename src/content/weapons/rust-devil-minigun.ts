@@ -20,7 +20,7 @@ export const rustDevilMinigun: WeaponDefinition = {
     base: 3,
     additive: 0,
     multiplier: 1,
-    critChance: 0.08,
+    critChance: 0.03,
     critMultiplier: 2,
     type: 'kinetic',
   },

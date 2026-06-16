@@ -16,23 +16,39 @@ export interface ArenaDef {
   readonly shape: ArenaShape;
   /** Highlight/rim hex — gives each arena a distinct visual identity. */
   readonly accent: string;
+  /** Act number — the arena doubles as a difficulty/Act selector (T-Act). */
+  readonly act: number;
+  /** One-line pitch shown on the menu Act selector. */
+  readonly tagline: string;
+  /** Enemy HP/threat multiplier for this Act (1 = baseline). */
+  readonly difficultyMult: number;
+  /** Martian Glory reward multiplier — harder Acts pay more (the growth outlet). */
+  readonly gloryMult: number;
 }
 
-/** Original circular pit — stashed as a selectable variant. */
-export const RUST_CROWN: ArenaDef = {
-  id: 'rust-crown',
-  name: 'Rust Crown',
-  shape: { kind: 'circle', radius: 35 },
-  accent: '#f0c879', // warm sun highlight
-};
-
-/** New widescreen pit: a big 16:9 rectangle (halfW:halfZ = 16:9), blue-lit so it
- *  reads instantly different from the warm Rust Crown. */
+/** Act 1 — the widescreen 16:9 rectangle, blue-lit. The standard proving contract. */
 export const COLD_VAULT: ArenaDef = {
   id: 'cold-vault',
   name: 'Cold Vault',
   shape: { kind: 'rect', halfW: 56, halfZ: 31.5 },
   accent: '#32d7ff', // shield cyan / blue
+  act: 1,
+  tagline: 'Standard contract. Learn the pit, build your loadout.',
+  difficultyMult: 1,
+  gloryMult: 1,
+};
+
+/** Act 2 — the circular Rust Crown, warm-lit. Tougher hosts, fatter Glory payouts;
+ *  the arena you grow INTO once the Glory Tree has teeth. */
+export const RUST_CROWN: ArenaDef = {
+  id: 'rust-crown',
+  name: 'Rust Crown',
+  shape: { kind: 'circle', radius: 35 },
+  accent: '#f0c879', // warm sun highlight
+  act: 2,
+  tagline: 'Tougher hosts, denser waves — but the Crown pays in Glory.',
+  difficultyMult: 1.45,
+  gloryMult: 1.6,
 };
 
 /** Selectable arenas (settings). */

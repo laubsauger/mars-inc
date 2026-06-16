@@ -9,6 +9,7 @@ import { EnemyAttackSystem } from './enemy-attacks';
 import { BossController } from './boss';
 import { WeaponDropSystem } from './weapon-drops';
 import { HealthDropSystem } from './health-drops';
+import { BountySystem } from './bounty-system';
 import { availableEvolution } from '../content/weapons/evolutions';
 import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
 import { WaveDirector, computeAdaptation, difficultyScale } from './director/wave-director';
@@ -20,12 +21,15 @@ import { equip } from './combat/weapon';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
 import { ShardPool } from './xp';
 import { emitShards, stepXp } from './xp-system';
+import { stepXpResource } from './xp-resource';
 import { FxQueue } from './fx';
 import { type RunMods, defaultMods, resetMods } from './progression/mods';
 import { type PermanentLevels, applyPermanents } from './progression/permanents';
 import { BuildEffects, type ConditionalResult, type TriggerCtx } from './progression/effects';
+import { activeArena } from './arena';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
+import { applyStatusScaled, MAX_PROC_DEPTH, PROC_CHAIN_INHERIT } from './combat/proc';
 import { resolveReactions } from './combat/reactions';
 import { type RunStats, type RunResult, newRunStats, resetRunStats, computeResult } from './run';
 import {
@@ -41,6 +45,7 @@ import { ADVANCED_UPGRADES } from '../content/upgrades/advanced';
 import { REACTION_UPGRADES } from '../content/upgrades/reactions';
 import { RECOIL_UPGRADES } from '../content/upgrades/recoil';
 import { CORPSE_UPGRADES } from '../content/upgrades/corpse';
+import { XP_RESOURCE_UPGRADES } from '../content/upgrades/xp-resource';
 import type { InputSnapshot } from '../core/input';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
@@ -51,6 +56,7 @@ const DRAFT_POOL: UpgradeDefinition[] = [
   ...REACTION_UPGRADES,
   ...RECOIL_UPGRADES,
   ...CORPSE_UPGRADES,
+  ...XP_RESOURCE_UPGRADES,
 ];
 
 /** Rich post-game summary (T23) — what the run actually became. */
@@ -104,6 +110,8 @@ export class World {
   readonly weaponDrops = new WeaponDropSystem();
   /** Occasional medkit drops; auto-collected to heal (T33+). */
   readonly healthDrops = new HealthDropSystem();
+  /** Timed bounty relics — a movement-driven second upgrade source (draft on pickup). */
+  readonly bounties = new BountySystem();
   /** Gatekeeper boss fight controller — phases + telegraphed attacks (T33). */
   readonly boss = new BossController();
   /** Set to the evolved weapon's name the step it evolves (T34); HUD announces. */
@@ -220,6 +228,9 @@ export class World {
 
     // Fixed system order (§14.3): player → director → enemy AI/contact → weapons → triggers → XP.
     stepPlayer(this.player, this.input, dt);
+    // Capture the sprint rising edge before the dash-shock block consumes
+    // `prevSprintActive` — XP Liquidation (T58) fires on the same edge.
+    const sprintRising = this.player.sprint.active && !this.prevSprintActive;
     // Adapt composition/pace to the build (bounded, V12) — never per-enemy stats.
     this.director.step(
       this.enemies,
@@ -227,7 +238,9 @@ export class World {
       this.elapsed,
       dt,
       computeAdaptation(this.mods),
-      difficultyScale(this.elapsed, this.stats.bossKills),
+      // Fold the Act's difficulty multiplier into the spawn-time HP scale (Act 2's
+      // hosts are tankier) — still spawn-time only, never re-scales live units.
+      difficultyScale(this.elapsed, this.stats.bossKills) * activeArena().difficultyMult,
       this.fx,
     );
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
@@ -267,7 +280,11 @@ export class World {
           px,
           pz,
           this.player.novaRadius,
-          { amount: this.player.novaDamage * this.mods.damageMult, damageType: 'kinetic' },
+          {
+            amount: this.player.novaDamage * this.mods.damageMult,
+            damageType: 'kinetic',
+            fx: this.fx,
+          },
           this.rng,
         );
         this.fx.push('impact', px, pz); // shockwave ring
@@ -306,7 +323,7 @@ export class World {
     this.hitTriggerDamage = 0;
     const onHit =
       this.effects.has('hit') || this.effects.has('crit')
-        ? (e: number, crit: boolean): void => this.fireHitTrigger(e, crit)
+        ? (e: number, crit: boolean, coef: number): void => this.fireHitTrigger(e, crit, coef)
         : undefined;
     this.weaponSystem.step(
       this.player,
@@ -342,6 +359,13 @@ export class World {
     );
     // Medkits drop from kills + auto-heal on walk-over (T33+).
     this.healthDrops.step(this.player, this.weaponSystem.kills, this.rng, this.fx, dt);
+    // Bounty relics: timed map pickups that grant an upgrade draft (move-to-collect,
+    // a second upgrade source on top of XP). Feeds the level-up draft pipeline.
+    this.bounties.step(this.player, this.rng, this.fx, dt);
+    if (this.bounties.collectedThisStep > 0) {
+      this.pendingLevelUps += this.bounties.collectedThisStep;
+      if (!this.leveling) this.levelUpDelay = Math.max(this.levelUpDelay, LEVELUP_DELAY);
+    }
     // Corpse / overkill builds (T65): overkilled kills leave bodies; corpses
     // detonate / launch / chain / call meteors (pipeline-routed, V3/V21).
     this.corpses.ingest(this.weaponSystem.kills, this.player);
@@ -354,6 +378,18 @@ export class World {
       dt,
     );
     const leveled = stepXp(this.shards, this.player, dt);
+    // XP-as-resource builds (T58): interest/magnetar/liquidation/crash over the
+    // loose shard pool (pipeline-routed, V3/V21). Free until a card is taken.
+    const xpResDmg = stepXpResource(
+      this.shards,
+      this.player,
+      this.enemies,
+      this.enemySystem.hash,
+      this.rng,
+      this.fx,
+      dt,
+      sprintRising,
+    );
     this.pendingLevelUps += leveled;
     if (leveled > 0) {
       // Flourish around the player, then hold the draft briefly so it shows.
@@ -377,7 +413,8 @@ export class World {
       statusDmg +
       reactionDmg +
       this.novaDamageThisStep +
-      corpseDmg;
+      corpseDmg +
+      xpResDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
     this.stats.damageTaken += Math.max(0, healthBefore - this.player.health);
@@ -418,9 +455,12 @@ export class World {
     });
   }
 
-  /** Fire on-hit / on-crit triggers for one projectile hit (T38/T39). Runs at
-   *  hit time (enemy index still valid). On-hit status is applied via the ctx. */
-  private fireHitTrigger(e: number, crit: boolean): void {
+  /** Fire on-hit / on-crit triggers for one projectile hit (T38/T39). Runs at hit
+   *  time (enemy index still valid). On-hit status + magnitude scale by the firing
+   *  weapon's proc coefficient (T69, V32); `procChain` re-enters at a reduced coef,
+   *  depth-bounded so chains terminate (V32, deterministic V16/V21). */
+  private fireHitTrigger(e: number, crit: boolean, procCoef: number, depth = 0): void {
+    if (depth > MAX_PROC_DEPTH) return; // bound proc-chain recursion (V32)
     const ctx: TriggerCtx = {
       x: this.enemies.posX[e]!,
       z: this.enemies.posZ[e]!,
@@ -432,6 +472,10 @@ export class World {
       variant: this.enemies.variant[e]!,
       magnitude: 0,
       targetIndex: e,
+      procCoef,
+      depth,
+      procChain: (index, c) =>
+        this.fireHitTrigger(index, c, procCoef * PROC_CHAIN_INHERIT, depth + 1),
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
           this.enemies,
@@ -439,13 +483,14 @@ export class World {
           x,
           z,
           radius,
-          { amount },
+          { amount: amount * procCoef, fx: this.fx }, // magnitude scales by coef (V32)
           this.rng,
         );
         this.hitTriggerDamage += d;
         return d;
       },
-      applyStatus: (index, type, opts) => applyStatus(this.enemies, index, type, opts),
+      applyStatus: (index, type, opts) =>
+        applyStatusScaled(this.enemies, index, type, opts, procCoef, this.rng),
     };
     this.effects.fire('hit', ctx);
     if (crit) this.effects.fire('crit', ctx);
@@ -465,6 +510,8 @@ export class World {
       variant: 0,
       magnitude: 0,
       targetIndex: -1,
+      procCoef: 1,
+      depth: 0,
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
           this.enemies,
@@ -472,7 +519,7 @@ export class World {
           x,
           z,
           radius,
-          { amount },
+          { amount, fx: this.fx },
           this.rng,
         );
         this.hitTriggerDamage += d;
@@ -508,6 +555,8 @@ export class World {
               variant: 0,
               magnitude: dealt,
               targetIndex: -1,
+              procCoef: 1, // reaction burst is not a weapon hit → full-strength (V32)
+              depth: 0,
               dealArea: (ax, az, radius, amount) => {
                 const d = applyAreaDamage(
                   this.enemies,
@@ -515,7 +564,7 @@ export class World {
                   ax,
                   az,
                   radius,
-                  { amount },
+                  { amount, fx: this.fx },
                   this.rng,
                 );
                 this.hitTriggerDamage += d;
@@ -548,6 +597,8 @@ export class World {
       variant: 0,
       magnitude: 0,
       targetIndex: -1, // enemy already removed by the time kill triggers fire
+      procCoef: 1, // kill triggers are not a weapon hit → full-strength proc (V32)
+      depth: 0,
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
           this.enemies,
@@ -555,7 +606,7 @@ export class World {
           x,
           z,
           radius,
-          { amount },
+          { amount, fx: this.fx },
           this.rng,
         );
         dealt += d;
@@ -614,6 +665,7 @@ export class World {
     this.enemyAttacks.reset();
     this.weaponDrops.reset();
     this.healthDrops.reset();
+    this.bounties.reset();
     this.boss.reset();
     this.justEvolved = null;
     this.shards.count = 0;

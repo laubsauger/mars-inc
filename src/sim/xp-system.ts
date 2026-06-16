@@ -7,13 +7,26 @@ import type { Player } from './player';
 import type { KillEvent } from './combat/weapon-system';
 import { xpRequired, SHARD_VALUE } from '../content/balance/xp-curve';
 import { ENEMY_BY_VARIANT } from './enemies';
+import { ORBIT_RANGE } from './xp-resource';
 
 const MAGNET_SPEED = 18;
+
+/** Total XP a kill of this variant is worth. Explicit `SHARD_VALUE` overrides win;
+ *  otherwise it scales with the enemy's THREAT so a 90-hp brute pays far more than
+ *  a mite (the old flat `?? 1` made tier-3/4 a brick wall — same XP for a tank as
+ *  a fodder). Capped so a boss is a big-but-bounded dump, not a dozen instant
+ *  levels. V13: still sourced from balance data (SHARD_VALUE + enemy threat). */
+export function shardValueFor(variant: number): number {
+  const explicit = SHARD_VALUE[variant];
+  if (explicit !== undefined) return explicit;
+  const threat = ENEMY_BY_VARIANT[variant]?.threat ?? 1;
+  return Math.max(1, Math.min(30, Math.round(threat * 0.8)));
+}
 
 /** Spawn one shard per kill, valued by enemy variant. */
 export function emitShards(pool: ShardPool, kills: readonly KillEvent[]): void {
   for (const k of kills) {
-    const total = SHARD_VALUE[k.variant] ?? 1; // total XP value (economy preserved)
+    const total = shardValueFor(k.variant); // total XP value, scaled by enemy threat
     // Shard COUNT scales with the enemy's size (maxHealth) — bigger/meaner enemies
     // burst into more crystals, fodder drops one — but every kill drops at least
     // one. Each shard is worth total/count so the run XP is unchanged. Scattered
@@ -42,6 +55,12 @@ export function stepXp(pool: ShardPool, player: Player, dt: number): number {
   const pz = player.pos.z;
   const magnet2 = player.magnetRadius * player.magnetRadius;
   const pickup2 = player.pickupRadius * player.pickupRadius;
+  // Magnetar (XP-as-weapon, T-resource): near shards become an orbiting weapon, so
+  // DON'T magnet/collect them while they're in orbit range — they stay loose and
+  // visibly swirl (stepXpResource rotates them). Without this hold, the magnet here
+  // sucks them in and collects them before they can orbit (the "no orbit" bug).
+  const orbitHold = player.xpMagnetar;
+  const orbit2 = ORBIT_RANGE * ORBIT_RANGE;
   let gained = 0;
 
   for (let i = pool.count - 1; i >= 0; i--) {
@@ -50,6 +69,11 @@ export function stepXp(pool: ShardPool, player: Player, dt: number): number {
     const dx = px - pool.posX[i]!;
     const dz = pz - pool.posZ[i]!;
     const d2 = dx * dx + dz * dz;
+
+    if (orbitHold && d2 <= orbit2) {
+      pool.state[i] = ShardState.Loose; // released from magnet → orbits, not collected
+      continue;
+    }
 
     if (d2 <= pickup2) {
       gained += pool.value[i]!;

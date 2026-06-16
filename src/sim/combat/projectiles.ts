@@ -39,6 +39,9 @@ export class ProjectilePool {
    *  cleared the body it just struck, so pierce passes to the NEXT enemy instead
    *  of being eaten by re-hitting the same one every step. */
   readonly hitCd: Float32Array;
+  /** Proc coefficient of the firing weapon (T69, V32): scales on-hit status/trigger
+   *  strength when this projectile lands. 1 = reference. */
+  readonly procCoef: Float32Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -61,6 +64,7 @@ export class ProjectilePool {
     this.bounces = new Int16Array(capacity);
     this.hold = new Float32Array(capacity);
     this.hitCd = new Float32Array(capacity);
+    this.procCoef = new Float32Array(capacity);
   }
 
   spawn(
@@ -75,6 +79,7 @@ export class ProjectilePool {
     blast = 0,
     profile = 0,
     bounces = 0,
+    procCoef = 1,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -97,6 +102,7 @@ export class ProjectilePool {
     this.bounces[i] = bounces;
     this.hold[i] = 0;
     this.hitCd[i] = 0;
+    this.procCoef[i] = procCoef;
     return i;
   }
 
@@ -122,6 +128,7 @@ export class ProjectilePool {
       this.bounces[i] = this.bounces[last]!;
       this.hold[i] = this.hold[last]!;
       this.hitCd[i] = this.hitCd[last]!;
+      this.procCoef[i] = this.procCoef[last]!;
     }
   }
 }

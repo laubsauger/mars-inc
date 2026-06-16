@@ -5,11 +5,18 @@
 import { EnemyPool, EnemyState, steerEnemy, DEFAULT_STEER } from './enemies';
 import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
+import { knockbackVelocity } from './movement';
 import type { FxQueue } from './fx';
 import { clampPoint } from './arena';
 
 const STEER_DIVISOR = 3; // re-steer each enemy every 3rd tick → ~20Hz
 const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
+// Player knockback on a body-check: base shove, scaled by the enemy's footprint
+// (a brute/boss launches you far harder than fodder) and reduced by resistance.
+// recoilVel is clamped after so a cluster contact can't fling you across the pit.
+const CONTACT_KNOCKBACK = 9; // base impulse (u/s) for a baseline-size enemy
+const KNOCKBACK_REF_RADIUS = 0.8; // enemy radius that maps to the base shove
+const MAX_PLAYER_RECOIL = 16; // hard cap on the impulse channel (V10 spirit)
 
 export class EnemySystem {
   readonly pool: EnemyPool;
@@ -114,13 +121,27 @@ export class EnemySystem {
       p.posZ[i] = c.z;
 
       // Contact damage: triggers when the enemy reaches the player's FOOTPRINT
-      // ring (a bit beyond `stopDist` so the held ring still deals damage — they
-      // need to touch the footprint, not the exact centre).
+      // ring. Reach scales with the enemy's OWN size (×1.35) so a big brute can
+      // body-check THROUGH a rank of small fodder that rings the player — without
+      // the size term, tiny enemies pack the contact ring and "shield" you from
+      // the big hitters parked just behind them.
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
-      const rr = p.radius[i]! + player.stats.collisionRadius + 0.3;
+      const rr = p.radius[i]! * 1.35 + player.stats.collisionRadius + 0.4;
       if (dx * dx + dz * dz <= rr * rr && hitPlayer(player, p.contactDmg[i]!)) {
         fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
+        // Body-check shoves the player AWAY from the enemy (enemy → player dir is
+        // -dx,-dz), scaled by the enemy's size, through the recoil-impulse channel.
+        const force = CONTACT_KNOCKBACK * (p.radius[i]! / KNOCKBACK_REF_RADIUS);
+        const kb = knockbackVelocity(-dx, -dz, force, player.stats.knockbackResistance);
+        player.recoilVel.x += kb.x;
+        player.recoilVel.z += kb.z;
+        const mag = Math.hypot(player.recoilVel.x, player.recoilVel.z);
+        if (mag > MAX_PLAYER_RECOIL) {
+          const k = MAX_PLAYER_RECOIL / mag;
+          player.recoilVel.x *= k;
+          player.recoilVel.z *= k;
+        }
       }
     }
   }

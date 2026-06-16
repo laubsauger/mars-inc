@@ -17,23 +17,26 @@ import { HazardView } from './render/hazard-view';
 import { ThrowMarkerView } from './render/throw-marker-view';
 import { WeaponDropView } from './render/weapon-drop-view';
 import { HealthDropView } from './render/health-drop-view';
+import { BountyView } from './render/bounty-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
 import { CorpseView } from './render/corpse-view';
 import { AimLineView } from './render/aim-line-view';
 import { Effects } from './render/effects';
+import { FloorReflectionView } from './render/floor-reflection-view';
 import { FloatingText } from './render/floating-text';
 import { ChainView } from './render/chain-view';
 import { BloodView } from './render/blood-view';
 import { CameraShake } from './render/camera-shake';
 import { AudioBus } from './audio/audio';
-import { budgetAt } from './sim/director/wave-director';
+import { budgetAt, TIMELINE_STRETCH } from './sim/director/wave-director';
 import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
-import { arenaContains, setActiveArena } from './sim/arena';
+import { arenaContains, setActiveArena, ARENAS } from './sim/arena';
+import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
@@ -45,6 +48,10 @@ import { uiActions } from './ui/store';
 
 const app = document.getElementById('app');
 if (!app) throw new Error('#app missing');
+
+// The only warrior in the slice (T27). Records bucket by character id so adding
+// fighters later just adds keys — no schema change.
+const ACTIVE_CHARACTER = { id: 'lilu-tubs', name: 'Lilu Tubs' } as const;
 
 /** Mini character sheet for the enemy nearest the ground cursor (hover inspect).
  *  Render-only (V2): reads sim state, never mutates it. null when nothing hovered. */
@@ -153,6 +160,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const throwMarkerView = new ThrowMarkerView(scene);
   const weaponDropView = new WeaponDropView(scene);
   const healthDropView = new HealthDropView(scene);
+  const bountyView = new BountyView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
   const droneView = new DroneView(scene);
@@ -160,6 +168,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
   const aimDirs = new Float32Array(64); // reused per frame (multishot fan)
   const effects = new Effects(scene);
+  const floorReflect = new FloorReflectionView(scene);
   const floating = new FloatingText();
   const chainView = new ChainView(scene);
   const bloodView = new BloodView(scene);
@@ -189,11 +198,27 @@ async function boot(parent: HTMLElement): Promise<void> {
   // Push records/settings to the menu from the saved profile.
   const pushProfile = (): void => {
     const r = save.current.records;
+    // One row per (arena × character) combo — both are tracked together.
+    const byCombo = Object.values(ARENAS).flatMap((a) =>
+      [ACTIVE_CHARACTER].map((c) => {
+        const rec =
+          save.current.recordsByArenaCharacter[arenaCharacterKey(a.id, c.id)] ?? emptyRecord();
+        return {
+          id: `${a.id}|${c.id}`,
+          arena: a.name,
+          character: c.name,
+          bestTimeSec: rec.bestTimeSec,
+          bestLevel: rec.bestLevel,
+          mostKills: rec.mostKills,
+        };
+      }),
+    );
     uiActions.setProfile({
       bestTimeSec: r.bestTimeSec,
       bestLevel: r.bestLevel,
       mostKills: r.mostKills,
       runCount: save.current.runHistory.length,
+      byCombo,
     });
     uiActions.setSettings({
       masterVolume: save.current.settings.masterVolume,
@@ -262,6 +287,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         name: u.name,
         description: u.description,
         branch: u.branch,
+        rarity: u.rarity,
         cost: u.cost,
         owned: lvl,
         maxLevel: u.maxLevel,
@@ -411,6 +437,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         effects.consume(fxEvents);
         chainView.consume(fxEvents);
         bloodView.consume(fxEvents);
+        floorReflect.consume(fxEvents);
         for (const e of fxEvents) {
           if (e.kind === 'dmg') floating.addDamage(e.x, e.z, e.dx, e.variant);
           else audio.play(e.kind);
@@ -441,6 +468,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       }
       effects.sprintTrail(tx, tz, world.player.sprint.active, fxDt);
       effects.update(fxDt);
+      floorReflect.update(fxDt);
       chainView.update(fxDt);
       bloodView.update(fxDt);
       chainView.sync();
@@ -479,11 +507,13 @@ async function boot(parent: HTMLElement): Promise<void> {
       statusMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
+      floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
       hazardView.sync(world.enemyAttacks.hazards);
       throwMarkerView.sync(world.enemyAttacks.projectiles);
       weaponDropView.sync(world.weaponDrops.pool);
       healthDropView.sync(world.healthDrops.pool);
+      bountyView.sync(world.bounties.pool);
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
       corpseView.sync(world.corpses.pool, alpha);
@@ -518,7 +548,8 @@ async function boot(parent: HTMLElement): Promise<void> {
         // When mouse-aiming, the line ends AT the cursor reticle (so it visibly
         // connects), unless a closer enemy stops it first — but never past weapon
         // range. Without a cursor (keyboard facing), it shows the full reach.
-        const range = w0 ? w0.def.range : 16;
+        // EFFECTIVE range = base × rangeMult, so range upgrades move the terminus.
+        const range = w0 ? w0.def.range * world.mods.rangeMult : 16;
         const cursorDist = pl.aim.has
           ? Math.hypot(pl.aim.x - pl.pos.x, pl.aim.z - pl.pos.z)
           : range;
@@ -605,12 +636,21 @@ async function boot(parent: HTMLElement): Promise<void> {
       if (world.ended && world.result && !endShown) {
         endShown = true;
         const r = world.result;
-        lastGlory = gloryFor(r);
+        lastGlory = gloryFor(r, ARENAS[save.current.settings.arenaId].gloryMult);
         save.mutate((p) => {
           p.currencies.martianGlory += lastGlory;
-          p.records.bestTimeSec = Math.max(p.records.bestTimeSec, r.durationSec);
-          p.records.bestLevel = Math.max(p.records.bestLevel, r.level);
-          p.records.mostKills = Math.max(p.records.mostKills, r.kills);
+          // Update the global best AND the per-arena / per-character buckets so
+          // Records can break down "best run" by where + who (T65).
+          const bump = (rec: RecordData): void => {
+            rec.bestTimeSec = Math.max(rec.bestTimeSec, r.durationSec);
+            rec.bestLevel = Math.max(rec.bestLevel, r.level);
+            rec.mostKills = Math.max(rec.mostKills, r.kills);
+          };
+          bump(p.records);
+          // Best for THIS (arena × character) combo — both shape the run.
+          const key = arenaCharacterKey(p.settings.arenaId, ACTIVE_CHARACTER.id);
+          p.recordsByArenaCharacter[key] ??= emptyRecord();
+          bump(p.recordsByArenaCharacter[key]);
           p.runHistory.unshift({
             at: Date.now(),
             durationSec: r.durationSec,
@@ -693,7 +733,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         simMs,
         renderMs,
         enemies: world.enemies.count,
-        maxEnemies: budgetAt(world.elapsed).maxConcurrentEnemies,
+        maxEnemies: budgetAt(world.elapsed / TIMELINE_STRETCH).maxConcurrentEnemies,
         projectiles: world.weaponSystem.projectiles.count,
         particles: effects.count,
         drawCalls: renderer.info.render.drawCalls,

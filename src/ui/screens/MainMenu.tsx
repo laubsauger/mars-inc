@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useUiStore, type MenuView } from '../store';
 import { SocialFooter } from '../SocialFooter';
 import { WEAPONS } from '../../content/weapons/index';
+import { ARENAS, type ArenaId } from '../../sim/arena';
 
 const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run' };
 
@@ -125,15 +126,73 @@ function WarriorPanel() {
   );
 }
 
+function fmtTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function ComboRecords({
+  rows,
+}: {
+  rows: {
+    id: string;
+    arena: string;
+    character: string;
+    bestTimeSec: number;
+    bestLevel: number;
+    mostKills: number;
+  }[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-5">
+      <div className="mb-2 text-[10px] uppercase tracking-widest text-gold">
+        Best by arena × character
+      </div>
+      <div className="overflow-hidden rounded-md border border-rust/70 bg-umber/60">
+        <div className="grid grid-cols-[1.3fr_1fr_auto_auto_auto] gap-x-4 border-b border-rust/40 px-4 py-1.5 text-[10px] uppercase tracking-widest text-dust">
+          <span>Arena</span>
+          <span>Fighter</span>
+          <span className="text-right">Best time</span>
+          <span className="text-right">Lvl</span>
+          <span className="text-right">Kills</span>
+        </div>
+        {rows.map((r) => {
+          const played = r.bestTimeSec > 0 || r.bestLevel > 0 || r.mostKills > 0;
+          return (
+            <div
+              key={r.id}
+              className="grid grid-cols-[1.3fr_1fr_auto_auto_auto] gap-x-4 border-b border-rust/20 px-4 py-2 text-sm last:border-0"
+            >
+              <span className="font-bold text-bone">{r.arena}</span>
+              <span className="text-bone/80">{r.character}</span>
+              {played ? (
+                <>
+                  <span className="text-right tabular-nums text-bone/85">
+                    {fmtTime(r.bestTimeSec)}
+                  </span>
+                  <span className="text-right tabular-nums text-bone/85">{r.bestLevel}</span>
+                  <span className="text-right tabular-nums text-bone/85">{r.mostKills}</span>
+                </>
+              ) : (
+                <span className="col-span-3 text-right text-xs text-dust">no runs yet</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RecordsPanel() {
   const p = useUiStore((s) => s.profile);
-  const m = Math.floor(p.bestTimeSec / 60);
-  const s = Math.floor(p.bestTimeSec % 60);
   return (
     <Panel title="RECORDS">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {[
-          ['Best time', `${m}:${s.toString().padStart(2, '0')}`],
+          ['Best time', fmtTime(p.bestTimeSec)],
           ['Best level', `${p.bestLevel}`],
           ['Most kills', `${p.mostKills}`],
           ['Runs played', `${p.runCount}`],
@@ -147,6 +206,7 @@ function RecordsPanel() {
           </div>
         ))}
       </div>
+      <ComboRecords rows={p.byCombo} />
     </Panel>
   );
 }
@@ -289,85 +349,122 @@ function SettingsPanel() {
 }
 
 type GloryBranch = 'arsenal' | 'biology' | 'mobility';
-type TreeNodeId =
-  | 'root'
-  | 'fleet-footed'
-  | 'jump-start'
-  | 'redline-servos'
-  | 'afterburn-clause'
-  | 'reinforced-plating'
-  | 'organ-repo-insurance'
-  | 'magnetized-marrow'
-  | 'house-odds'
-  | 'blacklist-rights'
-  | 'lucky-streak'
-  | 'gyro-bracing'
-  | 'sponsor-auditor'
-  | 'live-wire'
-  | 'hair-trigger'
-  | 'hunter-protocol'
-  | 'frostbrand'
-  | 'hemorrhage-writ';
 
 const BRANCHES: { id: GloryBranch; label: string; blurb: string }[] = [
   { id: 'arsenal', label: 'Arsenal', blurb: 'Drafting & firepower contracts' },
-  { id: 'biology', label: 'Biology', blurb: 'Survival & resistances' },
-  { id: 'mobility', label: 'Mobility', blurb: 'Speed & sprint' },
+  { id: 'biology', label: 'Biology', blurb: 'Survival & status seeds' },
+  { id: 'mobility', label: 'Mobility', blurb: 'Speed, sprint & kinetics' },
 ];
 
-const TREE_NODES: Record<TreeNodeId, { x: number; y: number; branch: GloryBranch; icon: string }> =
-  {
-    root: { x: 50, y: 88, branch: 'mobility', icon: '◆' },
-    'fleet-footed': { x: 50, y: 70, branch: 'mobility', icon: '↟' },
-    'jump-start': { x: 50, y: 48, branch: 'mobility', icon: '⚡' },
-    'redline-servos': { x: 39, y: 58, branch: 'mobility', icon: '↯' },
-    'afterburn-clause': { x: 61, y: 58, branch: 'mobility', icon: '»' },
-    'reinforced-plating': { x: 27, y: 57, branch: 'biology', icon: '♥' },
-    'organ-repo-insurance': { x: 17, y: 39, branch: 'biology', icon: '+' },
-    'magnetized-marrow': { x: 34, y: 34, branch: 'biology', icon: '◎' },
-    'house-odds': { x: 73, y: 57, branch: 'arsenal', icon: '⇄' },
-    'blacklist-rights': { x: 83, y: 39, branch: 'arsenal', icon: '×' },
-    'lucky-streak': { x: 66, y: 34, branch: 'arsenal', icon: '?' },
-    'gyro-bracing': { x: 76, y: 22, branch: 'arsenal', icon: '⌖' },
-    'sponsor-auditor': { x: 90, y: 25, branch: 'arsenal', icon: '§' },
-    // Build-seeding nodes (T35+).
-    'live-wire': { x: 58, y: 18, branch: 'arsenal', icon: '⌁' },
-    'hair-trigger': { x: 86, y: 10, branch: 'arsenal', icon: '↻' },
-    'hunter-protocol': { x: 72, y: 9, branch: 'arsenal', icon: '◇' },
-    frostbrand: { x: 10, y: 24, branch: 'biology', icon: '❄' },
-    'hemorrhage-writ': { x: 30, y: 19, branch: 'biology', icon: '⧫' },
-  };
+// Layout in % of the (big, pannable) inner canvas. Lower y = higher up the tree.
+// Three arms radiate from the root: mobility climbs the centre, biology fans up-
+// left, arsenal up-right. Branch tips end in LEGENDARY keystones. Node ids match
+// the permanent-upgrade catalog 1:1 (content/permanent) so each is a real buy.
+const TREE_NODES = {
+  root: { x: 50, y: 93, branch: 'mobility', icon: '◆' },
+
+  // ── Mobility (centre column) ──────────────────────────────────────────────
+  'fleet-footed': { x: 50, y: 82, branch: 'mobility', icon: '↟' },
+  'nimble-frame': { x: 43, y: 75, branch: 'mobility', icon: '⟂' },
+  'redline-servos': { x: 57, y: 75, branch: 'mobility', icon: '↯' },
+  'jump-start': { x: 50, y: 68, branch: 'mobility', icon: '⚡' },
+  'afterburn-clause': { x: 42, y: 61, branch: 'mobility', icon: '»' },
+  'kinetic-boots': { x: 58, y: 61, branch: 'mobility', icon: '⇶' },
+  'repulsor-core': { x: 50, y: 54, branch: 'mobility', icon: '◌' },
+  'phase-stride': { x: 43, y: 45, branch: 'mobility', icon: '⇆' },
+  'singularity-engine': { x: 52, y: 37, branch: 'mobility', icon: '⊛' },
+
+  // ── Biology (up-left arm) ─────────────────────────────────────────────────
+  'reinforced-plating': { x: 35, y: 81, branch: 'biology', icon: '♥' },
+  'adrenal-glut': { x: 26, y: 78, branch: 'biology', icon: '◍' },
+  'organ-repo-insurance': { x: 30, y: 72, branch: 'biology', icon: '+' },
+  'magnetized-marrow': { x: 22, y: 67, branch: 'biology', icon: '◎' },
+  'thick-hide': { x: 33, y: 63, branch: 'biology', icon: '▣' },
+  frostbrand: { x: 17, y: 59, branch: 'biology', icon: '❄' },
+  'hemorrhage-writ': { x: 28, y: 54, branch: 'biology', icon: '⧫' },
+  'caustic-coating': { x: 14, y: 49, branch: 'biology', icon: '☣' },
+  'emergency-plating': { x: 25, y: 45, branch: 'biology', icon: '⛨' },
+  'second-heart': { x: 15, y: 38, branch: 'biology', icon: '❣' },
+  'toxic-bloom': { x: 27, y: 36, branch: 'biology', icon: '✸' },
+
+  // ── Arsenal (up-right arm) ────────────────────────────────────────────────
+  'gyro-bracing': { x: 65, y: 81, branch: 'arsenal', icon: '⌖' },
+  'overcharged-rounds': { x: 71, y: 78, branch: 'arsenal', icon: '✦' },
+  'quickdraw-clause': { x: 78, y: 80, branch: 'arsenal', icon: '↯' },
+  'house-odds': { x: 67, y: 72, branch: 'arsenal', icon: '⇄' },
+  'hairline-sights': { x: 84, y: 74, branch: 'arsenal', icon: '⊹' },
+  'blacklist-rights': { x: 75, y: 68, branch: 'arsenal', icon: '×' },
+  'lucky-streak': { x: 69, y: 62, branch: 'arsenal', icon: '?' },
+  'sponsor-auditor': { x: 85, y: 64, branch: 'arsenal', icon: '§' },
+  'splinter-rounds': { x: 77, y: 58, branch: 'arsenal', icon: '➶' },
+  'arc-garnishment': { x: 67, y: 54, branch: 'arsenal', icon: '⌁' },
+  'ricochet-clause': { x: 86, y: 56, branch: 'arsenal', icon: '⟿' },
+  'hunter-protocol': { x: 92, y: 50, branch: 'arsenal', icon: '◇' },
+  'hair-trigger': { x: 80, y: 50, branch: 'arsenal', icon: '↻' },
+  'live-wire': { x: 70, y: 46, branch: 'arsenal', icon: '⌇' },
+  'wide-load': { x: 84, y: 44, branch: 'arsenal', icon: '⁂' },
+  'orbital-lease': { x: 92, y: 40, branch: 'arsenal', icon: '☉' },
+  'war-profiteering': { x: 77, y: 38, branch: 'arsenal', icon: '✷' },
+} satisfies Record<string, { x: number; y: number; branch: GloryBranch; icon: string }>;
+
+type TreeNodeId = keyof typeof TREE_NODES;
 
 const TREE_EDGES: ReadonlyArray<readonly [TreeNodeId, TreeNodeId]> = [
+  // Mobility spine.
   ['root', 'fleet-footed'],
-  ['fleet-footed', 'jump-start'],
+  ['fleet-footed', 'nimble-frame'],
   ['fleet-footed', 'redline-servos'],
-  ['fleet-footed', 'afterburn-clause'],
-  ['fleet-footed', 'reinforced-plating'],
-  ['fleet-footed', 'house-odds'],
+  ['fleet-footed', 'jump-start'],
+  ['jump-start', 'afterburn-clause'],
+  ['jump-start', 'kinetic-boots'],
+  ['afterburn-clause', 'repulsor-core'],
+  ['kinetic-boots', 'repulsor-core'],
+  ['repulsor-core', 'phase-stride'],
+  ['phase-stride', 'singularity-engine'],
+  // Biology arm.
+  ['root', 'reinforced-plating'],
+  ['reinforced-plating', 'adrenal-glut'],
   ['reinforced-plating', 'organ-repo-insurance'],
-  ['reinforced-plating', 'magnetized-marrow'],
+  ['organ-repo-insurance', 'magnetized-marrow'],
+  ['organ-repo-insurance', 'thick-hide'],
+  ['magnetized-marrow', 'frostbrand'],
+  ['thick-hide', 'hemorrhage-writ'],
+  ['frostbrand', 'caustic-coating'],
+  ['hemorrhage-writ', 'emergency-plating'],
+  ['caustic-coating', 'second-heart'],
+  ['emergency-plating', 'toxic-bloom'],
+  // Arsenal arm.
+  ['root', 'gyro-bracing'],
+  ['gyro-bracing', 'overcharged-rounds'],
+  ['gyro-bracing', 'quickdraw-clause'],
+  ['overcharged-rounds', 'house-odds'],
+  ['quickdraw-clause', 'hairline-sights'],
   ['house-odds', 'blacklist-rights'],
-  ['house-odds', 'lucky-streak'],
-  ['lucky-streak', 'gyro-bracing'],
-  ['blacklist-rights', 'sponsor-auditor'],
-  ['lucky-streak', 'live-wire'],
-  ['gyro-bracing', 'hair-trigger'],
+  ['blacklist-rights', 'lucky-streak'],
+  ['hairline-sights', 'sponsor-auditor'],
+  ['lucky-streak', 'splinter-rounds'],
+  ['lucky-streak', 'arc-garnishment'],
+  ['sponsor-auditor', 'ricochet-clause'],
   ['sponsor-auditor', 'hunter-protocol'],
-  ['organ-repo-insurance', 'frostbrand'],
-  ['magnetized-marrow', 'hemorrhage-writ'],
+  ['splinter-rounds', 'hair-trigger'],
+  ['arc-garnishment', 'live-wire'],
+  ['ricochet-clause', 'wide-load'],
+  ['hunter-protocol', 'orbital-lease'],
+  ['hair-trigger', 'war-profiteering'],
+  ['wide-load', 'war-profiteering'],
 ] as const;
 
 // Prerequisite chain: a node unlocks only once the node it branches from is
 // owned (root is always available). Forces players to spend INWARD before
 // reaching the outer milestones, so a branch is a progression, not a free pick.
+// A node reached by multiple edges keeps its FIRST parent (cheapest path in).
 const TREE_PARENT: Partial<Record<TreeNodeId, TreeNodeId>> = {};
-for (const [a, b] of TREE_EDGES) TREE_PARENT[b] = a;
+for (const [a, b] of TREE_EDGES) if (TREE_PARENT[b] === undefined) TREE_PARENT[b] = a;
 
 const TREE_ORBITS: ReadonlyArray<{ x: number; y: number; r: number; branch: GloryBranch }> = [
-  { x: 50, y: 63, r: 18, branch: 'mobility' },
-  { x: 27, y: 47, r: 17, branch: 'biology' },
-  { x: 76, y: 42, r: 20, branch: 'arsenal' },
+  { x: 49, y: 62, r: 20, branch: 'mobility' },
+  { x: 24, y: 60, r: 24, branch: 'biology' },
+  { x: 78, y: 60, r: 26, branch: 'arsenal' },
 ];
 
 function isTreeNodeId(id: string): id is TreeNodeId {
@@ -390,14 +487,17 @@ function branchPath(from: { x: number; y: number }, to: { x: number; y: number }
   return `M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`;
 }
 
+// Branch colours: Arsenal = RED (firepower), Biology = GREEN (survival), Mobility
+// = BLUE (speed). Gold/yellow is reserved for MAXED nodes; orange for LEGENDARY
+// keystones (LEGENDARY_STYLE) — a node's colour reads its meaning at a glance.
 const BRANCH_STYLE = {
   arsenal: {
-    line: 'stroke-gold',
-    stroke: '#ffd23f',
-    bg: 'bg-gold',
-    border: 'border-gold',
-    text: 'text-gold',
-    ring: 'shadow-[0_0_22px_rgba(255,210,63,0.35)]',
+    line: 'stroke-bleed',
+    stroke: '#ff3b30',
+    bg: 'bg-bleed',
+    border: 'border-bleed',
+    text: 'text-bleed',
+    ring: 'shadow-[0_0_22px_rgba(255,59,48,0.32)]',
   },
   biology: {
     line: 'stroke-toxic',
@@ -417,15 +517,37 @@ const BRANCH_STYLE = {
   },
 } as const;
 
+// Legendary keystones override their branch colour with ORANGE so the build-
+// defining nodes pop out of the tree (their branch-coloured EDGES still show
+// which arm they sit on).
+const LEGENDARY_STYLE = {
+  line: 'stroke-legendary',
+  stroke: '#ff8c1a',
+  bg: 'bg-legendary',
+  border: 'border-legendary',
+  text: 'text-legendary',
+  ring: 'shadow-[0_0_26px_rgba(255,140,26,0.5)]',
+} as const;
+
 function GloryTree() {
   const meta = useUiStore((s) => s.meta);
   const buy = useUiStore((s) => s.buyPermanent);
   const setMenuView = useUiStore((s) => s.setMenuView);
 
   const [hovered, setHovered] = useState<TreeNodeId | null>(null);
-  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
-  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  // Start zoomed out a touch — the tree is bigger than the viewport now, so the
+  // player sees the whole sprawl first, then pans/zooms into a branch.
+  const [view, setView] = useState({ x: 0, y: 0, scale: 0.7 });
+  const drag = useRef<{
+    px: number;
+    py: number;
+    ox: number;
+    oy: number;
+    nx: number;
+    ny: number;
+  } | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<HTMLDivElement>(null);
 
   const byId = new Map(meta.permanents.map((p) => [p.id, p]));
   const ownedOf = (id: string | undefined): number =>
@@ -434,25 +556,47 @@ function GloryTree() {
     const parent = TREE_PARENT[id];
     return parent === undefined || ownedOf(parent) > 0;
   };
+  // Planning lookahead: a node's icon is REVEALED if it's buyable now OR sits one
+  // step past a buyable node (its parent is itself unlocked) — so you can see a bit
+  // further than the immediate frontier and route your Glory. Deeper nodes stay a
+  // ⊘ mystery until you advance. (Legendary keystones reveal regardless — they're
+  // the goals you build toward.)
+  const isRevealed = (id: TreeNodeId): boolean => {
+    if (isUnlocked(id)) return true;
+    const parent = TREE_PARENT[id];
+    return parent !== undefined && isUnlocked(parent);
+  };
   const hoveredP = hovered ? byId.get(hovered) : undefined;
   const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered].branch) : 'mobility';
   const hoveredLocked = hovered ? !isUnlocked(hovered) : false;
   const hoveredParent = hovered ? TREE_PARENT[hovered] : undefined;
 
   const clampScale = (s: number) => Math.min(2.4, Math.max(0.6, s));
+  // Write the pan transform DIRECTLY to the inner layer during a drag — NEVER via
+  // React state per move, or every pointermove re-renders all 37 nodes + 76 SVG
+  // paths (the sluggish pan). State is committed only once, on pointer-up.
+  const applyPan = (x: number, y: number, scale: number) => {
+    if (panRef.current)
+      panRef.current.style.transform = `translate(-50%,-50%) translate(${x}px,${y}px) scale(${scale})`;
+  };
   const onPointerDown = (e: React.PointerEvent) => {
-    drag.current = { px: e.clientX, py: e.clientY, ox: view.x, oy: view.y };
+    drag.current = { px: e.clientX, py: e.clientY, ox: view.x, oy: view.y, nx: view.x, ny: view.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setHovered(null); // drop any tooltip; hover is suppressed for the whole drag
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
-    setView((v) => ({ ...v, x: d.ox + (e.clientX - d.px), y: d.oy + (e.clientY - d.py) }));
+    d.nx = d.ox + (e.clientX - d.px);
+    d.ny = d.oy + (e.clientY - d.py);
+    applyPan(d.nx, d.ny, view.scale); // direct DOM write, no re-render
   };
   const endDrag = () => {
+    const d = drag.current;
     drag.current = null;
+    if (d) setView((v) => ({ ...v, x: d.nx, y: d.ny })); // commit once
   };
-  const reset = () => setView({ x: 0, y: 0, scale: 1 });
+  const reset = () => setView({ x: 0, y: 0, scale: 0.7 });
 
   // Wheel zoom via a non-passive listener (React's onWheel is passive → can't
   // preventDefault the page scroll, and we must never scroll the page — rule #1).
@@ -537,7 +681,8 @@ function GloryTree() {
         {/* Fixed-aspect inner layer — pan/zoom transform moves the whole tree so
             node %-coords never distort with the viewport size. */}
         <div
-          className="absolute left-1/2 top-1/2 h-[540px] w-[760px]"
+          ref={panRef}
+          className="absolute left-1/2 top-1/2 h-[920px] w-[1140px] will-change-transform"
           style={{
             transform: `translate(-50%,-50%) translate(${view.x}px,${view.y}px) scale(${view.scale})`,
             transformOrigin: 'center',
@@ -585,10 +730,14 @@ function GloryTree() {
                     d={branchPath(from, to)}
                     fill="none"
                     stroke={style.stroke}
-                    strokeWidth="2.8"
-                    opacity={open ? (lit ? 0.3 : 0.14) : 0.05}
+                    strokeWidth={lit ? 2.8 : 3.4}
+                    opacity={open ? (lit ? 0.3 : 0.12) : 0.05}
                     strokeLinecap="round"
-                    filter="url(#glory-glow)"
+                    // Blur is EXPENSIVE — apply the feGaussianBlur halo only to the
+                    // one lit edge. Idle edges fake the glow with a wider, softer
+                    // translucent stroke (no filter), so a hover doesn't re-raster
+                    // 38 blurred paths.
+                    filter={lit ? 'url(#glory-glow)' : undefined}
                   />
                   <path
                     d={branchPath(from, to)}
@@ -620,7 +769,33 @@ function GloryTree() {
             const buyable = reachable && p.affordable && !maxed;
             // Unlocked + available to buy, but you can't afford it right now.
             const pricedOut = reachable && !maxed && !owned && !p.affordable;
-            const style = BRANCH_STYLE[node.branch];
+            const rarity = p.rarity;
+            // Show the icon one step past the frontier (and always for keystones)
+            // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
+            const revealed = isRevealed(p.id) || rarity === 'legendary';
+            // Legendary keystones recolour to ORANGE; everything else takes its
+            // branch colour (red / green / blue).
+            const style = rarity === 'legendary' ? LEGENDARY_STYLE : BRANCH_STYLE[node.branch];
+            // Rarity drives node SIZE + framing so the tree reads at a glance:
+            //  • common     → standard disc
+            //  • rare       → larger disc, double inset ring (a "mechanic" node)
+            //  • legendary  → biggest, hex-cut feel + permanent glow (a KEYSTONE)
+            const sizeClass =
+              rarity === 'legendary'
+                ? 'h-[4.6rem] w-[4.6rem] text-3xl'
+                : rarity === 'rare'
+                  ? 'h-[3.9rem] w-[3.9rem] text-2xl'
+                  : 'h-14 w-14 text-xl';
+            // Rarity rim: rare gets an inner ring, legendary an animated outer glow
+            // (only once owned/buyable — locked legendaries stay quiet).
+            const rarityRim =
+              rarity === 'legendary'
+                ? reachable
+                  ? 'ring-2 ring-legendary/45 shadow-[0_0_34px_rgba(255,140,26,0.42),inset_0_0_0_1px_rgba(7,5,4,0.9)]'
+                  : ''
+                : rarity === 'rare'
+                  ? 'ring-1 ring-bone/25'
+                  : '';
             // Five clearly distinct states:
             //  • maxed (completed)        → gold ring + filled, gold ★ badge
             //  • allocated (owned, < max) → solid branch colour + glow ring
@@ -641,13 +816,20 @@ function GloryTree() {
                 key={p.id}
                 onClick={() => buyable && buy(p.id)}
                 onPointerDown={(e) => e.stopPropagation()}
-                onMouseEnter={() => setHovered(p.id as TreeNodeId)}
-                onMouseLeave={() => setHovered((h) => (h === p.id ? null : h))}
+                onMouseEnter={() => !drag.current && setHovered(p.id as TreeNodeId)}
+                onMouseLeave={() => !drag.current && setHovered((h) => (h === p.id ? null : h))}
                 onFocus={() => setHovered(p.id as TreeNodeId)}
-                className={`absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-xl shadow-[inset_0_0_0_1px_rgba(7,5,4,0.9),0_12px_32px_rgba(0,0,0,0.5)] transition hover:scale-110 ${stateClass} ${hovered === p.id ? 'z-10 scale-110 ring-2 ring-bone/80' : ''} ${buyable ? 'cursor-pointer' : 'cursor-default'}`}
+                className={`absolute flex ${sizeClass} -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 shadow-[inset_0_0_0_1px_rgba(7,5,4,0.9),0_12px_32px_rgba(0,0,0,0.5)] transition hover:scale-110 ${stateClass} ${rarityRim} ${hovered === p.id ? 'z-10 scale-110 ring-2 ring-bone/80' : ''} ${buyable ? 'cursor-pointer' : 'cursor-default'}`}
                 style={{ left: `${px(node.x)}%`, top: `${node.y}%` }}
               >
-                {!reachable ? '⊘' : maxed ? '★' : node.icon}
+                {/* Always keep the node icon visible — the maxed ★ rides a corner
+                    badge, it never covers the glyph (only locked hides it). */}
+                {revealed ? node.icon : '⊘'}
+                {maxed ? (
+                  <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-gold bg-pit text-[11px] leading-none text-gold shadow-[0_0_10px_rgba(255,210,63,0.5)]">
+                    ★
+                  </span>
+                ) : null}
                 <span
                   className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
                     maxed
@@ -687,6 +869,21 @@ function GloryTree() {
                   <span className="shrink-0 text-xs text-bone/70">
                     {hoveredP.owned}/{hoveredP.maxLevel}
                   </span>
+                </div>
+                <div
+                  className={`mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${
+                    hoveredP.rarity === 'legendary'
+                      ? 'text-legendary'
+                      : hoveredP.rarity === 'rare'
+                        ? 'text-bone/70'
+                        : 'text-bone/40'
+                  }`}
+                >
+                  {hoveredP.rarity === 'legendary'
+                    ? '◆ Keystone'
+                    : hoveredP.rarity === 'rare'
+                      ? '◈ Rare'
+                      : 'Common'}
                 </div>
                 <div className="mt-1 text-[11px] leading-4 text-bone/75">
                   {hoveredP.description}
@@ -852,6 +1049,61 @@ function CreditsPanel() {
   );
 }
 
+/** Act selector — the arena IS the difficulty/Act picker (T-Act). Act 1 = Cold
+ *  Vault (blue, standard); Act 2 = Rust Crown (orange, harder, more Glory). Writes
+ *  through applySetting so the live arena rebuilds behind the menu. */
+function ActSelector() {
+  const arenaId = useUiStore((s) => s.settings.arenaId);
+  const set = useUiStore((s) => s.applySetting);
+  const acts = (Object.keys(ARENAS) as ArenaId[])
+    .map((id) => ARENAS[id])
+    .sort((a, b) => a.act - b.act);
+  return (
+    <div className="mb-3">
+      <div className="mb-1.5 px-1 text-[11px] uppercase tracking-widest text-dust">Select Act</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {acts.map((a) => {
+          const selected = arenaId === a.id;
+          return (
+            <button
+              key={a.id}
+              onClick={() => set({ arenaId: a.id as ArenaId })}
+              className={`rounded-sm border-2 px-3 py-2.5 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.7)] transition focus:outline-none ${
+                selected ? 'bg-umber/85' : 'border-rust/55 bg-pit/45 hover:border-bone/40'
+              }`}
+              style={selected ? { borderColor: a.accent } : undefined}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="text-[11px] font-black uppercase tracking-wider"
+                  style={{ color: a.accent }}
+                >
+                  Act {a.act}
+                </span>
+                {a.gloryMult > 1 ? (
+                  <span className="shrink-0 text-[10px] font-bold text-gold">
+                    +{Math.round((a.gloryMult - 1) * 100)}% ◆
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-sm font-black text-bone">{a.name}</div>
+              <div className="mt-0.5 text-[11px] leading-tight text-bone/60">{a.tagline}</div>
+              <div className="mt-1 text-[10px] uppercase tracking-wide text-bone/45">
+                {a.difficultyMult > 1 ? (
+                  <span className="text-bleed/80">Tougher hosts ×{a.difficultyMult}</span>
+                ) : (
+                  'Baseline difficulty'
+                )}
+                {selected ? <span className="ml-1 text-bone/70">· selected</span> : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Root() {
   const setMenuView = useUiStore((s) => s.setMenuView);
   const enterPit = useUiStore((s) => s.enterPit);
@@ -875,6 +1127,8 @@ function Root() {
             START
           </span>
         </button>
+
+        <ActSelector />
 
         <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {ITEMS.map((it) => (

@@ -2,13 +2,15 @@
 // no app state. Glows to each brand's hue on hover.
 
 export function SocialFooter({ className = '' }: { className?: string }) {
+  // The UI mounts in a pointer-events-none layer (ui-root); each link opts back
+  // in so hover/click work even when the footer sits outside a menu container.
   return (
-    <div className={`flex justify-center gap-6 text-white/40 ${className}`}>
+    <div className={`pointer-events-none flex justify-center gap-6 text-white/40 ${className}`}>
       <a
         href="https://www.instagram.com/floflup"
         target="_blank"
         rel="noopener noreferrer"
-        className="transition hover:text-[#ff2fd6] hover:drop-shadow-[0_0_8px_rgba(255,47,214,0.8)]"
+        className="pointer-events-auto transition hover:text-[#ff2fd6] hover:drop-shadow-[0_0_8px_rgba(255,47,214,0.8)]"
         aria-label="Instagram"
       >
         <svg
@@ -31,7 +33,7 @@ export function SocialFooter({ className = '' }: { className?: string }) {
         href="https://github.com/laubsauger"
         target="_blank"
         rel="noopener noreferrer"
-        className="transition hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
+        className="pointer-events-auto transition hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
         aria-label="GitHub"
       >
         <svg
@@ -53,7 +55,7 @@ export function SocialFooter({ className = '' }: { className?: string }) {
         href="https://www.youtube.com/@laub69"
         target="_blank"
         rel="noopener noreferrer"
-        className="transition hover:text-[#ff0000] hover:drop-shadow-[0_0_8px_rgba(255,0,0,0.8)]"
+        className="pointer-events-auto transition hover:text-[#ff0000] hover:drop-shadow-[0_0_8px_rgba(255,0,0,0.8)]"
         aria-label="YouTube"
       >
         <svg

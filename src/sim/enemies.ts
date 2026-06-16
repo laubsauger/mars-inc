@@ -270,7 +270,7 @@ export class EnemyPool {
 // In-world naming per docs/art-direction.md humor rules.
 export const RUST_MITE: EnemyType = {
   id: 'rust-mite',
-  radius: 0.65,
+  radius: 0.8,
   maxHealth: 6,
   speed: 2.4, // tier-1 fodder: a slow shamble, clear kiting headroom early (player base 8)
   separationWeight: 1.0,
@@ -311,7 +311,7 @@ export const BOSS_GATEKEEPER: EnemyType = {
 // `gun` kind — see [[ranged-enemy-framework]].
 export const SEVERANCE_LOBBER: EnemyType = {
   id: 'severance-lobber',
-  radius: 0.6,
+  radius: 0.74,
   maxHealth: 20,
   speed: 2.8,
   separationWeight: 0.9,
@@ -336,7 +336,7 @@ export const SEVERANCE_LOBBER: EnemyType = {
 // the ranged framework — see [[ranged-enemy-framework]].
 export const REPO_MARSHAL: EnemyType = {
   id: 'repo-marshal',
-  radius: 0.6,
+  radius: 0.74,
   maxHealth: 16,
   speed: 2.8,
   separationWeight: 0.9,
@@ -358,7 +358,7 @@ export const REPO_MARSHAL: EnemyType = {
 // rather than chasing. Forces movement even when nothing is close.
 export const FORECLOSURE_MORTAR: EnemyType = {
   id: 'foreclosure-mortar',
-  radius: 0.7,
+  radius: 0.8,
   maxHealth: 28,
   speed: 2.0,
   separationWeight: 0.8,
@@ -380,7 +380,7 @@ export const FORECLOSURE_MORTAR: EnemyType = {
 // brutal up close, harmless at distance — the counter is to keep it at range.
 export const RIOT_SHOTGUNNER: EnemyType = {
   id: 'riot-shotgunner',
-  radius: 0.6,
+  radius: 0.74,
   maxHealth: 18,
   speed: 3.6,
   separationWeight: 0.9,
@@ -432,7 +432,7 @@ export const LIABILITY_BLOB: EnemyType = {
 // again (terminal), so the chain ends after one rupture.
 export const BLOBLING: EnemyType = {
   id: 'blobling',
-  radius: 0.5,
+  radius: 0.62,
   maxHealth: 9,
   speed: 3.8, // split product: quick, but under the runner so it doesn't out-pace kiting
   separationWeight: 0.9,
@@ -447,7 +447,7 @@ export const BLOBLING: EnemyType = {
 // appear behind your kite line, so you can't just watch the gates.
 export const PHASE_STALKER: EnemyType = {
   id: 'phase-stalker',
-  radius: 0.55,
+  radius: 0.72,
   maxHealth: 24,
   speed: 6.2, // blinks in, then sprints — pressure unit
   separationWeight: 0.9,
@@ -479,7 +479,7 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
 // the red of an explosive grenade.
 export const FROSTBITE_AUDITOR: EnemyType = {
   id: 'frostbite-auditor',
-  radius: 0.6,
+  radius: 0.74,
   maxHealth: 22,
   speed: 2.6,
   separationWeight: 0.9,

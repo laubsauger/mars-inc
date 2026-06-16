@@ -30,7 +30,13 @@ const TELE_AT = 60; // seconds → Phase Stalkers start blinking in
 const TELE_PERIOD = 14; // base seconds between teleport waves (shrinks late)
 const CHEAPEST = RUST_MITE.threat;
 const HARD_CAP = 1200; // absolute ceiling regardless of curve (≤ pool capacity, V8)
-const BOSS_AT = 90; // seconds → Gatekeeper milestone spawn (T33/T29)
+const BOSS_AT = 90; // escalation-time seconds → Gatekeeper milestone spawn (T33/T29)
+// The whole pre-boss timeline is stretched by this factor: the director reads
+// elapsed/TIMELINE_STRETCH for ALL escalation (budget, waves, patterns, variant
+// intros, teleporters, the boss), so spawn pressure, enemy variety, and the boss
+// all arrive 3× later with the SAME shape — a longer, more gradual ramp. Real boss
+// time = BOSS_AT × TIMELINE_STRETCH = 270s. dt-based accrual stays real-time.
+export const TIMELINE_STRETCH = 3;
 
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
@@ -182,6 +188,9 @@ export class WaveDirector {
     fx?: FxQueue,
   ): void {
     this.hpScale = hpScale;
+    // Stretch the escalation clock: every threshold below reads this slowed time,
+    // so the run ramps over ~270s instead of ~90s (dt accrual stays real-time).
+    elapsed = elapsed / TIMELINE_STRETCH;
     const b = budgetAt(elapsed);
     const pace = clamp(adapt.pace, PACE_MIN, PACE_MAX); // re-clamp: director owns bounds (V12)
     const houndBias = clamp(adapt.houndBias, 0, BIAS_MAX);
@@ -337,7 +346,13 @@ export class WaveDirector {
  * growth, deterministic (pure function of run state). Boss HP is NOT scaled.
  */
 export function difficultyScale(elapsed: number, bossKills: number): number {
-  return 1 + elapsed * 0.014 + bossKills * 0.7;
+  // Bosses are the progression hinge (§G): NO time-based HP growth until the first
+  // boss falls. Pre-boss, every unit spawns at base HP — the field never quietly
+  // inflates. After a kill, HP steps up per boss and ramps with time BETWEEN bosses
+  // (stretched to the slowed escalation clock). Applied at spawn only; live units
+  // are never re-scaled on the field.
+  if (bossKills <= 0) return 1;
+  return 1 + bossKills * 0.7 + (elapsed / TIMELINE_STRETCH) * 0.014;
 }
 
 /** Seconds between waves — long at the open, shrinking to a floor. */

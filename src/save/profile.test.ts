@@ -27,6 +27,18 @@ describe('normalizeProfile (V14 forward-compatible, ⊥ throw on partial)', () =
     expect(p.records.bestLevel).toBe(0); // filled
   });
 
+  it('fills + coerces the (arena × character) record bucket', () => {
+    // Old save with no bucket → empty map (additive, no migration needed).
+    const fresh = normalizeProfile({ schemaVersion: 1 })!;
+    expect(fresh.recordsByArenaCharacter).toEqual({});
+    // Existing combo entries survive, partial ones get missing fields filled.
+    const p = normalizeProfile({
+      recordsByArenaCharacter: { 'rust-crown|lilu-tubs': { bestLevel: 7 } },
+    })!;
+    expect(p.recordsByArenaCharacter['rust-crown|lilu-tubs']!.bestLevel).toBe(7);
+    expect(p.recordsByArenaCharacter['rust-crown|lilu-tubs']!.mostKills).toBe(0); // filled
+  });
+
   it('merges partial settings without dropping known keys', () => {
     const p = normalizeProfile({ settings: { masterVolume: 0.1 } })!;
     expect(p.settings.masterVolume).toBe(0.1);

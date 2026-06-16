@@ -13,7 +13,10 @@ import { WEAPONS } from '../content/weapons/index';
 import { ACCENT, INK } from './art/palette';
 
 const MAX_DMG = 48; // hard cap on concurrent damage numbers (bounded DOM)
-const AGG_R2 = 1.6 * 1.6; // hits within this radius...
+// Small enough that it only tallies repeated hits on the SAME enemy (rapid fire,
+// DoT ticks) — adjacent enemies (centers ≳1.2 apart) each keep their own number,
+// so pierce / splash / chain show damage on every unit they hit, not one merged blob.
+const AGG_R2 = 0.8 * 0.8; // hits within this radius...
 const AGG_WINDOW = 0.4; // ...and this recent → tally into the same number
 const TTL = 0.9; // lifetime of a damage number (s)
 

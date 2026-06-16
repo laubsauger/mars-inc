@@ -212,7 +212,7 @@ export function resolveReactions(
         x,
         z,
         r.radius,
-        { amount: r.burst, damageType: r.damageType },
+        { amount: r.burst, damageType: r.damageType, fx },
         rng,
       );
       dealt += d;
@@ -223,7 +223,7 @@ export function resolveReactions(
         applyStatus(pool, i, 'mark', { duration: r.vulnDuration, amplify: r.vulnAmplify });
       }
       fx.push('impact', x, z, 0, 0, ImpactProfile.Blast);
-      fx.push('dmg', x, z, d, 0, 0);
+      // Per-enemy numbers now come from applyAreaDamage (spec.fx); no aggregate.
       onReaction?.(r, x, z, d);
       break; // statuses consumed → at most one reaction per enemy this step
     }

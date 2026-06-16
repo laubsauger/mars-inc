@@ -54,7 +54,31 @@ export interface PlayerProfile {
   unlocks: Record<string, boolean>;
   permanentUpgrades: Record<string, number>;
   records: RecordData;
+  /** Best runs per (arena × character) PAIR — both matter (arena difficulty/roster
+   *  interacts with the fighter). Keyed `"<arenaId>|<characterId>"`; missing key =
+   *  no run for that combo. Additive — old saves normalize to {}. */
+  recordsByArenaCharacter: Record<string, RecordData>;
   runHistory: RunSummary[];
+}
+
+/** Compose the (arena × character) record-bucket key. */
+export function arenaCharacterKey(arenaId: string, characterId: string): string {
+  return `${arenaId}|${characterId}`;
+}
+
+/** Empty record bucket (a fresh best-of for an arena/character). */
+export function emptyRecord(): RecordData {
+  return { bestTimeSec: 0, bestLevel: 0, mostKills: 0, highestSingleHit: 0 };
+}
+
+/** Coerce an unknown record-map into clean RecordData entries (never throws). */
+function coerceRecordMap(raw: unknown): Record<string, RecordData> {
+  const out: Record<string, RecordData> = {};
+  if (typeof raw !== 'object' || raw === null) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    out[k] = { ...emptyRecord(), ...(typeof v === 'object' && v ? v : {}) };
+  }
+  return out;
 }
 
 // Versioned migrations (T25, V14). Each entry transforms a profile FROM the keyed
@@ -115,6 +139,7 @@ export function createDefaultProfile(): PlayerProfile {
     unlocks: {},
     permanentUpgrades: {},
     records: { bestTimeSec: 0, bestLevel: 0, mostKills: 0, highestSingleHit: 0 },
+    recordsByArenaCharacter: {},
     runHistory: [],
   };
 }
@@ -142,6 +167,7 @@ export function normalizeProfile(raw: unknown): PlayerProfile | null {
     unlocks: { ...(migrated.unlocks ?? {}) },
     permanentUpgrades: { ...(migrated.permanentUpgrades ?? {}) },
     records: { ...base.records, ...(migrated.records ?? {}) },
+    recordsByArenaCharacter: coerceRecordMap(migrated.recordsByArenaCharacter),
     runHistory: Array.isArray(migrated.runHistory) ? migrated.runHistory.slice(0, 50) : [],
   };
 }
