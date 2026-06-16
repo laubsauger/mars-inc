@@ -946,3 +946,14 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
 export function permanentById(id: string): PermanentUpgrade | undefined {
   return PERMANENT_UPGRADES.find((u) => u.id === id);
 }
+
+// Per-level cost curve (T35 economy). The first level (the UNLOCK) is discounted so
+// early/level-1 investment is cheap; each further level of the same node escalates
+// geometrically. Tip/endgame nodes already carry a higher base `cost`, so they stay
+// the most expensive overall. `ownedLevel` = how many levels you already have (0 =
+// buying the unlock).
+const UNLOCK_DISCOUNT = 0.7; // level 1 costs 70% of the node's base
+const COST_GROWTH = 1.5; // each subsequent level ×1.5
+export function levelCost(def: PermanentUpgrade, ownedLevel: number): number {
+  return Math.round(def.cost * UNLOCK_DISCOUNT * Math.pow(COST_GROWTH, ownedLevel));
+}

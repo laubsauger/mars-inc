@@ -192,7 +192,8 @@ export interface PermanentView {
   description: string;
   branch: string;
   rarity: string; // 'common' | 'rare' | 'legendary' — drives Glory Tree node visuals
-  cost: number;
+  cost: number; // cost of the NEXT level (escalates per level)
+  spent: number; // total Glory already sunk into this node (for the respec refund)
   owned: number;
   maxLevel: number;
   affordable: boolean;

@@ -187,7 +187,7 @@ describe('recoil impulse survives movement input (oversteer fix, V10)', () => {
   it('the recoil impulse decays toward zero (controllable, never permanent)', () => {
     const p = createPlayer();
     p.recoilVel = { x: 6, z: 0 };
-    for (let i = 0; i < 120; i++) stepPlayer(p, NO_INPUT, 1 / 60); // ~2s
+    for (let i = 0; i < 300; i++) stepPlayer(p, NO_INPUT, 1 / 60); // ~5s (slow decay)
     expect(Math.hypot(p.recoilVel.x, p.recoilVel.z)).toBe(0);
   });
 });

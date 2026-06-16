@@ -550,7 +550,7 @@ function GloryTree() {
   // step-by-step from the frontier, so first-time players don't see the far ends.
   // Defaults ON in dev builds, hidden + off in production.
   const [revealAll, setRevealAll] = useState(import.meta.env.DEV);
-  const spent = meta.permanents.reduce((s, p) => s + p.cost * p.owned, 0);
+  const spent = meta.permanents.reduce((s, p) => s + p.spent, 0);
   const [hovered, setHovered] = useState<TreeNodeId | null>(null);
   // Start zoomed out a touch — the tree is bigger than the viewport now, so the
   // player sees the whole sprawl first, then pans/zooms into a branch.

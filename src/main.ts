@@ -33,7 +33,7 @@ import { CameraShake } from './render/camera-shake';
 import { AudioBus } from './audio/audio';
 import { budgetAt, TIMELINE_STRETCH } from './sim/director/wave-director';
 import { gloryFor } from './sim/run';
-import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
+import { PERMANENT_UPGRADES, permanentById, levelCost } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
 import { setActiveArena, ARENAS } from './sim/arena';
@@ -287,16 +287,20 @@ async function boot(parent: HTMLElement): Promise<void> {
     const owned = save.current.permanentUpgrades;
     const permanents: PermanentView[] = PERMANENT_UPGRADES.map((u) => {
       const lvl = owned[u.id] ?? 0;
+      const next = levelCost(u, lvl); // cost of the NEXT level (escalates per level)
+      let spent = 0;
+      for (let k = 0; k < lvl; k++) spent += levelCost(u, k);
       return {
         id: u.id,
         name: u.name,
         description: u.description,
         branch: u.branch,
         rarity: u.rarity,
-        cost: u.cost,
+        cost: next,
+        spent,
         owned: lvl,
         maxLevel: u.maxLevel,
-        affordable: lvl < u.maxLevel && glory >= u.cost,
+        affordable: lvl < u.maxLevel && glory >= next,
       };
     });
     uiActions.setMeta({ glory, lastEarned: lastGlory, permanents });
@@ -308,9 +312,10 @@ async function boot(parent: HTMLElement): Promise<void> {
     const def = permanentById(id);
     if (!def) return;
     const lvl = save.current.permanentUpgrades[id] ?? 0;
-    if (lvl >= def.maxLevel || save.current.currencies.martianGlory < def.cost) return;
+    const price = levelCost(def, lvl);
+    if (lvl >= def.maxLevel || save.current.currencies.martianGlory < price) return;
     save.mutate((p) => {
-      p.currencies.martianGlory -= def.cost;
+      p.currencies.martianGlory -= price;
       p.permanentUpgrades[id] = lvl + 1;
     });
     world.setPermanents(save.current.permanentUpgrades);
@@ -324,7 +329,9 @@ async function boot(parent: HTMLElement): Promise<void> {
     let refund = 0;
     for (const id of Object.keys(owned)) {
       const def = permanentById(id);
-      if (def) refund += def.cost * (owned[id] ?? 0);
+      if (!def) continue;
+      // Refund the exact Glory spent: the sum of each purchased level's escalating cost.
+      for (let k = 0; k < (owned[id] ?? 0); k++) refund += levelCost(def, k);
     }
     if (refund <= 0) return;
     save.mutate((p) => {
