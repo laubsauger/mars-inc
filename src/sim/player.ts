@@ -17,7 +17,7 @@ import { xpRequired } from '../content/balance/xp-curve';
 // Recoil impulse decay rate (per second). Slower now (~0.45s) so the kick PUSHES
 // you a real distance — recoil is a movement/strategy factor, not a flicker. Still
 // decays fully so it never makes you uncontrollable (V10).
-const RECOIL_DECAY = 5.5;
+const RECOIL_DECAY = 4.5;
 
 // Lilu Tubs, Human Scrapper — balanced (§22).
 export const LILU_STATS: MovementStats = {

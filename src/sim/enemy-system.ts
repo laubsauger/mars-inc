@@ -127,9 +127,9 @@ export class EnemySystem {
       if (kx !== 0 || kz !== 0) {
         p.posX[i]! += kx * dt;
         p.posZ[i]! += kz * dt;
-        // Slow decay (~0.25s) → every shove pushes far for the same force, so all
-        // enemy knockback (hits, nova, dash) lands with serious weight (T42).
-        const decay = Math.max(0, 1 - 4 * dt);
+        // Slow decay (~0.35s) → every shove pushes a long way for the same force,
+        // so all enemy knockback (hits, nova, dash) really launches them (T42).
+        const decay = Math.max(0, 1 - 2.8 * dt);
         p.kbX[i] = kx * decay;
         p.kbZ[i] = kz * decay;
         if (Math.abs(p.kbX[i]!) < 0.05) p.kbX[i] = 0;

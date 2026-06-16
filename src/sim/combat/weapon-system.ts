@@ -64,8 +64,8 @@ export interface KillEvent {
  *  dealt (T70, V33) so on-hit DoTs can scale as a fraction of the hit. */
 export type OnHit = (enemy: number, crit: boolean, procCoef: number, hitDamage: number) => void;
 
-const RECOIL_CAP = 2.6; // max per-shot velocity kick (V10) — high so heavy guns really shove
-const RECOIL_SCALE = 3.6; // global recoil punch-up so kick is a real movement factor (per-weapon feel)
+const RECOIL_CAP = 3.8; // max per-shot velocity kick (V10) — high so heavy guns really shove
+const RECOIL_SCALE = 5.5; // global recoil punch-up so kick is a real movement factor (per-weapon feel)
 const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
 const PIERCE_GAP = 0.07; // after a pierce hit, ignore collisions this long (clear the body)
 

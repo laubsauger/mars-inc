@@ -583,6 +583,10 @@ function GloryTree() {
     const parent = TREE_PARENT[id];
     return parent !== undefined && isUnlocked(parent);
   };
+  // Dev "Reveal: All" overrides the frontier reveal. A node that is NOT revealed
+  // stays a true mystery — its identity, cost, and tooltip are all hidden.
+  const nodeRevealed = (id: TreeNodeId): boolean => revealAll || isRevealed(id);
+  const hoveredRevealed = hovered ? nodeRevealed(hovered) : false;
   const hoveredP = hovered ? byId.get(hovered) : undefined;
   const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered]!.branch) : 'mobility';
   const hoveredLocked = hovered ? !isUnlocked(hovered) : false;
@@ -822,7 +826,7 @@ function GloryTree() {
             // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
             // Production: frontier step-by-step reveal (far ends stay a ⊘ mystery,
             // including deep legendaries — preserve the surprise). Dev: reveal all.
-            const revealed = revealAll || isRevealed(p.id);
+            const revealed = nodeRevealed(p.id);
             // Legendary keystones recolour to ORANGE; everything else takes its
             // branch colour (red / green / blue).
             const style = rarity === 'legendary' ? LEGENDARY_STYLE : BRANCH_STYLE[node.branch];
@@ -880,17 +884,19 @@ function GloryTree() {
                     ★
                   </span>
                 ) : null}
-                <span
-                  className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
-                    maxed
-                      ? 'border-gold bg-gold text-pit'
-                      : pricedOut
-                        ? 'border-bleed bg-pit text-bleed'
-                        : 'border-rust bg-umber text-bone'
-                  }`}
-                >
-                  {maxed ? 'MAX' : pricedOut ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
-                </span>
+                {revealed ? (
+                  <span
+                    className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
+                      maxed
+                        ? 'border-gold bg-gold text-pit'
+                        : pricedOut
+                          ? 'border-bleed bg-pit text-bleed'
+                          : 'border-rust bg-umber text-bone'
+                    }`}
+                  >
+                    {maxed ? 'MAX' : pricedOut ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -908,45 +914,58 @@ function GloryTree() {
               }}
             >
               <div
-                className={`w-64 border bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ${BRANCH_STYLE[hoveredBranch].border}`}
+                className={`w-64 border bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ${hoveredRevealed ? BRANCH_STYLE[hoveredBranch].border : 'border-bone/20'}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`text-sm font-black uppercase ${BRANCH_STYLE[hoveredBranch].text}`}
-                  >
-                    {hoveredP.name}
-                  </span>
-                  <span className="shrink-0 text-xs text-bone/70">
-                    {hoveredP.owned}/{hoveredP.maxLevel}
-                  </span>
-                </div>
-                <div
-                  className={`mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${
-                    hoveredP.rarity === 'legendary'
-                      ? 'text-legendary'
-                      : hoveredP.rarity === 'rare'
-                        ? 'text-bone/70'
-                        : 'text-bone/40'
-                  }`}
-                >
-                  {hoveredP.rarity === 'legendary'
-                    ? '◆ Keystone'
-                    : hoveredP.rarity === 'rare'
-                      ? '◈ Rare'
-                      : 'Common'}
-                </div>
-                <div className="mt-1 text-[11px] leading-4 text-bone/75">
-                  {hoveredP.description}
-                </div>
-                <div className="mt-2 text-[11px] font-bold text-gold">
-                  {hoveredLocked
-                    ? `Locked — buy ${hoveredParent ? (byId.get(hoveredParent)?.name ?? 'the prior node') : 'the prior node'} first`
-                    : hoveredP.owned >= hoveredP.maxLevel
-                      ? 'MAXED'
-                      : hoveredP.affordable
-                        ? `Click to buy — ${hoveredP.cost} ◆`
-                        : `Costs ${hoveredP.cost} ◆ (insufficient)`}
-                </div>
+                {hoveredRevealed ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-sm font-black uppercase ${BRANCH_STYLE[hoveredBranch].text}`}
+                      >
+                        {hoveredP.name}
+                      </span>
+                      <span className="shrink-0 text-xs text-bone/70">
+                        {hoveredP.owned}/{hoveredP.maxLevel}
+                      </span>
+                    </div>
+                    <div
+                      className={`mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${
+                        hoveredP.rarity === 'legendary'
+                          ? 'text-legendary'
+                          : hoveredP.rarity === 'rare'
+                            ? 'text-bone/70'
+                            : 'text-bone/40'
+                      }`}
+                    >
+                      {hoveredP.rarity === 'legendary'
+                        ? '◆ Keystone'
+                        : hoveredP.rarity === 'rare'
+                          ? '◈ Rare'
+                          : 'Common'}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-bone/75">
+                      {hoveredP.description}
+                    </div>
+                    <div className="mt-2 text-[11px] font-bold text-gold">
+                      {hoveredLocked
+                        ? `Locked — buy ${hoveredParent ? (byId.get(hoveredParent)?.name ?? 'the prior node') : 'the prior node'} first`
+                        : hoveredP.owned >= hoveredP.maxLevel
+                          ? 'MAXED'
+                          : hoveredP.affordable
+                            ? `Click to buy — ${hoveredP.cost} ◆`
+                            : `Costs ${hoveredP.cost} ◆ (insufficient)`}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-black uppercase tracking-widest text-bone/55">
+                      ⊘ Unknown
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-bone/55">
+                      A sealed contract. Advance along this branch to reveal what it holds.
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
