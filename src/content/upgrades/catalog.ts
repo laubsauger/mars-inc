@@ -130,14 +130,15 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'ricochet-rounds',
     name: 'Ricochet Rounds',
-    description: 'Shots that run out of punch-through BOUNCE to a new enemy (+1 bounce).',
+    description: 'Spent shots BOUNCE far to a new enemy, one at a time (starts 2, +1/level).',
     tags: ['ricochet', 'kinetic'],
     rarity: 'uncommon',
-    maxLevel: 3,
+    maxLevel: 4,
     baseWeight: 6,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      mods.ricochet += 1;
+      // First pick gives a couple of bounces; later levels add reach + bounces.
+      mods.ricochet = mods.ricochet === 0 ? 2 : mods.ricochet + 1;
       mods.ricochetRange += 1.5;
     },
   },

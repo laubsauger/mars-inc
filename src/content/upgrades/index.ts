@@ -173,14 +173,16 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'arc-garnishment',
     name: 'Arc Garnishment',
-    description: 'Hits release an INSTANT lightning arc to +1 nearby enemy (no projectile).',
+    description: 'Hits chain INSTANT lightning through nearby packed enemies (starts 2, +1/level).',
     tags: ['chain', 'energy'],
     rarity: 'rare',
-    maxLevel: 3,
+    maxLevel: 4,
     baseWeight: 4,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      mods.chainCount += 1;
+      // First pick lands a real chain (2 jumps); later levels grow the reach.
+      mods.chainCount = mods.chainCount === 0 ? 2 : mods.chainCount + 1;
+      mods.chainRange += 0.6;
     },
   },
 ];

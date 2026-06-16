@@ -13,7 +13,7 @@ import {
   type Scene,
 } from 'three';
 import type { EnemyPool } from '../sim/enemies';
-import { EnemyState, MAX_ENEMIES } from '../sim/enemies';
+import { MAX_ENEMIES } from '../sim/enemies';
 import { COL } from './art/palette';
 
 // Color blocking, not line noise (art doc pillar 1). Rust Mite = rust body,
@@ -33,7 +33,8 @@ const VARIANT_COLORS = [
   COL.toxicGreen, // Liability Blob (splitter ooze)
   COL.toxicGreen, // Blobling (split product) — same ooze, smaller body
 ];
-const TELEGRAPH_COLOR = COL.sunHigh;
+// (sun-glow spawn highlight removed for gate walk-ins; reserved for future
+// teleport-in enemies via a spawn-kind flag.)
 
 export class EnemyView {
   readonly mesh: InstancedMesh;
@@ -70,10 +71,12 @@ export class EnemyView {
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
 
-      const c =
-        pool.state[i] === EnemyState.Telegraph
-          ? TELEGRAPH_COLOR
-          : (VARIANT_COLORS[pool.variant[i]!] ?? VARIANT_COLORS[0]!);
+      // Gate walk-in enemies read their normal variant colour while telegraphing
+      // — the opening doors + their inward march already communicate the entrance,
+      // so the old sun-glow felt glitchy. A spawn glow is RESERVED for future
+      // teleport-in enemies (an entrance type to add later), gated on a spawn-kind
+      // flag rather than the telegraph state.
+      const c = VARIANT_COLORS[pool.variant[i]!] ?? VARIANT_COLORS[0]!;
       // Status tint (T39): burn → hot ember, chill → cyan. Blend over base color
       // so the effect reads at a glance without a separate material.
       let cr = c.r;

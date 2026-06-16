@@ -69,6 +69,10 @@ export interface Player {
   novaRadius: number;
   novaForce: number;
   novaDamage: number;
+  novaPull: boolean; // Singularity mutation: the pulse PULLS enemies in, not out
+  /** Kinetic Boots: a radial shockwave push emitted when a sprint starts (0 = off). */
+  dashShockForce: number;
+  dashShockRadius: number;
 }
 
 export function createPlayer(stats: MovementStats = LILU_STATS): Player {

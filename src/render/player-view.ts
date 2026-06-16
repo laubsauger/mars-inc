@@ -11,8 +11,10 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
+  PlaneGeometry,
   RingGeometry,
   SpotLight,
+  type Camera,
   type Scene,
 } from 'three';
 import type { Player } from '../sim/player';
@@ -22,11 +24,20 @@ const BODY = COL.brass;
 const ACCENT = COL.kineticGold;
 const OUTLINE = COL.nearBlack;
 
+const PLATE_W = 1.5; // health-plate width (world units)
+const PLATE_H = 0.2;
+const FILL_W = PLATE_W - 0.12;
+
 export class PlayerView {
   readonly group: Group;
   private facingMesh: Group;
   private bodyMat: MeshStandardMaterial;
   private flash = 0; // hurt flash 1 → 0 (red shimmer on taking damage)
+  // World-space health plate (art doc): arena medical tag above the character.
+  private healthPlate: Group;
+  private healthFill: Mesh;
+  private healthFillMat: MeshBasicMaterial;
+  private platePhase = 0; // drives the low-health pulse
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -85,7 +96,51 @@ export class PlayerView {
     glow.renderOrder = 2;
     this.group.add(glow);
 
+    this.healthPlate = this.buildHealthPlate();
+    this.healthFill = this.healthPlate.getObjectByName('fill') as Mesh;
+    this.healthFillMat = this.healthFill.material as MeshBasicMaterial;
+    this.healthPlate.position.set(0, radius + 2.0, 0); // float above the head
+    this.group.add(this.healthPlate);
+
     scene.add(this.group);
+  }
+
+  /** Compact health plate: black ink backplate, chipped red fill, brass end caps,
+   *  white quarter ticks (art doc "arena medical telemetry tag"). Billboarded to
+   *  the camera in sync(). Unlit materials so it reads regardless of arena light. */
+  private buildHealthPlate(): Group {
+    const g = new Group();
+    const flat = (w: number, h: number, color: typeof COL.nearBlack, op = 1): Mesh => {
+      const m = new Mesh(
+        new PlaneGeometry(w, h),
+        new MeshBasicMaterial({ color, transparent: op < 1, opacity: op, toneMapped: false }),
+      );
+      return m;
+    };
+    const back = flat(PLATE_W + 0.08, PLATE_H + 0.08, OUTLINE); // ink backplate
+    back.position.z = -0.01;
+    const trough = flat(PLATE_W, PLATE_H, COL.umberShadow); // empty gauge
+    // Red fill, anchored at the left edge so it shrinks rightward as HP drops.
+    const fill = new Mesh(
+      new PlaneGeometry(FILL_W, PLATE_H - 0.06),
+      new MeshBasicMaterial({ color: COL.healthRed, toneMapped: false }),
+    );
+    fill.name = 'fill';
+    fill.position.z = 0.01;
+    g.add(back, trough, fill);
+    // Brass end caps.
+    for (const sx of [-1, 1]) {
+      const cap = flat(0.06, PLATE_H + 0.06, COL.brass);
+      cap.position.set((sx * (PLATE_W + 0.06)) / 2, 0, 0.01);
+      g.add(cap);
+    }
+    // White quarter ticks at 25/50/75%.
+    for (const f of [0.25, 0.5, 0.75]) {
+      const tick = flat(0.02, PLATE_H - 0.04, COL.sunHigh, 0.7);
+      tick.position.set((f - 0.5) * FILL_W, 0, 0.02);
+      g.add(tick);
+    }
+    return g;
   }
 
   /** Trigger the hurt flash (call when the player takes damage). */
@@ -103,10 +158,29 @@ export class PlayerView {
   }
 
   /** Interpolate render transform between prev and current sim pos by alpha. */
-  sync(player: Player, alpha: number): void {
+  sync(player: Player, alpha: number, camera: Camera): void {
     const x = player.prevPos.x + (player.pos.x - player.prevPos.x) * alpha;
     const z = player.prevPos.z + (player.pos.z - player.prevPos.z) * alpha;
     this.group.position.set(x, 0, z);
     this.facingMesh.rotation.y = player.facing;
+    this.syncHealthPlate(player);
+    // Billboard the plate to the camera (group itself is unrotated, so the
+    // camera's world quaternion is the right local orientation).
+    this.healthPlate.quaternion.copy(camera.quaternion);
+  }
+
+  private syncHealthPlate(player: Player): void {
+    this.platePhase += 0.05;
+    const hp01 = Math.max(0, Math.min(1, player.maxHealth > 0 ? player.health / player.maxHealth : 0));
+    this.healthFill.scale.x = Math.max(0.001, hp01);
+    this.healthFill.position.x = -(FILL_W * (1 - hp01)) / 2; // keep left edge fixed
+    // Low health: pulse the fill toward bright so it reads as "danger" (no
+    // full-screen red haze — that's an accessibility opt-in elsewhere).
+    if (hp01 < 0.3) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.platePhase * 9);
+      this.healthFillMat.color.setRGB(0.9, 0.1 + pulse * 0.25, 0.1 + pulse * 0.1);
+    } else {
+      this.healthFillMat.color.copy(COL.healthRed);
+    }
   }
 }

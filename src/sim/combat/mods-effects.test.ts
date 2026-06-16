@@ -34,7 +34,7 @@ describe('pierce / chain upgrades apply to the mod layer', () => {
     applyUpgrade(UPGRADES.find((u) => u.id === 'liability-waiver')!, { player, mods, effects }, {});
     applyUpgrade(UPGRADES.find((u) => u.id === 'arc-garnishment')!, { player, mods, effects }, {});
     expect(mods.pierce).toBe(1);
-    expect(mods.chainCount).toBe(1);
+    expect(mods.chainCount).toBe(2); // first pick lands a real 2-jump chain
   });
 });
 

@@ -29,17 +29,24 @@ export function FloatingLayer() {
               fontSize: l.size,
               opacity: l.opacity,
               textShadow: SHADOW,
-              background: isPickup && !l.active ? undefined : BACKDROP,
-              padding: isPickup ? '1px 8px' : '0 8px',
+              background: BACKDROP, // every label gets the readability backdrop
+              padding: isPickup ? '2px 9px' : '0 8px',
               borderRadius: 4,
               letterSpacing: isPickup ? '0.06em' : undefined,
+              // The in-range crate gets a glowing border so "ready to equip" reads.
+              boxShadow:
+                isPickup && l.active
+                  ? '0 0 0 1px rgba(255,210,63,0.85), 0 0 16px rgba(255,210,63,0.4)'
+                  : undefined,
             }}
           >
             {isPickup ? (
               <span className="inline-flex items-center gap-1.5">
-                <kbd className="rounded border border-current px-1 text-[0.8em] leading-tight opacity-90">
-                  E
-                </kbd>
+                {l.prompt && (
+                  <kbd className="rounded border border-current px-1 text-[0.8em] leading-tight opacity-90">
+                    E
+                  </kbd>
+                )}
                 {l.text}
               </span>
             ) : (

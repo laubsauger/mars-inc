@@ -384,7 +384,7 @@ async function boot(parent: HTMLElement): Promise<void> {
 
       arena.update(world.enemies, fxDt); // animate gate doors as enemies enter
       playerView.update(fxDt); // decay the hurt flash
-      playerView.sync(world.player, alpha);
+      playerView.sync(world.player, alpha, camera);
       enemyView.sync(world.enemies, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);

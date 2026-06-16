@@ -159,11 +159,14 @@ export class FloatingText {
         x: (this.v.x * 0.5 + 0.5) * w,
         y: (-this.v.y * 0.5 + 0.5) * h,
         text: def?.displayName ?? 'Weapon',
-        color: inRange ? ACCENT.kineticGold : INK.warmLine,
-        size: inRange ? 13 : 11,
+        // Out of range = readable light label (info only). In range = bright gold
+        // + the E prompt. Both get a backdrop (in FloatingLayer) so the name reads
+        // over the busy floor regardless.
+        color: inRange ? ACCENT.kineticGold : '#efe4cf',
+        size: inRange ? 14 : 12,
         opacity,
         kind: 'pickup',
-        prompt: true,
+        prompt: inRange, // E prompt ONLY when actually in equip range
         active: inRange,
       });
     }

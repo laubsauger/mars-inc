@@ -67,6 +67,7 @@ export class WeaponSystem {
   damageThisStep = 0;
   private query: number[] = [];
   private chainQuery: number[] = []; // scratch for chain-lightning arc lookup
+  private chainVisited: number[] = []; // enemies already hit this chain (no repeats)
 
   add(w: WeaponInstance): void {
     this.weapons.push(w);
@@ -373,10 +374,11 @@ export class WeaponSystem {
   }
 
   /**
-   * Arc reduced damage from a struck enemy to up to `mods.chainCount` other live
-   * enemies within `mods.chainRange`, each hop weaker by `mods.chainFalloff`.
-   * Routes every arc through the centralized pipeline (V3); deterministic via the
-   * shared rng (V16). Bounded by chainCount → no per-hit blow-up.
+   * Chain lightning: a TRAVELLING arc that hops struck-enemy → nearest unhit
+   * neighbour → next, up to `mods.chainCount` jumps, each within `mods.chainRange`
+   * of the PREVIOUS hop (a real chain, not a star from the origin) and weaker by
+   * `mods.chainFalloff`. Emits a bolt per segment so it reads as lightning leaping
+   * body to body. Pipeline-routed (V3), deterministic (nearest-by-distance, V16).
    */
   private chainLightning(
     enemies: EnemyPool,
@@ -388,15 +390,31 @@ export class WeaponSystem {
     rng: Rng,
     fx: FxQueue,
   ): void {
-    const ox = enemies.posX[fromE]!;
-    const oz = enemies.posZ[fromE]!;
-    const n = hash.queryCircle(ox, oz, mods.chainRange, this.chainQuery);
-    let hops = 0;
+    let curX = enemies.posX[fromE]!;
+    let curZ = enemies.posZ[fromE]!;
     let mult = pr.dmgMult[i]! * mods.chainFalloff;
-    for (let k = 0; k < n && hops < mods.chainCount; k++) {
-      const e = this.chainQuery[k]!;
-      if (e === fromE || e >= enemies.count) continue;
-      if (enemies.health[e]! <= 0 || enemies.state[e] !== EnemyState.Active) continue;
+    const visited = this.chainVisited;
+    visited.length = 0;
+    visited.push(fromE);
+
+    for (let hop = 0; hop < mods.chainCount; hop++) {
+      const n = hash.queryCircle(curX, curZ, mods.chainRange, this.chainQuery);
+      let best = -1;
+      let bestD2 = mods.chainRange * mods.chainRange;
+      for (let k = 0; k < n; k++) {
+        const e = this.chainQuery[k]!;
+        if (e >= enemies.count || enemies.health[e]! <= 0) continue;
+        if (enemies.state[e] !== EnemyState.Active) continue;
+        if (visited.includes(e)) continue;
+        const dx = enemies.posX[e]! - curX;
+        const dz = enemies.posZ[e]! - curZ;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = e;
+        }
+      }
+      if (best < 0) break; // chain dies out when no neighbour is in hop range
 
       const packet = makePacket({
         weaponId: 'chain',
@@ -408,16 +426,19 @@ export class WeaponSystem {
       });
       const out = computeOutgoing(packet, rng);
       const mit = applyMitigation(out.amount, 0, 0);
-      this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
-      enemies.health[e]! -= mit.toHealth;
-      // Chain arcs read as energy regardless of the source weapon.
-      fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!, 0, 0, ImpactProfile.Arc);
-      emitBlood(fx, enemies, e, enemies.posX[e]! - ox, enemies.posZ[e]! - oz);
-      fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
-      // Visible arc from the source to this enemy (from in x,z; to in dx,dz).
-      fx.push('chain', ox, oz, enemies.posX[e]!, enemies.posZ[e]!);
-      hops++;
-      mult *= mods.chainFalloff; // each successive arc weaker
+      this.damageThisStep += Math.min(mit.toHealth, enemies.health[best]!);
+      enemies.health[best]! -= mit.toHealth;
+      const bx = enemies.posX[best]!;
+      const bz = enemies.posZ[best]!;
+      fx.push('impact', bx, bz, 0, 0, ImpactProfile.Arc);
+      emitBlood(fx, enemies, best, bx - curX, bz - curZ);
+      fx.push('dmg', bx, bz, mit.toHealth, 0, out.crit ? 1 : 0);
+      // Bolt for THIS segment: previous hop → this enemy (from x,z; to dx,dz).
+      fx.push('chain', curX, curZ, bx, bz);
+      visited.push(best);
+      curX = bx;
+      curZ = bz;
+      mult *= mods.chainFalloff;
     }
   }
 }

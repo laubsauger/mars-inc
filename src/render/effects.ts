@@ -27,6 +27,11 @@ interface Spawn {
   life: number;
   spin: number;
   color: Color;
+  /** Fixed in-plane angle (radians). When set, overrides the color-derived spin
+   *  start — used to point a stretched spark along the impact direction. */
+  rot?: number;
+  /** Elongation of the local long axis (1 = round). >1 → a directional streak. */
+  stretch?: number;
 }
 
 class EffectPool {
@@ -42,6 +47,7 @@ class EffectPool {
   private age: Float32Array;
   private spin: Float32Array;
   private rot: Float32Array;
+  private stretch: Float32Array;
   private r: Float32Array;
   private g: Float32Array;
   private b: Float32Array;
@@ -88,6 +94,7 @@ class EffectPool {
     this.age = new Float32Array(capacity);
     this.spin = new Float32Array(capacity);
     this.rot = new Float32Array(capacity);
+    this.stretch = new Float32Array(capacity);
     this.r = new Float32Array(capacity);
     this.g = new Float32Array(capacity);
     this.b = new Float32Array(capacity);
@@ -103,7 +110,8 @@ class EffectPool {
     this.life[i] = p.life;
     this.age[i] = 0;
     this.spin[i] = p.spin;
-    this.rot[i] = p.color.r * 6.28; // cheap varied start angle from color
+    this.rot[i] = p.rot ?? p.color.r * 6.28; // explicit angle, else color-derived
+    this.stretch[i] = p.stretch ?? 1;
     this.r[i] = p.color.r;
     this.g[i] = p.color.g;
     this.b[i] = p.color.b;
@@ -120,6 +128,7 @@ class EffectPool {
       this.age[i] = this.age[last]!;
       this.spin[i] = this.spin[last]!;
       this.rot[i] = this.rot[last]!;
+      this.stretch[i] = this.stretch[last]!;
       this.r[i] = this.r[last]!;
       this.g[i] = this.g[last]!;
       this.b[i] = this.b[last]!;
@@ -138,7 +147,9 @@ class EffectPool {
       this.rot[i]! += this.spin[i]! * dt;
       this.dummy.position.set(this.posX[i]!, this.yOffset, this.posZ[i]!);
       this.dummy.rotation.set(-Math.PI / 2, this.rot[i]!, 0);
-      this.dummy.scale.setScalar(scale);
+      // Stretch elongates the local long axis → a directional streak (oriented
+      // spark). Round effects keep stretch 1.
+      this.dummy.scale.set(scale * this.stretch[i]!, scale, scale);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
       const fade = 1 - t;
@@ -196,8 +207,9 @@ export class Effects {
           break;
         case 'impact':
           // Per-weapon-family hit read (art doc): a sidearm tick must not look
-          // like an explosive blast. Profile rides in `variant`.
-          this.impactFx(e.x, e.z, e.variant as ImpactProfile);
+          // like an explosive blast. Profile rides in `variant`, incoming travel
+          // direction in dx,dz (0 = radial).
+          this.impactFx(e.x, e.z, e.variant as ImpactProfile, e.dx, e.dz);
           break;
         case 'death':
           // Comic dust poof + scrap scatter, tinted by variant.
@@ -226,20 +238,38 @@ export class Effects {
 
   /** Distinct hit FX per weapon family (art doc Effects Plan). Each family gets
    *  its own ring size/color/dust so the player reads the weapon from the hit. */
-  private impactFx(x: number, z: number, profile: ImpactProfile): void {
+  private impactFx(x: number, z: number, profile: ImpactProfile, dx = 0, dz = 0): void {
+    // Incoming direction → an oriented spark streak that continues PAST the hit
+    // face (art doc: matter exits away from the surface). 0,0 = radial only.
+    const hasDir = dx * dx + dz * dz > 1e-4;
+    const ang = hasDir ? Math.atan2(dz, dx) : 0;
+    const ox = x + dx * 0.4; // bias the streak just past the contact point
+    const oz = z + dz * 0.4;
     switch (profile) {
       case ImpactProfile.Tick: // sidearm: sharp small yellow-white spark
         this.impact.spawn({ x, z, s0: 0.5, s1: 1.7, life: 0.16, spin: 0, color: COL.sunHigh });
-        this.muzzle.spawn({ x, z, s0: 1.1, s1: 0.3, life: 0.08, spin: 6, color: COL.kineticGold });
+        if (hasDir)
+          this.muzzle.spawn({
+            x: ox, z: oz, s0: 1.0, s1: 0.25, life: 0.1, spin: 0,
+            color: COL.kineticGold, rot: ang, stretch: 3,
+          });
         break;
-      case ImpactProfile.Stitch: // rotary: tiny rapid brass chip, minimal dust
+      case ImpactProfile.Stitch: // rotary: tiny rapid brass chip streak
         this.impact.spawn({ x, z, s0: 0.4, s1: 1.2, life: 0.12, spin: 0, color: COL.brass });
+        if (hasDir)
+          this.muzzle.spawn({
+            x: ox, z: oz, s0: 0.8, s1: 0.2, life: 0.08, spin: 0,
+            color: COL.brass, rot: ang, stretch: 3.5,
+          });
         break;
-      case ImpactProfile.Arc: // energy: angular cyan flash, no organic dust
+      case ImpactProfile.Arc: // energy: angular cyan flash + streak
         this.impact.spawn({ x, z, s0: 0.7, s1: 2.3, life: 0.2, spin: 0, color: COL.shieldCyan });
-        this.muzzle.spawn({ x, z, s0: 1.0, s1: 0.2, life: 0.1, spin: 5, color: COL.shieldCyan });
+        this.muzzle.spawn({
+          x: ox, z: oz, s0: 1.0, s1: 0.2, life: 0.1, spin: 0,
+          color: COL.shieldCyan, rot: ang, stretch: hasDir ? 2.5 : 1,
+        });
         break;
-      case ImpactProfile.Blast: // explosive: big ring + heavy dust wall
+      case ImpactProfile.Blast: // explosive: big radial ring + heavy dust wall
         this.impact.spawn({ x, z, s0: 0.8, s1: 3.4, life: 0.34, spin: 0, color: COL.sunHigh });
         this.dust.spawn({ x, z, s0: 1.6, s1: 3.4, life: 0.4, spin: 3, color: COL.marsDust });
         break;
