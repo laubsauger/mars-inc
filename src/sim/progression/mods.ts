@@ -12,7 +12,11 @@ export interface RunMods {
   chainCount: number; // lightning arcs to N nearby enemies on hit (0 = off)
   chainRange: number; // max arc distance (world units)
   chainFalloff: number; // damage retained per arc hop (0..1)
+  ricochet: number; // times a projectile BOUNCES to a new enemy on hit (0 = off)
+  ricochetRange: number; // max distance to find a bounce target (world units)
   blastRadius: number; // universal explosive radius added to every shot (0 = off)
+  rangeMult: number; // weapon targeting/effective range multiplier (T33 progression)
+  knockback: number; // outward impulse applied to enemies on projectile hit (0 = off)
 }
 
 export function defaultMods(): RunMods {
@@ -26,7 +30,11 @@ export function defaultMods(): RunMods {
     chainCount: 0,
     chainRange: 6,
     chainFalloff: 0.6,
+    ricochet: 0,
+    ricochetRange: 9,
     blastRadius: 0,
+    rangeMult: 1,
+    knockback: 0,
   };
 }
 

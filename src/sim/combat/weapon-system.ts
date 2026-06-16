@@ -6,18 +6,41 @@
 // hash indices stay valid during the collide loop.
 
 import type { EnemyPool } from '../enemies';
-import { EnemyState } from '../enemies';
+import { EnemyState, ENEMY_BY_VARIANT } from '../enemies';
 import type { SpatialHash } from '../spatial-hash';
 import type { Player } from '../player';
 import { applyRecoil } from '../movement';
 import type { Rng } from '../../core/rng';
 import { ProjectilePool } from './projectiles';
-import { type WeaponInstance, type WeaponDamageSpec, type WeaponDefinition, equip } from './weapon';
+import {
+  type WeaponInstance,
+  type WeaponDamageSpec,
+  type WeaponDefinition,
+  type WeaponFamily,
+  equip,
+} from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
 import { applyAreaDamage } from './aoe';
+import { knockbackFrom } from './knockback';
 import type { RunMods } from '../progression/mods';
 import type { ConditionalResult } from '../progression/effects';
-import type { FxQueue } from '../fx';
+import { type FxQueue, ImpactProfile } from '../fx';
+
+/** Weapon family → its hit-FX profile (art doc: each family reads distinctly). */
+function impactProfile(family: WeaponFamily): ImpactProfile {
+  switch (family) {
+    case 'sidearm':
+    case 'drone':
+      return ImpactProfile.Tick;
+    case 'rotary':
+      return ImpactProfile.Stitch;
+    case 'explosive':
+    case 'orbital':
+      return ImpactProfile.Blast;
+    case 'energy':
+      return ImpactProfile.Arc;
+  }
+}
 
 const NO_COND: ConditionalResult = { damageMult: 1, critAdd: 0 };
 
@@ -32,6 +55,8 @@ export interface KillEvent {
 export type OnHit = (enemy: number, crit: boolean) => void;
 
 const RECOIL_CAP = 0.4; // max per-shot velocity kick (V10)
+const RICOCHET_RETAIN = 0.8; // damage kept per ricochet bounce
+const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
 
 export class WeaponSystem {
   readonly projectiles = new ProjectilePool();
@@ -96,7 +121,7 @@ export class WeaponSystem {
       w.cooldownLeft -= dt;
       if (w.cooldownLeft > 0) continue;
 
-      const aim = resolveAim(w, player, enemies);
+      const aim = resolveAim(w, player, enemies, mods.rangeMult);
       if (!aim) continue; // nothing to shoot at and no cursor aim
 
       w.cooldownLeft = w.def.cooldown / Math.max(0.01, mods.fireRateMult);
@@ -110,12 +135,21 @@ export class WeaponSystem {
       };
 
       const p = w.def.projectile;
+      // Range is an authoritative reach attribute (progression, T33): the bullet
+      // expires once it has flown the effective range, so `range` + rangeMult
+      // actually limit how far you can shoot in aim mode (not just auto-target
+      // acquisition). The def lifetime still caps it shorter for fast-fizzle
+      // weapons (e.g. shotgun pellets). Hitscan/laser families can opt out later.
+      const effRange = w.def.range * mods.rangeMult;
+      const reachLifetime = effRange / Math.max(1e-3, p.speed);
+      const life = Math.min(p.lifetime, reachLifetime);
       const muzzle = player.stats.collisionRadius + 0.3;
       const aimAngle = Math.atan2(aim.x, aim.z);
       // Total projectiles = the weapon's innate pellets × multishot stacks.
       const shots = Math.max(1, (w.def.pellets ?? 1) * mods.projectileCount);
       const arc = w.def.spreadArc ?? mods.spreadArc;
       const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
+      const profile = impactProfile(w.def.family); // per-family hit FX (T37)
       // Fan multishot evenly across the arc; single shot gets random jitter.
       for (let s = 0; s < shots; s++) {
         const fan = shots > 1 ? (s / (shots - 1) - 0.5) * arc : 0;
@@ -129,10 +163,12 @@ export class WeaponSystem {
           dx * p.speed,
           dz * p.speed,
           p.radius,
-          p.lifetime,
+          life,
           pierce,
           dmg,
           Math.max(w.def.explosiveRadius ?? 0, mods.blastRadius),
+          profile,
+          Math.max(0, Math.floor(mods.ricochet)),
         );
       }
 
@@ -163,6 +199,17 @@ export class WeaponSystem {
   ): void {
     const pr = this.projectiles;
     for (let i = pr.count - 1; i >= 0; i--) {
+      // Bounce park (ricochet): the projectile dwells a few frames at the hit
+      // point before launching at the next enemy, so the redirect reads as a
+      // hit→hit sequence rather than a teleport. Frozen, no collision, still ages.
+      if (pr.hold[i]! > 0) {
+        pr.hold[i]! -= dt;
+        pr.prevX[i] = pr.posX[i]!;
+        pr.prevZ[i] = pr.posZ[i]!;
+        pr.life[i]! -= dt;
+        if (pr.life[i]! <= 0) pr.kill(i);
+        continue;
+      }
       pr.prevX[i] = pr.posX[i]!;
       pr.prevZ[i] = pr.posZ[i]!;
       pr.posX[i]! += pr.velX[i]! * dt;
@@ -198,7 +245,26 @@ export class WeaponSystem {
           // run stats — must match what the sim actually removed (V20).
           this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
           enemies.health[e]! -= mit.toHealth;
-          fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
+          // Concussive knockback: shove the enemy along the shot line (T42 CC).
+          if (mods.knockback > 0) {
+            knockbackFrom(enemies, e, pr.posX[i]!, pr.posZ[i]!, mods.knockback);
+          }
+          {
+            const l = Math.hypot(pr.velX[i]!, pr.velZ[i]!) || 1;
+            fx.push(
+              'impact',
+              pr.posX[i]!,
+              pr.posZ[i]!,
+              pr.velX[i]! / l,
+              pr.velZ[i]! / l,
+              pr.profile[i]!,
+            );
+          }
+          // Blood spurt on biological hits, thrown along the projectile's travel
+          // direction (art doc: matter exits away from the hit face).
+          emitBlood(fx, enemies, e, pr.velX[i]!, pr.velZ[i]!);
+          // Floating damage number at the enemy (amount in dx, crit flag in variant).
+          fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
           // On-hit hook (before compaction → index valid): triggers + status (T38/T39).
           if (onHit) onHit(e, out.crit);
 
@@ -210,7 +276,7 @@ export class WeaponSystem {
           // Explosive payload: detonate AoE on impact (V3-routed), then die —
           // overrides pierce. The direct-hit enemy is excluded (already damaged).
           if (pr.blast[i]! > 0) {
-            this.damageThisStep += applyAreaDamage(
+            const blastDealt = applyAreaDamage(
               enemies,
               hash,
               pr.posX[i]!,
@@ -225,21 +291,85 @@ export class WeaponSystem {
               },
               rng,
             );
-            fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
+            this.damageThisStep += blastDealt;
+            fx.push('impact', pr.posX[i]!, pr.posZ[i]!, 0, 0, ImpactProfile.Blast);
+            // One aggregated number at the blast centre for the splash.
+            if (blastDealt > 0) fx.push('dmg', pr.posX[i]!, pr.posZ[i]!, blastDealt, 0, 0);
             dead = true;
             break;
           }
 
-          if (pr.pierce[i]! <= 0) {
-            dead = true;
+          if (pr.pierce[i]! > 0) {
+            pr.pierce[i]!--;
+            continue; // pass through to the next enemy this step
+          }
+          // Out of pierce: ricochet to a fresh enemy if able, else die. The
+          // redirected projectile is a VISIBLE bounce (own travel), unlike the
+          // instant chain arc.
+          if (pr.bounces[i]! > 0 && this.ricochetTo(enemies, hash, e, pr, i, mods, fx)) {
+            dead = false;
             break;
           }
-          pr.pierce[i]!--;
+          dead = true;
+          break;
         }
       }
 
       if (dead) pr.kill(i);
     }
+  }
+
+  /**
+   * Redirect a projectile toward the nearest fresh enemy within `ricochetRange`
+   * (a real bounce — the projectile keeps flying, distinct from the instant chain
+   * arc). Preserves speed, weakens the hit a touch per bounce, and parks the
+   * projectile briefly so the redirect reads as a sequence. Returns false (→ die)
+   * when no target is in range. Deterministic: nearest-by-distance, no rng.
+   */
+  private ricochetTo(
+    enemies: EnemyPool,
+    hash: SpatialHash,
+    fromE: number,
+    pr: ProjectilePool,
+    i: number,
+    mods: RunMods,
+    fx: FxQueue,
+  ): boolean {
+    const ox = pr.posX[i]!;
+    const oz = pr.posZ[i]!;
+    const n = hash.queryCircle(ox, oz, mods.ricochetRange, this.chainQuery);
+    let bestE = -1;
+    let bestD2 = mods.ricochetRange * mods.ricochetRange;
+    for (let k = 0; k < n; k++) {
+      const e = this.chainQuery[k]!;
+      if (e === fromE || e >= enemies.count) continue;
+      if (enemies.health[e]! <= 0 || enemies.state[e] !== EnemyState.Active) continue;
+      const dx = enemies.posX[e]! - ox;
+      const dz = enemies.posZ[e]! - oz;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestE = e;
+      }
+    }
+    if (bestE < 0) return false;
+
+    const speed = Math.hypot(pr.velX[i]!, pr.velZ[i]!) || 1;
+    const dx = enemies.posX[bestE]! - ox;
+    const dz = enemies.posZ[bestE]! - oz;
+    const l = Math.hypot(dx, dz) || 1;
+    pr.velX[i] = (dx / l) * speed;
+    pr.velZ[i] = (dz / l) * speed;
+    // Step the projectile clear of the enemy it just hit (along the new heading)
+    // so it doesn't immediately re-collide with the source and waste the bounce.
+    const clear = enemies.radius[fromE]! + pr.radius[i]! + 0.1;
+    pr.posX[i]! += (dx / l) * clear;
+    pr.posZ[i]! += (dz / l) * clear;
+    pr.dmgMult[i]! *= RICOCHET_RETAIN; // each bounce a bit weaker
+    pr.bounces[i]!--;
+    pr.hold[i] = RICOCHET_HOLD; // brief dwell → reads as a hit→hit sequence
+    fx.push('muzzle', ox, oz, dx / l, dz / l); // small pop at the bounce point
+    return true;
   }
 
   /**
@@ -280,11 +410,27 @@ export class WeaponSystem {
       const mit = applyMitigation(out.amount, 0, 0);
       this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
       enemies.health[e]! -= mit.toHealth;
-      fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!);
+      // Chain arcs read as energy regardless of the source weapon.
+      fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!, 0, 0, ImpactProfile.Arc);
+      emitBlood(fx, enemies, e, enemies.posX[e]! - ox, enemies.posZ[e]! - oz);
+      fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
+      // Visible arc from the source to this enemy (from in x,z; to in dx,dz).
+      fx.push('chain', ox, oz, enemies.posX[e]!, enemies.posZ[e]!);
       hops++;
       mult *= mods.chainFalloff; // each successive arc weaker
     }
   }
+}
+
+/** Push a blood-spray FX for a biological enemy hit. `hx,hz` = incoming travel
+ *  direction (un-normalized ok); the render layer throws spurts that way and
+ *  drops a directional floor decal. Mechanical enemies (no `gore`) spray nothing
+ *  — their death dust covers it. Carries the enemy variant for blood vs ichor. */
+function emitBlood(fx: FxQueue, enemies: EnemyPool, e: number, hx: number, hz: number): void {
+  const v = enemies.variant[e]!;
+  if (!ENEMY_BY_VARIANT[v]?.gore) return;
+  const l = Math.hypot(hx, hz) || 1;
+  fx.push('blood', enemies.posX[e]!, enemies.posZ[e]!, hx / l, hz / l, v);
 }
 
 /** Returns a unit aim direction (x,z) for the weapon, or null if no target.
@@ -293,8 +439,10 @@ export function resolveAim(
   w: WeaponInstance,
   player: Player,
   enemies: EnemyPool,
+  rangeMult = 1,
 ): { x: number; z: number } | null {
   const rule = w.def.targeting;
+  const range = w.def.range * rangeMult; // effective range (progression attribute)
 
   // Mouse-directed: fire toward the ground cursor; soft-snap to the enemy
   // nearest the cursor when one is in range, else straight at the cursor.
@@ -303,18 +451,18 @@ export function resolveAim(
       const ax = player.aim.x - player.pos.x;
       const az = player.aim.z - player.pos.z;
       if (rule === 'nearest-to-aim') {
-        const snap = nearestToPoint(player, enemies, player.aim.x, player.aim.z, w.def.range);
+        const snap = nearestToPoint(player, enemies, player.aim.x, player.aim.z, range);
         if (snap) return snap;
       }
       const l = Math.hypot(ax, az);
       if (l > 1e-6) return { x: ax / l, z: az / l };
     }
     // Fall back to nearest enemy when there's no cursor (e.g. keyboard-only).
-    return nearestToPoint(player, enemies, player.pos.x, player.pos.z, w.def.range);
+    return nearestToPoint(player, enemies, player.pos.x, player.pos.z, range);
   }
 
-  if (rule === 'lowest-health') return lowestHealth(player, enemies, w.def.range);
-  return nearestToPoint(player, enemies, player.pos.x, player.pos.z, w.def.range);
+  if (rule === 'lowest-health') return lowestHealth(player, enemies, range);
+  return nearestToPoint(player, enemies, player.pos.x, player.pos.z, range);
 }
 
 function nearestToPoint(

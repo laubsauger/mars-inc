@@ -3,7 +3,7 @@
 
 import { Rng } from '../core/rng';
 import { type Player, createPlayer, stepPlayer, resetPlayer } from './player';
-import { EnemyPool, ENEMY_DISPLAY_NAME } from './enemies';
+import { EnemyPool, ENEMY_DISPLAY_NAME, splitOnDeath } from './enemies';
 import { EnemySystem } from './enemy-system';
 import { EnemyAttackSystem } from './enemy-attacks';
 import { BossController } from './boss';
@@ -12,6 +12,8 @@ import { availableEvolution } from '../content/weapons/evolutions';
 import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
 import { WaveDirector, computeAdaptation } from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
+import { DroneSystem } from './combat/drones';
+import { radialPush } from './combat/knockback';
 import { equip } from './combat/weapon';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
 import { ShardPool } from './xp';
@@ -44,6 +46,15 @@ export interface RunSummary {
   upgrades: { name: string; level: number }[];
 }
 
+/** A reusable character/build sheet (T43) — shown on the end screen, the pause
+ *  menu, and the warrior panel. Derived live from player + mods. */
+export interface CharacterSheet {
+  level: number;
+  weapon: string;
+  attributes: { label: string; value: string }[];
+  upgrades: { name: string; level: number }[];
+}
+
 const COUNTDOWN_SECONDS = 3;
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
@@ -54,6 +65,7 @@ const ZERO_INPUT: InputSnapshot = {
   moveZ: 0,
   sprint: false,
   pause: false,
+  pickup: false,
   mouseX: -1,
   mouseY: -1,
   mouseInside: false,
@@ -79,6 +91,8 @@ export class World {
   /** Set to the evolved weapon's name the step it evolves (T34); HUD announces. */
   justEvolved: string | null = null;
   readonly weaponSystem: WeaponSystem;
+  /** Companion drones orbiting the player, auto-hunting enemies (T40/T42). */
+  readonly drones = new DroneSystem();
   readonly shards: ShardPool;
   readonly mods: RunMods;
   /** Dynamic build engine (T38): conditional modifiers + triggers. */
@@ -87,6 +101,8 @@ export class World {
   private firingRampSec = 0;
   /** Damage dealt by on-hit triggers this step (T39, folded into run stats). */
   private hitTriggerDamage = 0;
+  /** Damage dealt by the repulsor nova this step (T42, folded into run stats). */
+  private novaDamageThisStep = 0;
   /** Render-facing FX events; the render layer drains this each frame. */
   readonly fx = new FxQueue();
   readonly director: WaveDirector;
@@ -178,7 +194,48 @@ export class World {
     stepPlayer(this.player, this.input, dt);
     // Adapt composition/pace to the build (bounded, V12) — never per-enemy stats.
     this.director.step(this.enemies, this.rng, this.elapsed, dt, computeAdaptation(this.mods));
-    this.enemySystem.step(this.player, this.tick, dt);
+    this.enemySystem.step(this.player, this.tick, dt, this.fx);
+    // Companion drones hunt + fire into the shared projectile pool (V3 pipeline).
+    // After the enemy system so the spatial hash is current; before the weapon
+    // system so their bolts are stepped/collided this frame too.
+    this.drones.setCount(this.player.droneCount);
+    this.drones.step(
+      this.player,
+      this.enemies,
+      this.enemySystem.hash,
+      this.weaponSystem.projectiles,
+      dt,
+      this.mods.damageMult,
+    );
+    // Repulsor nova (CC, T42): on its interval, shove every nearby enemy outward
+    // and deal light AoE through the pipeline (V3) — cuts space in a blob.
+    this.novaDamageThisStep = 0;
+    if (this.player.novaInterval > 0) {
+      this.player.novaTimer -= dt;
+      if (this.player.novaTimer <= 0) {
+        this.player.novaTimer = this.player.novaInterval;
+        const px = this.player.pos.x;
+        const pz = this.player.pos.z;
+        radialPush(
+          this.enemies,
+          this.enemySystem.hash,
+          px,
+          pz,
+          this.player.novaRadius,
+          this.player.novaForce,
+        );
+        this.novaDamageThisStep = applyAreaDamage(
+          this.enemies,
+          this.enemySystem.hash,
+          px,
+          pz,
+          this.player.novaRadius,
+          { amount: this.player.novaDamage * this.mods.damageMult, damageType: 'kinetic' },
+          this.rng,
+        );
+        this.fx.push('impact', px, pz); // shockwave ring
+      }
+    }
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
     this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
@@ -207,6 +264,7 @@ export class World {
     const triggerDmg = this.fireKillTriggers();
     // Status step (§5.4): burn DoT, chill/mark decay (T39).
     const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx);
+    this.enemies.decayHitFlash(dt); // cosmetic hit-flash fade (T40, view tints it)
     emitShards(this.shards, this.weaponSystem.kills);
     // Weapon crates drop from kills; collecting one swaps the primary weapon (T33).
     this.weaponDrops.step(
@@ -215,6 +273,8 @@ export class World {
       this.weaponSystem,
       this.rng,
       this.fx,
+      dt,
+      this.input.pickup,
     );
     this.pendingLevelUps += stepXp(this.shards, this.player, dt);
 
@@ -223,9 +283,16 @@ export class World {
     for (const k of this.weaponSystem.kills) {
       const v = k.variant;
       this.stats.killsByVariant[v] = (this.stats.killsByVariant[v] ?? 0) + 1;
+      // Splitter (blob): rupture into smaller children at the death site (V9
+      // telegraphed pop). Children are a terminal variant — no further splits.
+      splitOnDeath(this.enemies, v, k.x, k.z, this.rng);
     }
     this.stats.damageDealt +=
-      this.weaponSystem.damageThisStep + triggerDmg + this.hitTriggerDamage + statusDmg;
+      this.weaponSystem.damageThisStep +
+      triggerDmg +
+      this.hitTriggerDamage +
+      statusDmg +
+      this.novaDamageThisStep;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
     this.stats.damageTaken += Math.max(0, healthBefore - this.player.health);
@@ -382,6 +449,7 @@ export class World {
     this.effects.reset();
     this.firingRampSec = 0;
     this.director.reset();
+    this.drones.reset();
     this.weaponSystem.reset();
     this.weaponSystem.add(equip(contractualSidearm));
     resetRunStats(this.stats);
@@ -514,6 +582,38 @@ export class World {
       bossKills: this.stats.bossKills,
       killsByType,
       upgrades,
+    };
+  }
+
+  /** Live character/build sheet — reused by the end screen, pause menu, warrior
+   *  panel (T43). Reads the run-mod layer + player stats into readable rows. */
+  characterSheet(): CharacterSheet {
+    const m = this.mods;
+    const s = this.player.stats;
+    const p = this.player;
+    const pct = (x: number): string => `${Math.round(x * 100)}%`;
+    const attributes = [
+      { label: 'Health', value: `${Math.round(p.health)} / ${Math.round(p.maxHealth)}` },
+      { label: 'Damage', value: `×${m.damageMult.toFixed(2)}` },
+      { label: 'Fire rate', value: `×${m.fireRateMult.toFixed(2)}` },
+      { label: 'Crit bonus', value: `+${pct(m.critChanceAdd)}` },
+      { label: 'Range', value: `×${m.rangeMult.toFixed(2)}` },
+      { label: 'Projectiles', value: `${m.projectileCount}` },
+      { label: 'Pierce', value: m.pierce > 0 ? `+${m.pierce}` : '—' },
+      {
+        label: 'Chain',
+        value: m.chainCount > 0 ? `${m.chainCount} arc${m.chainCount > 1 ? 's' : ''}` : '—',
+      },
+      { label: 'Blast', value: m.blastRadius > 0 ? `${m.blastRadius.toFixed(1)} m` : '—' },
+      { label: 'Move speed', value: s.moveSpeed.toFixed(1) },
+      { label: 'Sprint', value: `${s.sprintCharges}× · ${s.sprintCooldown.toFixed(1)}s` },
+      { label: 'Magnet', value: `${p.magnetRadius.toFixed(1)} m` },
+    ];
+    return {
+      level: p.level,
+      weapon: this.weaponSystem.weapons[0]?.def.displayName ?? '—',
+      attributes,
+      upgrades: this.runSummary().upgrades,
     };
   }
 

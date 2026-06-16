@@ -49,20 +49,96 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       player.health += 20;
     },
   },
+  {
+    id: 'deflector-array',
+    name: 'Deflector Array',
+    description: '+1 shield (absorbs one hit, recharges); each level also speeds recharge.',
+    tags: ['defense', 'shield'],
+    rarity: 'uncommon',
+    maxLevel: 4,
+    baseWeight: 8,
+    synergyWeight: 3,
+    apply: ({ player }) => {
+      player.shieldMax += 1;
+      player.shieldCharges = player.shieldMax; // grant the new charge immediately
+      player.shieldRecharge = Math.max(4, player.shieldRecharge - 1.5); // faster regen
+    },
+  },
+  {
+    id: 'hunter-killer-drone',
+    name: 'Hunter-Killer Drone',
+    description: '+1 companion drone that orbits you and shoots enemies on its own.',
+    tags: ['drone', 'summon'],
+    rarity: 'rare',
+    maxLevel: 6,
+    baseWeight: 6,
+    synergyWeight: 4,
+    apply: ({ player }) => {
+      player.droneCount += 1;
+    },
+  },
+  {
+    id: 'repulsor-pulse',
+    name: 'Repulsor Pulse',
+    description:
+      'Periodic shockwave shoves nearby enemies back (+light damage); levels speed it up.',
+    tags: ['defense', 'control', 'kinetic'],
+    rarity: 'uncommon',
+    maxLevel: 5,
+    baseWeight: 8,
+    synergyWeight: 3,
+    apply: ({ player }) => {
+      if (player.novaInterval === 0) {
+        player.novaInterval = 4.5; // first level enables it
+        player.novaTimer = 1.5; // fire soon after taking it
+      } else {
+        player.novaInterval = Math.max(1.8, player.novaInterval - 0.6);
+        player.novaRadius += 1;
+        player.novaForce += 4;
+        player.novaDamage += 6;
+      }
+    },
+  },
+  {
+    id: 'concussive-rounds',
+    name: 'Concussive Rounds',
+    description: 'Your shots knock enemies back on hit — punch a channel through the swarm.',
+    tags: ['control', 'kinetic'],
+    rarity: 'uncommon',
+    maxLevel: 4,
+    baseWeight: 8,
+    synergyWeight: 3,
+    apply: ({ mods }) => {
+      mods.knockback += 7;
+    },
+  },
+  {
+    id: 'long-arm',
+    name: 'Long-Arm Clause',
+    description: '+15% weapon range.',
+    tags: ['range'],
+    rarity: 'common',
+    maxLevel: 4,
+    baseWeight: 9,
+    synergyWeight: 2,
+    apply: ({ mods }) => {
+      mods.rangeMult += 0.15;
+    },
+  },
 
   // ── Uncommon ──────────────────────────────────────────────────────────────
   {
     id: 'ricochet-rounds',
     name: 'Ricochet Rounds',
-    description: 'Arcs reach +1 enemy and further.',
-    tags: ['chain', 'energy'],
+    description: 'Shots that run out of punch-through BOUNCE to a new enemy (+1 bounce).',
+    tags: ['ricochet', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 6,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      mods.chainCount += 1;
-      mods.chainRange += 2;
+      mods.ricochet += 1;
+      mods.ricochetRange += 1.5;
     },
   },
   {

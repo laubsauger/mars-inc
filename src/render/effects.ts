@@ -17,7 +17,7 @@ import {
   type Scene,
 } from 'three';
 import { COL } from './art/palette';
-import type { FxEvent } from '../sim/fx';
+import { type FxEvent, ImpactProfile } from '../sim/fx';
 
 interface Spawn {
   x: number;
@@ -47,18 +47,26 @@ class EffectPool {
   private b: Float32Array;
   private yOffset: number;
 
-  constructor(scene: Scene, geo: BufferGeometry, capacity: number, yOffset: number) {
+  constructor(
+    scene: Scene,
+    geo: BufferGeometry,
+    capacity: number,
+    yOffset: number,
+    depthTest = true,
+  ) {
     // Solid additive geometry (no texture). CanvasTexture maps don't bind under
     // the WebGPU backend here; flat discs/rings render reliably like the
     // projectile/enemy instanced meshes do. The dummy tilts each instance flat.
     const mat = new MeshBasicMaterial({
       transparent: true,
       blending: AdditiveBlending,
-      // depthWrite off (glows don't occlude), but depthTest ON so the player /
-      // enemies in front of a ground effect correctly occlude it (trails read as
-      // behind him). They sit just above the floor so inlays never hide them.
+      // depthWrite off (glows don't occlude). depthTest ON for floor effects so
+      // the player/enemies in front occlude them (trails read as behind him).
+      // OFF for hit impacts: they land AT the enemy, so depth-testing clips the
+      // ring against that very body → a ring "chopped" on one edge. A brief
+      // additive flash over the body reads correct; the chop does not.
       depthWrite: false,
-      depthTest: true,
+      depthTest,
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);
@@ -161,10 +169,11 @@ export class Effects {
   constructor(scene: Scene) {
     // Disc flash for muzzle/dust, an actual annulus for impact shockwaves.
     this.muzzle = new EffectPool(scene, new CircleGeometry(0.5, 14), 256, 0.6);
-    // Impact ring: a full, evenly-segmented annulus lifted a touch off the floor
-    // so it isn't clipped by ground inlays. Kept modest so the top-down ellipse
-    // doesn't read as a stretched smear.
-    this.impact = new EffectPool(scene, new RingGeometry(0.34, 0.5, 40), 512, 0.7);
+    // Impact ring: a full, evenly-segmented annulus lifted a touch off the floor.
+    // depthTest OFF — hits land AT the enemy, so testing would clip the ring
+    // against that body (the "chopped on one edge" artifact). A brief additive
+    // flash over the body reads correct.
+    this.impact = new EffectPool(scene, new RingGeometry(0.34, 0.5, 40), 512, 0.7, false);
     this.dust = new EffectPool(scene, new CircleGeometry(0.5, 16), 1024, 0.3);
   }
 
@@ -178,32 +187,17 @@ export class Effects {
           this.muzzle.spawn({
             x: e.x,
             z: e.z,
-            s0: 2.6,
-            s1: 1.2,
+            s0: 2.1,
+            s1: 1.0,
             life: 0.11,
             spin: 8,
             color: COL.kineticGold,
           });
           break;
         case 'impact':
-          this.impact.spawn({
-            x: e.x,
-            z: e.z,
-            s0: 0.8,
-            s1: 2.6,
-            life: 0.28,
-            spin: 0,
-            color: COL.sunHigh,
-          });
-          this.dust.spawn({
-            x: e.x,
-            z: e.z,
-            s0: 1.4,
-            s1: 2.6,
-            life: 0.32,
-            spin: 3,
-            color: COL.kineticGold,
-          });
+          // Per-weapon-family hit read (art doc): a sidearm tick must not look
+          // like an explosive blast. Profile rides in `variant`.
+          this.impactFx(e.x, e.z, e.variant as ImpactProfile);
           break;
         case 'death':
           // Comic dust poof + scrap scatter, tinted by variant.
@@ -227,6 +221,31 @@ export class Effects {
           });
           break;
       }
+    }
+  }
+
+  /** Distinct hit FX per weapon family (art doc Effects Plan). Each family gets
+   *  its own ring size/color/dust so the player reads the weapon from the hit. */
+  private impactFx(x: number, z: number, profile: ImpactProfile): void {
+    switch (profile) {
+      case ImpactProfile.Tick: // sidearm: sharp small yellow-white spark
+        this.impact.spawn({ x, z, s0: 0.5, s1: 1.7, life: 0.16, spin: 0, color: COL.sunHigh });
+        this.muzzle.spawn({ x, z, s0: 1.1, s1: 0.3, life: 0.08, spin: 6, color: COL.kineticGold });
+        break;
+      case ImpactProfile.Stitch: // rotary: tiny rapid brass chip, minimal dust
+        this.impact.spawn({ x, z, s0: 0.4, s1: 1.2, life: 0.12, spin: 0, color: COL.brass });
+        break;
+      case ImpactProfile.Arc: // energy: angular cyan flash, no organic dust
+        this.impact.spawn({ x, z, s0: 0.7, s1: 2.3, life: 0.2, spin: 0, color: COL.shieldCyan });
+        this.muzzle.spawn({ x, z, s0: 1.0, s1: 0.2, life: 0.1, spin: 5, color: COL.shieldCyan });
+        break;
+      case ImpactProfile.Blast: // explosive: big ring + heavy dust wall
+        this.impact.spawn({ x, z, s0: 0.8, s1: 3.4, life: 0.34, spin: 0, color: COL.sunHigh });
+        this.dust.spawn({ x, z, s0: 1.6, s1: 3.4, life: 0.4, spin: 3, color: COL.marsDust });
+        break;
+      default: // generic (enemy attacks, drops, status ticks)
+        this.impact.spawn({ x, z, s0: 0.8, s1: 2.6, life: 0.28, spin: 0, color: COL.sunHigh });
+        this.dust.spawn({ x, z, s0: 1.4, s1: 2.6, life: 0.32, spin: 3, color: COL.kineticGold });
     }
   }
 

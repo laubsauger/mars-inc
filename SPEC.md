@@ -106,7 +106,7 @@ T27|x|main menu over live arena (8 signage items) + Warrior(Lilu Tubs)/Records/S
 T28|x|determinism: seeded RNG threaded through sim|V16
 T29|x|headless sim tests: bounded counts, runs terminate, boss spawns, pool ⊥ empty, dmg bands|V8,V19
 T30|~|unit tests: damage/upgrade-stack/xp/spawn-budget/drop/target-select/status/evo-req|V19
-T31|.|Playwright: boot→menu→run→move→pause→upgrade→death→restart→save persist→no-WebGPU unsupported screen→viewport→focus-loss|V15
+T31|x|Playwright: boot→menu→run→move→pause→upgrade→death→restart→save persist→no-WebGPU unsupported screen→viewport→focus-loss|V15
 T32|x|perf benchmark scenes 500/1k/2k enemies + projectile storm + crowd; record sim/render/draws/alloc (sim+alloc headless; render/draws → T31 GPU bench)|V5,V17
 T33|.|slice content: arena Rust Crown, char Lilu Tubs, 6 weapons, 8 enemies, boss Gatekeeper of Phobos, 34 upgrades. art refs: `docs/art-direction.md` model/weapon/humor briefs|§I.data,V18
 T34|x|weapon evolution combo gating: data-driven EVOLUTIONS (base weapon id → evolved def behind upgrade-combo requirements) + availableEvolution checker; world.choose auto-evolves the primary when the combo completes (⊥ weapon level alone); evolved Rust Devil Apex / Tesla Cascade; HUD evolution banner. art refs: `docs/art-direction.md` weapon evolution read|V18

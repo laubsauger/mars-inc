@@ -13,6 +13,8 @@ import {
   FORECLOSURE_MORTAR,
   RIOT_SHOTGUNNER,
   AUDIT_BRUTE,
+  FROSTBITE_AUDITOR,
+  LIABILITY_BLOB,
   type EnemyType,
 } from '../enemies';
 import type { Rng } from '../../core/rng';
@@ -92,8 +94,8 @@ export function budgetAt(elapsed: number): SpawnBudget {
     // Opening accrual must fund the first clustered pulses (waveGroup × gates),
     // else the bank trickle starves the waves and almost nothing spawns in the
     // first minute. Still gentle vs late game and monotonic (V8).
-    threatPoints: 4.5 + elapsed * 0.25,
-    maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(8 + elapsed * 2.1)),
+    threatPoints: 3.0 + elapsed * 0.15,
+    maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(6 + elapsed * 1.6)),
     eliteBudget: Math.floor(elapsed / 30),
     rangedBudget: 0,
     hazardBudget: 0,
@@ -126,30 +128,26 @@ export class WaveDirector {
   }
 
   private pickType(rng: Rng, elapsed: number, houndBias: number): EnemyType {
-    // Severance Lobbers (ranged) start trickling in after ~45s. Gated by time so
-    // the early-game rng stream is untouched (determinism stays stable, V16).
-    // Audit Brutes (melee wall) start showing up around 40s.
-    if (elapsed > 40 && rng.next() < Math.min(0.12, (elapsed - 40) * 0.003)) {
-      return AUDIT_BRUTE;
+    // Specials (elites + RANGED) are a small, slowly-growing SLICE of the swarm —
+    // they spice the fodder, never replace it. ONE gate decides "special or
+    // fodder" so their combined rate stays bounded (the old per-type rolls summed
+    // up to a shooter-dominated mid-game). A second roll picks an unlocked type;
+    // ranged classes unlock late + rare so the early game stays fair (V12 bounded).
+    const specialChance = Math.min(0.3, Math.max(0, elapsed - 35) * 0.0035);
+    if (rng.next() < specialChance) {
+      const r = rng.next();
+      // Melee Brute first; ranged classes ramp in much later and stay a minority.
+      if (elapsed > 40 && r < 0.18) return LIABILITY_BLOB; // splitter (AoE check)
+      if (elapsed > 50 && r < 0.3) return SEVERANCE_LOBBER; // lobbed AoE
+      if (elapsed > 70 && r < 0.4) return RIOT_SHOTGUNNER; // close burst
+      if (elapsed > 80 && r < 0.48) return FROSTBITE_AUDITOR; // cryo
+      if (elapsed > 90 && r < 0.56) return REPO_MARSHAL; // gun
+      if (elapsed > 110 && r < 0.62) return FORECLOSURE_MORTAR; // artillery
+      return AUDIT_BRUTE; // the bulk of specials are the melee wall
     }
-    if (elapsed > 45 && rng.next() < Math.min(0.18, (elapsed - 45) * 0.004)) {
-      return SEVERANCE_LOBBER;
-    }
-    // Riot Shotgunners (close burst) push the player to keep distance.
-    if (elapsed > 50 && rng.next() < Math.min(0.14, (elapsed - 50) * 0.003)) {
-      return RIOT_SHOTGUNNER;
-    }
-    // Repossession Marshals (gun) trickle in a bit later than the lobbers.
-    if (elapsed > 60 && rng.next() < Math.min(0.15, (elapsed - 60) * 0.003)) {
-      return REPO_MARSHAL;
-    }
-    // Foreclosure Mortars (long-range artillery) are a rare late-game zoner.
-    if (elapsed > 75 && rng.next() < Math.min(0.08, (elapsed - 75) * 0.002)) {
-      return FORECLOSURE_MORTAR;
-    }
-    // Debt Hounds start appearing after ~25s, with rising probability + build bias.
+    // Fodder: Rust Mites + a growing minority of Debt Hounds.
     if (elapsed > 25) {
-      const p = Math.min(0.5, (elapsed - 25) * 0.01 + houndBias);
+      const p = Math.min(0.4, (elapsed - 25) * 0.006 + houndBias);
       if (rng.next() < p) return DEBT_HOUND;
     }
     return RUST_MITE;

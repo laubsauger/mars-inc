@@ -23,7 +23,7 @@ test('die → earn Glory → buy permanent → next run applies it (T26)', async
   });
 
   // Game-over screen appears; Glory was awarded for the run.
-  await expect(page.getByText('MARTIAN GLORY')).toBeVisible({ timeout: 6000 });
+  await expect(page.getByText('Glory earned')).toBeVisible({ timeout: 6000 });
   const glory = await page.evaluate(
     () => (window as unknown as { __MARS__: Hook }).__MARS__.save.current.currencies.martianGlory,
   );

@@ -8,6 +8,7 @@
 // readability (gameplay reads over the muted floor; gold trim only as accent).
 
 import {
+  AdditiveBlending,
   AmbientLight,
   BackSide,
   BoxGeometry,
@@ -18,6 +19,7 @@ import {
   DirectionalLight,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PointLight,
@@ -70,8 +72,8 @@ interface GateDoors {
   cz: number;
   tx: number; // tangent (slide axis)
   tz: number;
-  left: Mesh;
-  right: Mesh;
+  leftPivot: Group; // pivot at the outer (pillar-side) edge of each door
+  rightPivot: Group;
   open: number; // 0 closed … 1 open (animated)
 }
 
@@ -107,37 +109,49 @@ export class ArenaView {
     ring(ARENA_RADIUS * 0.74, ARENA_RADIUS * 0.752, FLOOR_PANEL, 0.024);
     ring(ARENA_RADIUS * 0.9, ARENA_RADIUS * 0.912, TRIM, 0.02); // thin gold boundary
 
+    // Radial seams: wider + a low raised ridge so the key light rakes one face
+    // (cheap "normal" read), with a faint emissive so bloom kisses the edge and
+    // they actually read against the dusty floor. One shared material (24 seams).
+    const len = ARENA_RADIUS * 0.7;
+    const midR = ARENA_RADIUS * 0.2 + len * 0.5;
+    const seamGeo = new BoxGeometry(0.2, 0.09, len);
+    const seamMat = new MeshStandardMaterial({
+      color: FLOOR_LINE,
+      emissive: FLOOR_LINE,
+      emissiveIntensity: 0.18,
+      roughness: 0.6,
+      metalness: 0.1,
+    });
     for (let i = 0; i < 24; i++) {
       const a = (i / 24) * Math.PI * 2;
-      const len = ARENA_RADIUS * 0.7;
-      const midR = ARENA_RADIUS * 0.2 + len * 0.5;
-      const seam = new Mesh(new BoxGeometry(0.06, 0.03, len), mat(FLOOR_LINE, 0.92, 0.05));
-      seam.position.set(Math.cos(a) * midR, 0.022, Math.sin(a) * midR);
+      const seam = new Mesh(seamGeo, seamMat);
+      seam.position.set(Math.cos(a) * midR, 0.03, Math.sin(a) * midR);
       seam.rotation.y = Math.PI / 2 - a;
+      seam.castShadow = true;
       seam.receiveShadow = true;
       this.group.add(seam);
     }
   }
 
   private buildEmblem(): void {
-    // Just an outline ring + a tiny centre pip — NOT a filled bright plate, so the
-    // dark floor (which receives shadows) shows through and the player reads over
-    // the centre instead of being lost on a glowing orange disc.
-    const outline = new Mesh(
-      new RingGeometry(ARENA_RADIUS * 0.13, ARENA_RADIUS * 0.145, 64),
-      new MeshStandardMaterial({ color: EMBLEM, emissive: EMBLEM, emissiveIntensity: 0.35 }),
+    // Centre mark = a soft formless floor GLOW only — no ring/pip geometry (those
+    // read as a lamp shade + bulb fixture from the top-down angle). Keeps a gentle
+    // warm pool of light at the arena centre without a hard "fixture" silhouette,
+    // and stays faint so it never washes out the player standing on it.
+    const glow = new Mesh(
+      new CircleGeometry(ARENA_RADIUS * 0.14, 48),
+      new MeshBasicMaterial({
+        color: EMBLEM,
+        transparent: true,
+        opacity: 0.07,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
     );
-    outline.rotation.x = -Math.PI / 2;
-    outline.position.y = 0.025;
-    this.group.add(outline);
-
-    const pip = new Mesh(
-      new RingGeometry(ARENA_RADIUS * 0.018, ARENA_RADIUS * 0.03, 24),
-      new MeshStandardMaterial({ color: EMBLEM, emissive: EMBLEM, emissiveIntensity: 0.3 }),
-    );
-    pip.rotation.x = -Math.PI / 2;
-    pip.position.y = 0.025;
-    this.group.add(pip);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.02;
+    this.group.add(glow);
   }
 
   private buildWallAndCrowd(): void {
@@ -279,7 +293,11 @@ export class ArenaView {
     // they emerge, and adds a warm read to the chamber.
     const sill = new Mesh(
       new BoxGeometry(GATE_HALF_WIDTH * 2, 0.06, 0.5),
-      new MeshStandardMaterial({ color: PORTAL_GLOW, emissive: PORTAL_GLOW, emissiveIntensity: 0.6 }),
+      new MeshStandardMaterial({
+        color: PORTAL_GLOW,
+        emissive: PORTAL_GLOW,
+        emissiveIntensity: 0.6,
+      }),
     );
     sill.position.set(cos * (ARENA_RADIUS + 1.4), 0.12, sin * (ARENA_RADIUS + 1.4));
     sill.rotation.y = faceY;
@@ -336,9 +354,9 @@ export class ArenaView {
         mat(STEEL_DARK, 0.85, 0.3),
       );
       jamb.position.set(
-        cos * (ARENA_RADIUS + 1.6) + tx * side * (halfW + 2.2),
+        cos * (ARENA_RADIUS + 1.6) + tx * side * (GATE_HALF_WIDTH + 2.2),
         (GATE_HEIGHT + 2.4) / 2,
-        sin * (ARENA_RADIUS + 1.6) + tz * side * (halfW + 2.2),
+        sin * (ARENA_RADIUS + 1.6) + tz * side * (GATE_HALF_WIDTH + 2.2),
       );
       jamb.rotation.y = faceY;
       jamb.castShadow = true;
@@ -365,13 +383,22 @@ export class ArenaView {
     plate.rotation.y = faceY;
     this.group.add(plate);
 
-    // Two blast doors that slide apart into the pillars.
-    const doorGeo = new BoxGeometry(GATE_HALF_WIDTH + 0.2, GATE_HEIGHT, 1);
+    // Two blast doors that RETRACT into the pillars by scaling toward their outer
+    // edge (no sliding past the frame → nothing to hide). Each door lives in a
+    // pivot Group anchored at its outer (pillar-side) edge; scaling the pivot's
+    // tangent axis to ~0 collapses the door into the pillar (T40).
+    const doorW = GATE_HALF_WIDTH + 0.2;
+    const doorGeo = new BoxGeometry(doorW, GATE_HEIGHT, 1);
     const doorMat = (): MeshStandardMaterial => mat(STEEL, 0.7, 0.55);
-    const makeDoor = (): Mesh => {
+    const makeDoor = (sideSign: number): Group => {
+      const pivot = new Group();
+      const outer = sideSign * doorW; // tangent offset of the outer (pillar) edge
+      pivot.position.set(cx + tx * outer, GATE_HEIGHT / 2, cz + tz * outer);
+      pivot.rotation.y = faceY;
       const d = new Mesh(doorGeo, doorMat());
       d.castShadow = true;
       d.receiveShadow = true;
+      d.position.x = (-sideSign * doorW) / 2; // door centre, inward from the pivot
       // gold hazard chevrons (a couple of thin trims on the face)
       for (const cy of [-1.6, 0, 1.6]) {
         const chev = new Mesh(
@@ -382,13 +409,14 @@ export class ArenaView {
         d.add(chev);
       }
       outlineHull(d, OUTLINE_W.prop);
-      this.group.add(d);
-      return d;
+      pivot.add(d);
+      this.group.add(pivot);
+      return pivot;
     };
-    const left = makeDoor();
-    const right = makeDoor();
+    const leftPivot = makeDoor(-1);
+    const rightPivot = makeDoor(1);
 
-    const gate: GateDoors = { angle, cx, cz, tx, tz, left, right, open: 0 };
+    const gate: GateDoors = { angle, cx, cz, tx, tz, leftPivot, rightPivot, open: 0 };
     this.gates.push(gate);
     this.placeDoors(gate, 0);
 
@@ -416,18 +444,13 @@ export class ArenaView {
     }
   }
 
-  /** Position both doors for a given open amount (0 closed → 1 slid into pillars). */
+  /** Open amount (0 closed → 1 open) retracts each door into its pillar by
+   *  scaling the pivot's tangent axis toward zero — no geometry slides past the
+   *  frame, so nothing pokes out the sides. */
   private placeDoors(g: GateDoors, open: number): void {
-    const closedOffset = (GATE_HALF_WIDTH + 0.2) / 2; // half a door from centre
-    const slide = open * (GATE_HALF_WIDTH + 0.1); // how far each door retracts
-    const y = GATE_HEIGHT / 2;
-    const faceY = Math.PI / 2 - g.angle;
-    const offL = -(closedOffset + slide);
-    const offR = closedOffset + slide;
-    g.left.position.set(g.cx + g.tx * offL, y, g.cz + g.tz * offL);
-    g.right.position.set(g.cx + g.tx * offR, y, g.cz + g.tz * offR);
-    g.left.rotation.y = faceY;
-    g.right.rotation.y = faceY;
+    const s = Math.max(0.02, 1 - open * 0.96); // never fully 0 (avoids degenerate scale)
+    g.leftPivot.scale.x = s;
+    g.rightPivot.scale.x = s;
   }
 
   /** Animate gate doors: open while an enemy is telegraphing near the gate (T37). */

@@ -20,7 +20,12 @@ export class ShardView {
 
   constructor(scene: Scene, capacity: number = MAX_SHARDS) {
     const geo = new OctahedronGeometry(0.28);
-    const mat = new MeshBasicMaterial({ color: COL.shieldCyan, toneMapped: false });
+    // Pushed brighter (HDR) so XP shards keep their glow under the lowered global
+    // bloom strength (arena calmed, pickups left reading as before).
+    const mat = new MeshBasicMaterial({
+      color: COL.shieldCyan.clone().multiplyScalar(1.4),
+      toneMapped: false,
+    });
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.frustumCulled = false;

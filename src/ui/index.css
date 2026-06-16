@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Short-viewport variant — tightens vertical spacing on low screens (menus/HUD). */
+@custom-variant short (@media (max-height: 720px));
+
 /* Mirrors docs/art-direction.md palette. Render-side source: render/art/palette.ts */
 @theme {
   --color-umber: #2a1712;

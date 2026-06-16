@@ -12,6 +12,7 @@ export interface SettingsData {
   reduceFlash: boolean;
   uiScale: number; // 0.8..1.4
   pauseOnFocusLoss: boolean;
+  enemyHealthbars: boolean; // show HP bars over enemies (T36 opt-in)
 }
 
 export interface AccessibilityData {
@@ -87,6 +88,7 @@ export function defaultSettings(): SettingsData {
     reduceFlash: false,
     uiScale: 1,
     pauseOnFocusLoss: true,
+    enemyHealthbars: false,
   };
 }
 

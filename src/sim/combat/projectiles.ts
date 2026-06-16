@@ -28,6 +28,13 @@ export class ProjectilePool {
   readonly critMult: Float32Array;
   /** Explosive blast radius; 0 = non-explosive (T33). */
   readonly blast: Float32Array;
+  /** Impact visual profile (ImpactProfile) — drives the per-family hit FX (T37). */
+  readonly profile: Uint8Array;
+  /** Ricochet bounces remaining: on hit the projectile redirects to a new enemy
+   *  instead of dying (distinct from instant chain arcs). 0 = no bounce. */
+  readonly bounces: Int16Array;
+  /** Brief park timer (s) at a bounce point so the redirect reads as a sequence. */
+  readonly hold: Float32Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -46,6 +53,9 @@ export class ProjectilePool {
     this.critChance = new Float32Array(capacity);
     this.critMult = new Float32Array(capacity);
     this.blast = new Float32Array(capacity);
+    this.profile = new Uint8Array(capacity);
+    this.bounces = new Int16Array(capacity);
+    this.hold = new Float32Array(capacity);
   }
 
   spawn(
@@ -58,6 +68,8 @@ export class ProjectilePool {
     pierce: number,
     dmg: WeaponDamageSpec,
     blast = 0,
+    profile = 0,
+    bounces = 0,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -76,6 +88,9 @@ export class ProjectilePool {
     this.critChance[i] = dmg.critChance;
     this.critMult[i] = dmg.critMultiplier;
     this.blast[i] = blast;
+    this.profile[i] = profile;
+    this.bounces[i] = bounces;
+    this.hold[i] = 0;
     return i;
   }
 
@@ -97,6 +112,9 @@ export class ProjectilePool {
       this.critChance[i] = this.critChance[last]!;
       this.critMult[i] = this.critMult[last]!;
       this.blast[i] = this.blast[last]!;
+      this.profile[i] = this.profile[last]!;
+      this.bounces[i] = this.bounces[last]!;
+      this.hold[i] = this.hold[last]!;
     }
   }
 }

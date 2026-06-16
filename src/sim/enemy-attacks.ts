@@ -10,7 +10,7 @@
 // the shared rng (V16). See [[ranged-enemy-framework]].
 
 import { type EnemyPool, EnemyState, ENEMY_BY_VARIANT } from './enemies';
-import { type Player, hitPlayer } from './player';
+import { type Player, hitPlayer, applyChill } from './player';
 import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
 
@@ -40,6 +40,7 @@ export class EnemyProjectilePool {
   readonly damage = new Float32Array(MAX_ENEMY_PROJECTILES);
   readonly blastRadius = new Float32Array(MAX_ENEMY_PROJECTILES);
   readonly fuse = new Float32Array(MAX_ENEMY_PROJECTILES);
+  readonly frost = new Uint8Array(MAX_ENEMY_PROJECTILES); // 1 = lands a frost hazard
 
   /** Render-only arc height (visual `y`, never sim — V4). 0 at ends, peak mid.
    *  Gun rounds fly flat (no arc) — they're straight tracers. */
@@ -70,6 +71,7 @@ export class EnemyProjectilePool {
       this.damage[i] = this.damage[last]!;
       this.blastRadius[i] = this.blastRadius[last]!;
       this.fuse[i] = this.fuse[last]!;
+      this.frost[i] = this.frost[last]!;
     }
   }
 }
@@ -83,8 +85,10 @@ export class HazardPool {
   readonly fuse = new Float32Array(MAX_HAZARDS);
   readonly fuseTotal = new Float32Array(MAX_HAZARDS);
   readonly damage = new Float32Array(MAX_HAZARDS);
+  /** 0 = explosive blast, 1 = frost (chills the player) — distinct telegraph. */
+  readonly kind = new Uint8Array(MAX_HAZARDS);
 
-  spawn(x: number, z: number, radius: number, fuse: number, damage: number): number {
+  spawn(x: number, z: number, radius: number, fuse: number, damage: number, kind = 0): number {
     if (this.count >= MAX_HAZARDS) return -1;
     const i = this.count++;
     this.posX[i] = x;
@@ -93,6 +97,7 @@ export class HazardPool {
     this.fuse[i] = fuse;
     this.fuseTotal[i] = fuse;
     this.damage[i] = damage;
+    this.kind[i] = kind;
     return i;
   }
 
@@ -105,6 +110,7 @@ export class HazardPool {
       this.fuse[i] = this.fuse[last]!;
       this.fuseTotal[i] = this.fuseTotal[last]!;
       this.damage[i] = this.damage[last]!;
+      this.kind[i] = this.kind[last]!;
     }
   }
 }
@@ -168,18 +174,19 @@ export class EnemyAttackSystem {
     ex: number,
     ez: number,
     player: Player,
-    a: { speed: number; fuse: number; blastRadius: number; damage: number },
+    a: { speed: number; fuse: number; blastRadius: number; damage: number; freeze?: boolean },
     rng: Rng,
   ): void {
     // Aim at the player's ground point with a little scatter so it's dodgeable.
     const tx = player.pos.x + (rng.next() - 0.5) * 2;
     const tz = player.pos.z + (rng.next() - 0.5) * 2;
-    this.lobAt(ex, ez, tx, tz, a.speed, a.fuse, a.blastRadius, a.damage);
+    this.lobAt(ex, ez, tx, tz, a.speed, a.fuse, a.blastRadius, a.damage, a.freeze);
   }
 
   // ---- Public spawn primitives (shared by initiate + the boss, T33) ----------
 
-  /** Lob a grenade from (ex,ez) to ground point (tx,tz); cooks off into AoE. */
+  /** Lob a grenade from (ex,ez) to ground point (tx,tz); cooks off into AoE.
+   *  `freeze` arms a frost hazard (chills the player) instead of a blast. */
   lobAt(
     ex: number,
     ez: number,
@@ -189,6 +196,7 @@ export class EnemyAttackSystem {
     fuse: number,
     blastRadius: number,
     damage: number,
+    freeze = false,
   ): void {
     const pr = this.projectiles;
     if (pr.count >= MAX_ENEMY_PROJECTILES) return;
@@ -208,6 +216,7 @@ export class EnemyAttackSystem {
     pr.damage[i] = damage;
     pr.blastRadius[i] = blastRadius;
     pr.fuse[i] = fuse;
+    pr.frost[i] = freeze ? 1 : 0;
   }
 
   /** Fire one straight round from (ex,ez) toward (tx,tz) with a spread cone. */
@@ -262,7 +271,9 @@ export class EnemyAttackSystem {
         const dx = pr.posX[i]! - player.pos.x;
         const dz = pr.posZ[i]! - player.pos.z;
         if (dx * dx + dz * dz <= hitR * hitR) {
-          hitPlayer(player, pr.damage[i]!);
+          if (hitPlayer(player, pr.damage[i]!)) {
+            fx.push('dmg', player.pos.x, player.pos.z, pr.damage[i]!, 0, 2);
+          }
           fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
           pr.kill(i);
         } else if (pr.elapsed[i]! >= pr.flightTime[i]!) {
@@ -279,6 +290,7 @@ export class EnemyAttackSystem {
           pr.blastRadius[i]!,
           pr.fuse[i]!,
           pr.damage[i]!,
+          pr.frost[i]!,
         );
         fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
         pr.kill(i);
@@ -291,11 +303,22 @@ export class EnemyAttackSystem {
     for (let i = hz.count - 1; i >= 0; i--) {
       hz.fuse[i]! -= dt;
       if (hz.fuse[i]! > 0) continue;
-      // Detonate: AoE damage if the player is inside the (telegraphed) radius.
+      // Detonate. Inside the (telegraphed) radius: a blast hurts; a frost zone
+      // chills the player (slow) instead, with only a light bite.
       const dx = player.pos.x - hz.posX[i]!;
       const dz = player.pos.z - hz.posZ[i]!;
       const r = hz.radius[i]!;
-      if (dx * dx + dz * dz <= r * r) hitPlayer(player, hz.damage[i]!);
+      const inside = dx * dx + dz * dz <= r * r;
+      if (inside) {
+        if (hz.kind[i] === 1) {
+          applyChill(player, 2.5, 0.5); // 50% slow for 2.5s
+          if (hitPlayer(player, hz.damage[i]!)) {
+            fx.push('dmg', player.pos.x, player.pos.z, hz.damage[i]!, 0, 2);
+          }
+        } else if (hitPlayer(player, hz.damage[i]!)) {
+          fx.push('dmg', player.pos.x, player.pos.z, hz.damage[i]!, 0, 2);
+        }
+      }
       fx.push('impact', hz.posX[i]!, hz.posZ[i]!);
       hz.kill(i);
     }

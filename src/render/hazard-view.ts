@@ -19,8 +19,10 @@ import type { HazardPool } from '../sim/enemy-attacks';
 import { MAX_HAZARDS } from '../sim/enemy-attacks';
 import { COL } from './art/palette';
 
-const CALM = COL.marsDust; // far from detonation
-const DANGER = COL.healthRed; // about to blow
+const CALM = COL.marsDust; // blast: far from detonation
+const DANGER = COL.healthRed; // blast: about to blow
+const FROST_CALM = COL.shieldCyan; // frost zone: cool blue throughout
+const FROST_DANGER = new Color('#e8f6ff'); // frost: brightens to icy white as it blooms
 
 export class HazardView {
   private readonly ring: InstancedMesh;
@@ -92,7 +94,9 @@ export class HazardView {
       this.dummy.updateMatrix();
       this.fill.setMatrixAt(i, this.dummy.matrix);
 
-      this.c.copy(CALM).lerp(DANGER, urgency);
+      // Frost zones read cyan→white (a freezing bloom); blasts read amber→red.
+      if (pool.kind[i] === 1) this.c.copy(FROST_CALM).lerp(FROST_DANGER, urgency);
+      else this.c.copy(CALM).lerp(DANGER, urgency);
       this.ringColor.setXYZ(i, this.c.r, this.c.g, this.c.b);
       this.fillColor.setXYZ(i, this.c.r, this.c.g, this.c.b);
     }

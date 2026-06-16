@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useUiStore, type MenuView } from '../store';
+import { SocialFooter } from '../SocialFooter';
 
 const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run' };
 
@@ -201,40 +202,51 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   );
 }
 
-function SettingsPanel() {
+// Reusable settings rows — shared by the menu Settings panel and the in-game
+// pause menu so both edit the same persisted slice via `applySetting`.
+export function SettingsControls() {
   const s = useUiStore((st) => st.settings);
   const set = useUiStore((st) => st.applySetting);
   return (
+    <div className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
+      <SettingRow label="MASTER VOLUME">
+        <Slider value={s.masterVolume} onChange={(v) => set({ masterVolume: v })} />
+      </SettingRow>
+      <SettingRow label="SFX VOLUME">
+        <Slider value={s.sfxVolume} onChange={(v) => set({ sfxVolume: v })} />
+      </SettingRow>
+      <SettingRow label="SCREEN SHAKE">
+        <Slider value={s.screenShake} onChange={(v) => set({ screenShake: v })} />
+      </SettingRow>
+      <SettingRow label="UI SCALE">
+        <Slider
+          value={s.uiScale}
+          onChange={(v) => set({ uiScale: v })}
+          min={0.8}
+          max={1.4}
+          step={0.1}
+        />
+      </SettingRow>
+      <SettingRow label="ENEMY HEALTH BARS">
+        <Toggle on={s.enemyHealthbars} onChange={(v) => set({ enemyHealthbars: v })} />
+      </SettingRow>
+      <SettingRow label="REDUCE FLASH">
+        <Toggle on={s.reduceFlash} onChange={(v) => set({ reduceFlash: v })} />
+      </SettingRow>
+      <SettingRow label="HOLD TO SPRINT">
+        <Toggle on={s.holdToSprint} onChange={(v) => set({ holdToSprint: v })} />
+      </SettingRow>
+      <SettingRow label="AUTO-PAUSE ON FOCUS LOSS">
+        <Toggle on={s.pauseOnFocusLoss} onChange={(v) => set({ pauseOnFocusLoss: v })} />
+      </SettingRow>
+    </div>
+  );
+}
+
+function SettingsPanel() {
+  return (
     <Panel title="SETTINGS">
-      <div className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
-        <SettingRow label="MASTER VOLUME">
-          <Slider value={s.masterVolume} onChange={(v) => set({ masterVolume: v })} />
-        </SettingRow>
-        <SettingRow label="SFX VOLUME">
-          <Slider value={s.sfxVolume} onChange={(v) => set({ sfxVolume: v })} />
-        </SettingRow>
-        <SettingRow label="SCREEN SHAKE">
-          <Slider value={s.screenShake} onChange={(v) => set({ screenShake: v })} />
-        </SettingRow>
-        <SettingRow label="UI SCALE">
-          <Slider
-            value={s.uiScale}
-            onChange={(v) => set({ uiScale: v })}
-            min={0.8}
-            max={1.4}
-            step={0.1}
-          />
-        </SettingRow>
-        <SettingRow label="REDUCE FLASH">
-          <Toggle on={s.reduceFlash} onChange={(v) => set({ reduceFlash: v })} />
-        </SettingRow>
-        <SettingRow label="HOLD TO SPRINT">
-          <Toggle on={s.holdToSprint} onChange={(v) => set({ holdToSprint: v })} />
-        </SettingRow>
-        <SettingRow label="AUTO-PAUSE ON FOCUS LOSS">
-          <Toggle on={s.pauseOnFocusLoss} onChange={(v) => set({ pauseOnFocusLoss: v })} />
-        </SettingRow>
-      </div>
+      <SettingsControls />
       <div className="mt-3 text-xs text-bone/40">
         Key rebinding, controller, and colorblind palettes land in a later pass.
       </div>
@@ -296,6 +308,12 @@ const TREE_EDGES: ReadonlyArray<readonly [TreeNodeId, TreeNodeId]> = [
   ['blacklist-rights', 'sponsor-auditor'],
 ] as const;
 
+// Prerequisite chain: a node unlocks only once the node it branches from is
+// owned (root is always available). Forces players to spend INWARD before
+// reaching the outer milestones, so a branch is a progression, not a free pick.
+const TREE_PARENT: Partial<Record<TreeNodeId, TreeNodeId>> = {};
+for (const [a, b] of TREE_EDGES) TREE_PARENT[b] = a;
+
 const TREE_ORBITS: ReadonlyArray<{ x: number; y: number; r: number; branch: GloryBranch }> = [
   { x: 50, y: 63, r: 18, branch: 'mobility' },
   { x: 27, y: 47, r: 17, branch: 'biology' },
@@ -352,163 +370,326 @@ const BRANCH_STYLE = {
 function GloryTree() {
   const meta = useUiStore((s) => s.meta);
   const buy = useUiStore((s) => s.buyPermanent);
+  const setMenuView = useUiStore((s) => s.setMenuView);
+
+  const [hovered, setHovered] = useState<TreeNodeId | null>(null);
+  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  const byId = new Map(meta.permanents.map((p) => [p.id, p]));
+  const ownedOf = (id: string | undefined): number =>
+    id === 'root' ? 1 : id ? (byId.get(id)?.owned ?? 0) : 0;
+  const isUnlocked = (id: TreeNodeId): boolean => {
+    const parent = TREE_PARENT[id];
+    return parent === undefined || ownedOf(parent) > 0;
+  };
+  const hoveredP = hovered ? byId.get(hovered) : undefined;
+  const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered].branch) : 'mobility';
+  const hoveredLocked = hovered ? !isUnlocked(hovered) : false;
+  const hoveredParent = hovered ? TREE_PARENT[hovered] : undefined;
+
+  const clampScale = (s: number) => Math.min(2.4, Math.max(0.6, s));
+  const onPointerDown = (e: React.PointerEvent) => {
+    drag.current = { px: e.clientX, py: e.clientY, ox: view.x, oy: view.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    setView((v) => ({ ...v, x: d.ox + (e.clientX - d.px), y: d.oy + (e.clientY - d.py) }));
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
+  const reset = () => setView({ x: 0, y: 0, scale: 1 });
+
+  // Wheel zoom via a non-passive listener (React's onWheel is passive → can't
+  // preventDefault the page scroll, and we must never scroll the page — rule #1).
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setView((v) => ({ ...v, scale: clampScale(v.scale - e.deltaY * 0.0014) }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Escape closes the tree → back to the menu root.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuView('root');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setMenuView]);
+
+  // Horizontal compression: pull the side branches toward centre so the three
+  // clusters sit closer (slicker than the wide spread). Applied to every x a
+  // layout consumes (nodes, root, edges, branch rings) so they stay aligned.
+  const COMPRESS = 0.82;
+  const px = (x: number) => 50 + (x - 50) * COMPRESS;
+  const proj = (n: { x: number; y: number }) => ({ x: px(n.x), y: n.y });
+
   return (
-    <Panel title="GLORY TREE">
-      <div className="mb-4 flex items-center justify-between gap-4 border border-rust/60 bg-pit/55 px-4 py-2">
-        <div>
-          <div className="text-xs uppercase text-dust">Martian Glory</div>
-          <div className="text-2xl font-black text-gold tabular-nums">◆ {meta.glory}</div>
+    <div className="pointer-events-auto absolute inset-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_42%,rgba(50,215,255,0.08),transparent_36%),radial-gradient(circle_at_78%_30%,rgba(255,210,63,0.08),transparent_34%),radial-gradient(circle_at_22%_36%,rgba(131,240,79,0.07),transparent_32%),linear-gradient(#070504,#070504)] font-mono">
+      {/* Slim top bar — title, legend, glory pill, back. No logo, minimal height. */}
+      <header className="flex shrink-0 items-center gap-4 border-b border-rust/60 bg-pit/70 px-5 py-2">
+        <div className="shrink-0">
+          <div className="text-[10px] uppercase tracking-widest text-dust">Mars Inc terminal</div>
+          <div className="text-lg font-black leading-none text-bone">GLORY TREE</div>
         </div>
-        <div className="max-w-sm text-right text-xs leading-5 text-bone/58">
-          Permanent contracts branch into run-defining engines. Current nodes are the first ring;
-          later milestones expand this into the full passive web.
-        </div>
-      </div>
-
-      <div className="relative h-[30rem] overflow-hidden border border-rust/70 bg-[radial-gradient(circle_at_50%_70%,rgba(50,215,255,0.14),transparent_24%),radial-gradient(circle_at_78%_36%,rgba(255,210,63,0.14),transparent_24%),radial-gradient(circle_at_25%_54%,rgba(131,240,79,0.13),transparent_22%),rgba(7,5,4,0.72)] shadow-[inset_0_0_0_1px_rgba(240,200,121,0.08)]">
-        <svg
-          className="absolute inset-0 h-full w-full"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <filter id="glory-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="1.1" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          {TREE_ORBITS.map((o) => {
-            const style = BRANCH_STYLE[o.branch];
-            return (
-              <ellipse
-                key={`${o.branch}-${o.x}`}
-                cx={o.x}
-                cy={o.y}
-                rx={o.r}
-                ry={o.r * 0.58}
-                fill="none"
-                stroke={style.stroke}
-                strokeWidth="0.25"
-                strokeDasharray="1.2 1.4"
-                opacity="0.28"
-              />
-            );
-          })}
-          {TREE_EDGES.map(([a, b]) => {
-            const from = TREE_NODES[a];
-            const to = TREE_NODES[b];
-            const style = BRANCH_STYLE[to.branch];
-            return (
-              <g key={`${a}-${b}`}>
-                <path
-                  d={branchPath(from, to)}
-                  fill="none"
-                  stroke={style.stroke}
-                  strokeWidth="2.8"
-                  opacity="0.14"
-                  strokeLinecap="round"
-                  filter="url(#glory-glow)"
-                />
-                <path
-                  d={branchPath(from, to)}
-                  fill="none"
-                  stroke={style.stroke}
-                  strokeWidth="0.85"
-                  opacity="0.85"
-                  strokeLinecap="round"
-                />
-                <path
-                  d={branchPath(from, to)}
-                  fill="none"
-                  stroke="#f4e4d4"
-                  strokeWidth="0.18"
-                  opacity="0.5"
-                  strokeLinecap="round"
-                  strokeDasharray="1 2"
-                />
-              </g>
-            );
-          })}
-        </svg>
-
-        <div
-          className="absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-cyan bg-pit text-2xl text-cyan shadow-[0_0_30px_rgba(50,215,255,0.38)]"
-          style={{ left: `${TREE_NODES.root.x}%`, top: `${TREE_NODES.root.y}%` }}
-          title="Lilu Tubs baseline"
-        >
-          {TREE_NODES.root.icon}
-        </div>
-
-        {meta.permanents.map((p) => {
-          if (!isTreeNodeId(p.id)) return null;
-          const node = TREE_NODES[p.id];
-          const maxed = p.owned >= p.maxLevel;
-          const style = BRANCH_STYLE[node.branch];
-          return (
-            <button
-              key={p.id}
-              disabled={!p.affordable || maxed}
-              onClick={() => buy(p.id)}
-              className={`absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 bg-[radial-gradient(circle_at_35%_30%,rgba(244,228,212,0.14),rgba(7,5,4,0.92)_58%)] text-xl shadow-[inset_0_0_0_1px_rgba(7,5,4,0.9),0_12px_32px_rgba(0,0,0,0.5)] transition enabled:hover:scale-110 disabled:opacity-60 ${style.border} ${style.text} ${p.owned > 0 ? style.ring : ''}`}
-              style={{ left: `${node.x}%`, top: `${node.y}%` }}
-              title={`${p.name}: ${p.description}`}
-            >
-              {node.icon}
-              <span className="absolute -right-2 -bottom-2 rounded-full border border-rust bg-umber px-1.5 py-0.5 text-[10px] font-bold text-bone">
-                {p.owned}/{p.maxLevel}
-              </span>
-            </button>
-          );
-        })}
-
-        <div className="absolute inset-x-4 bottom-4 grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="flex flex-1 items-center justify-center gap-2">
           {BRANCHES.map((b) => {
             const style = BRANCH_STYLE[b.id];
             const total = meta.permanents
               .filter((p) => p.branch === b.id)
               .reduce((sum, p) => sum + p.owned, 0);
             return (
-              <div key={b.id} className="border border-rust/60 bg-pit/72 p-2">
-                <div className={`text-xs font-black uppercase ${style.text}`}>{b.label}</div>
-                <div className="text-[10px] text-bone/48">{b.blurb}</div>
-                <div className="mt-1 text-[10px] text-bone/70">Allocated {total}</div>
+              <div
+                key={b.id}
+                className={`flex items-center gap-2 border bg-pit/55 px-3 py-1 ${style.border}`}
+                title={b.blurb}
+              >
+                <span className={`text-[11px] font-black uppercase ${style.text}`}>{b.label}</span>
+                <span className="text-[10px] text-bone/55">{total} pts</span>
               </div>
             );
           })}
         </div>
-      </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="flex items-center gap-1.5 border border-gold/50 bg-pit/60 px-3 py-1">
+            <span className="text-[10px] uppercase tracking-widest text-dust">Glory</span>
+            <span className="text-base font-black tabular-nums text-gold">
+              &#9670; {meta.glory}
+            </span>
+          </div>
+          <button
+            onClick={() => setMenuView('root')}
+            className="rounded-sm border border-rust bg-umber/80 px-4 py-1.5 text-sm font-bold text-bone transition hover:border-gold hover:bg-iron/70 focus:border-gold focus:outline-none"
+          >
+            BACK
+          </button>
+        </div>
+      </header>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
-        {meta.permanents.map((p) => {
-          const node = isTreeNodeId(p.id) ? TREE_NODES[p.id] : undefined;
-          const branch = node?.branch ?? gloryBranch(p.branch);
-          const style = BRANCH_STYLE[branch];
-          const maxed = p.owned >= p.maxLevel;
-          return (
-            <button
-              key={p.id}
-              disabled={!p.affordable || maxed}
-              onClick={() => buy(p.id)}
-              className="flex items-center justify-between gap-4 border border-rust/60 bg-[linear-gradient(135deg,rgba(91,43,29,0.78),rgba(7,5,4,0.72))] px-3 py-2 text-left transition enabled:hover:border-gold enabled:hover:bg-iron/60 disabled:opacity-55"
-            >
-              <span>
-                <span className={`block text-xs font-black uppercase ${style.text}`}>{p.name}</span>
-                <span className="block text-[10px] text-bone/58">{p.description}</span>
-              </span>
-              <span className="shrink-0 text-right">
-                <span className="block text-xs text-bone">
-                  {p.owned}/{p.maxLevel}
+      <div
+        ref={viewportRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
+        className="relative flex-1 cursor-grab touch-none overflow-hidden active:cursor-grabbing"
+      >
+        {/* Fixed-aspect inner layer — pan/zoom transform moves the whole tree so
+            node %-coords never distort with the viewport size. */}
+        <div
+          className="absolute left-1/2 top-1/2 h-[540px] w-[760px]"
+          style={{
+            transform: `translate(-50%,-50%) translate(${view.x}px,${view.y}px) scale(${view.scale})`,
+            transformOrigin: 'center',
+          }}
+        >
+          <svg
+            className="absolute inset-0 h-full w-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <filter id="glory-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="1.1" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            {TREE_ORBITS.map((o) => {
+              const style = BRANCH_STYLE[o.branch];
+              // Soft branch haze instead of a chunky dashed ring — a faint filled
+              // ellipse reads as a region without a hard outline fighting the tree.
+              return (
+                <ellipse
+                  key={`${o.branch}-${o.x}`}
+                  cx={px(o.x)}
+                  cy={o.y}
+                  rx={o.r * COMPRESS * 0.96}
+                  ry={o.r * 0.5}
+                  fill={style.stroke}
+                  opacity="0.05"
+                />
+              );
+            })}
+            {TREE_EDGES.map(([a, b]) => {
+              const from = proj(TREE_NODES[a]);
+              const to = proj(TREE_NODES[b]);
+              const style = BRANCH_STYLE[TREE_NODES[b].branch];
+              const open = ownedOf(a) > 0; // prerequisite met → branch edge is "live"
+              const lit = hovered === a || hovered === b;
+              return (
+                <g key={`${a}-${b}`}>
+                  <path
+                    d={branchPath(from, to)}
+                    fill="none"
+                    stroke={style.stroke}
+                    strokeWidth="2.8"
+                    opacity={open ? (lit ? 0.3 : 0.14) : 0.05}
+                    strokeLinecap="round"
+                    filter="url(#glory-glow)"
+                  />
+                  <path
+                    d={branchPath(from, to)}
+                    fill="none"
+                    stroke={open ? style.stroke : '#5b4a3a'}
+                    strokeWidth={lit ? 1.1 : 0.85}
+                    opacity={open ? (lit ? 1 : 0.85) : 0.4}
+                    strokeLinecap="round"
+                    strokeDasharray={open ? undefined : '1.5 1.5'}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          <div
+            className="absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-cyan bg-pit text-2xl text-cyan shadow-[0_0_30px_rgba(50,215,255,0.38)]"
+            style={{ left: `${px(TREE_NODES.root.x)}%`, top: `${TREE_NODES.root.y}%` }}
+          >
+            {TREE_NODES.root.icon}
+          </div>
+
+          {meta.permanents.map((p) => {
+            if (!isTreeNodeId(p.id)) return null;
+            const node = TREE_NODES[p.id];
+            const maxed = p.owned >= p.maxLevel;
+            const owned = p.owned > 0;
+            const reachable = isUnlocked(p.id);
+            const buyable = reachable && p.affordable && !maxed;
+            const style = BRANCH_STYLE[node.branch];
+            // Four clearly distinct states:
+            //  • maxed (completed)        → gold ring + filled, gold ✓ badge
+            //  • allocated (owned, < max) → solid branch colour + glow ring
+            //  • reachable (buy next)     → branch outline; affordable pulses, else muted
+            //  • locked (prereq missing)  → grey, dashed, ⊘
+            const stateClass = !reachable
+              ? 'border-dashed border-bone/15 bg-pit/80 text-bone/20 opacity-60'
+              : maxed
+                ? 'border-gold bg-[radial-gradient(circle_at_35%_30%,rgba(255,210,63,0.28),rgba(7,5,4,0.92)_62%)] text-gold shadow-[0_0_26px_rgba(255,210,63,0.4)]'
+                : owned
+                  ? `${style.border} ${style.text} ${style.ring} bg-pit`
+                  : buyable
+                    ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
+                    : `border-dashed ${style.border} ${style.text} opacity-45`;
+            return (
+              <button
+                key={p.id}
+                onClick={() => buyable && buy(p.id)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseEnter={() => setHovered(p.id as TreeNodeId)}
+                onMouseLeave={() => setHovered((h) => (h === p.id ? null : h))}
+                onFocus={() => setHovered(p.id as TreeNodeId)}
+                className={`absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-xl shadow-[inset_0_0_0_1px_rgba(7,5,4,0.9),0_12px_32px_rgba(0,0,0,0.5)] transition hover:scale-110 ${stateClass} ${hovered === p.id ? 'z-10 scale-110 ring-2 ring-bone/80' : ''} ${buyable ? 'cursor-pointer' : 'cursor-default'}`}
+                style={{ left: `${px(node.x)}%`, top: `${node.y}%` }}
+              >
+                {!reachable ? '⊘' : maxed ? '★' : node.icon}
+                <span
+                  className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${maxed ? 'border-gold bg-gold text-pit' : 'border-rust bg-umber text-bone'}`}
+                >
+                  {maxed ? 'MAX' : `${p.owned}/${p.maxLevel}`}
                 </span>
-                <span className="block text-[10px] text-gold">{maxed ? 'MAX' : `${p.cost} ◆`}</span>
-              </span>
+              </button>
+            );
+          })}
+
+          {/* Tooltip anchored NEXT TO the hovered node (counter-scaled so it stays
+              readable at any zoom). Flips side near the right edge. */}
+          {hoveredP && hovered ? (
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: `${px(TREE_NODES[hovered].x)}%`,
+                top: `${TREE_NODES[hovered].y}%`,
+                transform: `translate(${px(TREE_NODES[hovered].x) > 55 ? 'calc(-100% - 30px)' : '30px'}, -50%) scale(${1 / view.scale})`,
+                transformOrigin: px(TREE_NODES[hovered].x) > 55 ? 'right center' : 'left center',
+              }}
+            >
+              <div
+                className={`w-64 border bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ${BRANCH_STYLE[hoveredBranch].border}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`text-sm font-black uppercase ${BRANCH_STYLE[hoveredBranch].text}`}
+                  >
+                    {hoveredP.name}
+                  </span>
+                  <span className="shrink-0 text-xs text-bone/70">
+                    {hoveredP.owned}/{hoveredP.maxLevel}
+                  </span>
+                </div>
+                <div className="mt-1 text-[11px] leading-4 text-bone/75">
+                  {hoveredP.description}
+                </div>
+                <div className="mt-2 text-[11px] font-bold text-gold">
+                  {hoveredLocked
+                    ? `Locked — buy ${hoveredParent ? (byId.get(hoveredParent)?.name ?? 'the prior node') : 'the prior node'} first`
+                    : hoveredP.owned >= hoveredP.maxLevel
+                      ? 'MAXED'
+                      : hoveredP.affordable
+                        ? `Click to buy — ${hoveredP.cost} ◆`
+                        : `Costs ${hoveredP.cost} ◆ (insufficient)`}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Zoom / reset controls (don't start a pan) */}
+        <div
+          className="absolute right-3 top-3 flex items-center gap-1"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {(
+            [
+              ['−', () => setView((v) => ({ ...v, scale: clampScale(v.scale - 0.2) }))],
+              ['＋', () => setView((v) => ({ ...v, scale: clampScale(v.scale + 0.2) }))],
+              ['⟳', reset],
+            ] as const
+          ).map(([label, fn]) => (
+            <button
+              key={label}
+              onClick={fn}
+              className="flex h-7 w-7 items-center justify-center rounded-sm border border-rust bg-pit/80 text-sm text-bone/70 transition hover:border-gold hover:text-gold focus:outline-none"
+            >
+              {label}
             </button>
-          );
-        })}
+          ))}
+        </div>
+
+        {/* Controls hint + legend for the node states. */}
+        <div className="pointer-events-none absolute bottom-3 left-4 flex flex-col gap-1 text-[10px] uppercase tracking-widest text-bone/40">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-cyan" /> allocated
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-gold ring-1 ring-gold" />{' '}
+              maxed
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-cyan" />{' '}
+              reachable
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-bone/25" />{' '}
+              locked
+            </span>
+          </div>
+          <div>hover a node for details · drag to pan · scroll to zoom · esc to exit</div>
+        </div>
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -587,6 +768,7 @@ function Root() {
           </button>
         </div>
       </Frame>
+      <SocialFooter className="mt-2 mb-2 short:mt-0" />
     </MenuShell>
   );
 }

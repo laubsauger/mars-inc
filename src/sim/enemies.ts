@@ -4,6 +4,7 @@
 // crowds (execution rule 7 — concrete until a third archetype demands it).
 
 import type { Vec2 } from './movement';
+import type { Rng } from '../core/rng';
 
 export const enum EnemyState {
   Telegraph = 0, // spawning at a gate, not yet a threat (V9)
@@ -26,6 +27,7 @@ export type EnemyAttack =
       fuse: number; // ground cook-off time once landed (telegraph ring)
       blastRadius: number;
       damage: number;
+      freeze?: boolean; // arms a FROST zone (chills the player) instead of a blast
     }
   | {
       kind: 'gun'; // straight fast projectile(s)
@@ -49,6 +51,12 @@ export interface EnemyType {
   attack?: EnemyAttack;
   /** Contact (melee) damage on touch; defaults to DEFAULT_CONTACT_DAMAGE. */
   contactDamage?: number;
+  /** On death, split into `count` enemies of this variant (T33 blob). */
+  splitInto?: { variant: number; count: number };
+  /** What a hit/kill sprays (art doc "Commercial Blood Sport"). `blood` = red
+   *  humanoid spurts, `ichor` = green ooze. Absent = mechanical (scrap, no
+   *  blood — the death dust poof already covers it). Render reads this (V2). */
+  gore?: 'blood' | 'ichor';
   /** Threat cost the wave director spends to field one (§8.3). */
   threat: number;
 }
@@ -89,6 +97,9 @@ export class EnemyPool {
   readonly chillMult: Float32Array; // movement multiplier (1 = none, <1 = slowed)
   readonly markTime: Float32Array; // mark remaining (s)
   readonly markMult: Float32Array; // status-damage amplifier (1 = none, >1 = amplified)
+  readonly hitFlash: Float32Array; // cosmetic: 1 on hit, decays → red shimmer (view)
+  readonly kbX: Float32Array; // knockback velocity (decays); added on top of steering
+  readonly kbZ: Float32Array;
 
   constructor(capacity: number = MAX_ENEMIES) {
     this.capacity = capacity;
@@ -113,6 +124,9 @@ export class EnemyPool {
     this.chillMult = new Float32Array(capacity);
     this.markTime = new Float32Array(capacity);
     this.markMult = new Float32Array(capacity);
+    this.hitFlash = new Float32Array(capacity);
+    this.kbX = new Float32Array(capacity);
+    this.kbZ = new Float32Array(capacity);
     this.contactDmg = new Float32Array(capacity);
   }
 
@@ -142,6 +156,9 @@ export class EnemyPool {
     this.chillMult[i] = 1;
     this.markTime[i] = 0;
     this.markMult[i] = 1;
+    this.hitFlash[i] = 0;
+    this.kbX[i] = 0;
+    this.kbZ[i] = 0;
     return i;
   }
 
@@ -171,12 +188,25 @@ export class EnemyPool {
       this.chillMult[i] = this.chillMult[last]!;
       this.markTime[i] = this.markTime[last]!;
       this.markMult[i] = this.markMult[last]!;
+      this.hitFlash[i] = this.hitFlash[last]!;
+      this.kbX[i] = this.kbX[last]!;
+      this.kbZ[i] = this.kbZ[last]!;
     }
   }
 
   damage(i: number, amount: number): boolean {
     this.health[i]! -= amount;
+    this.hitFlash[i] = 1; // cosmetic flash; decayed each step, tinted by the view
     return this.health[i]! <= 0;
+  }
+
+  /** Decay the cosmetic hit-flash toward 0 (called once per sim step). */
+  decayHitFlash(dt: number): void {
+    const k = dt * 8; // ~0.12s flash
+    for (let i = 0; i < this.count; i++) {
+      const v = this.hitFlash[i]! - k;
+      this.hitFlash[i] = v > 0 ? v : 0;
+    }
   }
 }
 
@@ -185,7 +215,7 @@ export const RUST_MITE: EnemyType = {
   id: 'rust-mite',
   radius: 0.5,
   maxHealth: 6,
-  speed: 3.6, // tier-1 fodder: well under player base so early kiting reads clearly
+  speed: 3.0, // tier-1 fodder: a slow shamble, clear kiting headroom early (player base 8)
   separationWeight: 1.0,
   variant: 0,
   threat: 1,
@@ -195,7 +225,7 @@ export const DEBT_HOUND: EnemyType = {
   id: 'debt-hound',
   radius: 0.7,
   maxHealth: 14,
-  speed: 6.8, // faster pressure unit, still kiteable at player base speed
+  speed: 5.2, // the fast mover: real pressure (~0.65× player) but leaves kiting room
   separationWeight: 1.2,
   variant: 1,
   threat: 4,
@@ -227,11 +257,12 @@ export const SEVERANCE_LOBBER: EnemyType = {
   speed: 2.8,
   separationWeight: 0.9,
   variant: 3,
+  gore: 'blood',
   threat: 6,
   attack: {
     kind: 'lob',
-    range: 22,
-    cooldown: 3.6,
+    range: 18,
+    cooldown: 4.2,
     windup: 0.45,
     speed: 14,
     fuse: 1.0,
@@ -248,15 +279,16 @@ export const REPO_MARSHAL: EnemyType = {
   id: 'repo-marshal',
   radius: 0.6,
   maxHealth: 16,
-  speed: 3.2,
+  speed: 2.8,
   separationWeight: 0.9,
   variant: 4,
+  gore: 'blood',
   threat: 8,
   attack: {
     kind: 'gun',
-    range: 26,
-    cooldown: 1.8,
-    speed: 30,
+    range: 17, // must close in — no cross-arena sniping
+    cooldown: 2.8, // slower, readable cadence
+    speed: 20, // slower rounds → dodgeable
     damage: 8,
     spread: 0.12,
   },
@@ -275,8 +307,8 @@ export const FORECLOSURE_MORTAR: EnemyType = {
   threat: 12,
   attack: {
     kind: 'lob',
-    range: 32,
-    cooldown: 5.0,
+    range: 26,
+    cooldown: 6.5,
     windup: 0.6,
     speed: 10,
     fuse: 1.4,
@@ -291,15 +323,16 @@ export const RIOT_SHOTGUNNER: EnemyType = {
   id: 'riot-shotgunner',
   radius: 0.6,
   maxHealth: 18,
-  speed: 4.2,
+  speed: 3.6,
   separationWeight: 0.9,
   variant: 6,
+  gore: 'blood',
   threat: 9,
   attack: {
     kind: 'gun',
-    range: 14,
-    cooldown: 2.4,
-    speed: 26,
+    range: 11,
+    cooldown: 3.4,
+    speed: 20,
     damage: 5,
     spread: 0.5,
     burst: 5,
@@ -316,8 +349,37 @@ export const AUDIT_BRUTE: EnemyType = {
   speed: 2.6,
   separationWeight: 0.5,
   variant: 7,
+  gore: 'blood',
   threat: 16,
   contactDamage: 16,
+};
+
+// Liability Blob — splitter (T33). On death it doesn't just die: it ruptures
+// into two smaller Bloblings (variant 10) that scatter and keep coming. Kills
+// multiply your threat unless you can clear the spawn quickly — rewards AoE.
+export const LIABILITY_BLOB: EnemyType = {
+  id: 'liability-blob',
+  radius: 1.0,
+  maxHealth: 36,
+  speed: 2.6,
+  separationWeight: 0.7,
+  variant: 9,
+  gore: 'ichor',
+  threat: 7,
+  splitInto: { variant: 10, count: 2 },
+};
+
+// Blobling — the split product (T33). Small, quick, fragile, and does NOT split
+// again (terminal), so the chain ends after one rupture.
+export const BLOBLING: EnemyType = {
+  id: 'blobling',
+  radius: 0.5,
+  maxHealth: 9,
+  speed: 3.8, // split product: quick, but under the runner so it doesn't out-pace kiting
+  separationWeight: 0.9,
+  variant: 10,
+  gore: 'ichor',
+  threat: 2,
 };
 
 /** Display names by variant — for HUD intros / readouts (T33). */
@@ -330,7 +392,36 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Foreclosure Mortar',
   'Riot Shotgunner',
   'Audit Brute',
+  'Frostbite Auditor',
+  'Liability Blob',
+  'Blobling',
 ];
+
+// Frostbite Auditor — cryo lobber (T33). Lobs a slow-fusing FROST writ that
+// blooms into a freezing zone: little damage, but it chills (slows) the player —
+// deadly when it strips your kiting speed mid-swarm. Its hazard reads cyan, not
+// the red of an explosive grenade.
+export const FROSTBITE_AUDITOR: EnemyType = {
+  id: 'frostbite-auditor',
+  radius: 0.6,
+  maxHealth: 22,
+  speed: 2.6,
+  separationWeight: 0.9,
+  variant: 8,
+  gore: 'blood',
+  threat: 7,
+  attack: {
+    kind: 'lob',
+    range: 19,
+    cooldown: 5.0,
+    windup: 0.5,
+    speed: 13,
+    fuse: 1.2,
+    blastRadius: 4.0,
+    damage: 6,
+    freeze: true,
+  },
+};
 
 /** Variant index → enemy type, so SoA-pooled enemies recover their def (and
  *  attack profile) at runtime without storing it per instance. */
@@ -343,7 +434,38 @@ export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
   FORECLOSURE_MORTAR,
   RIOT_SHOTGUNNER,
   AUDIT_BRUTE,
+  FROSTBITE_AUDITOR,
+  LIABILITY_BLOB,
+  BLOBLING,
 ];
+
+/**
+ * Splitter death (T33): if `variant` ruptures (has `splitInto`), spawn its
+ * children at (x,z) with a deterministic ring scatter (V16 via the seeded rng).
+ * Children spawn telegraphed (V9). Returns how many were spawned — 0 when the
+ * variant isn't a splitter, the child variant is unknown, or the pool is full.
+ */
+export function splitOnDeath(
+  pool: EnemyPool,
+  variant: number,
+  x: number,
+  z: number,
+  rng: Rng,
+): number {
+  const split = ENEMY_BY_VARIANT[variant]?.splitInto;
+  if (!split) return 0;
+  const child = ENEMY_BY_VARIANT[split.variant];
+  if (!child) return 0;
+  let spawned = 0;
+  const off = child.radius + 0.3;
+  for (let s = 0; s < split.count; s++) {
+    const ang = rng.next() * Math.PI * 2;
+    const phase = (rng.next() * 256) | 0;
+    const i = pool.spawn(child, x + Math.cos(ang) * off, z + Math.sin(ang) * off, 0.2, phase);
+    if (i >= 0) spawned++;
+  }
+  return spawned;
+}
 
 export interface SteerWeights {
   seek: number;

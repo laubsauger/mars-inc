@@ -20,6 +20,7 @@ const PASSIVE: InputSnapshot = {
   moveZ: 0,
   sprint: false,
   pause: false,
+  pickup: false,
   mouseX: -1,
   mouseY: -1,
   mouseInside: false,

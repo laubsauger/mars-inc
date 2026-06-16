@@ -19,6 +19,7 @@ function scriptInput(t: number): InputSnapshot {
     moveZ: Math.cos(a * 1.3),
     sprint: t % 120 < 20,
     pause: false,
+    pickup: false,
     mouseX: -1,
     mouseY: -1,
     mouseInside: false,

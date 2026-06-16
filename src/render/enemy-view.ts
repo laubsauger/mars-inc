@@ -29,6 +29,9 @@ const VARIANT_COLORS = [
   COL.healthRed,
   COL.kineticGold,
   COL.warmLine,
+  COL.shieldCyan, // Frostbite Auditor (cryo)
+  COL.toxicGreen, // Liability Blob (splitter ooze)
+  COL.toxicGreen, // Blobling (split product) — same ooze, smaller body
 ];
 const TELEGRAPH_COLOR = COL.sunHigh;
 
@@ -36,6 +39,7 @@ export class EnemyView {
   readonly mesh: InstancedMesh;
   private dummy = new Object3D();
   private colorAttr: InstancedBufferAttribute;
+  private phase = 0; // drives the burn flicker / chill shimmer
 
   constructor(scene: Scene, capacity: number = MAX_ENEMIES) {
     const geo = new CapsuleGeometry(0.5, 0.6, 4, 8);
@@ -56,6 +60,7 @@ export class EnemyView {
 
   sync(pool: EnemyPool, alpha: number): void {
     const n = pool.count;
+    this.phase += 0.05;
     for (let i = 0; i < n; i++) {
       const x = pool.prevX[i]! + (pool.posX[i]! - pool.prevX[i]!) * alpha;
       const z = pool.prevZ[i]! + (pool.posZ[i]! - pool.prevZ[i]!) * alpha;
@@ -75,13 +80,33 @@ export class EnemyView {
       let cg = c.g;
       let cb = c.b;
       if (pool.burnTime[i]! > 0) {
-        cr = cr * 0.4 + 1.0 * 0.6;
-        cg = cg * 0.4 + 0.45 * 0.6;
-        cb = cb * 0.4;
+        // Flickering flame: red base whose green channel jitters between embers
+        // (deep red) and licks of orange/yellow — a few shades, per-enemy phase.
+        const flick = Math.sin(this.phase * 14 + i * 2.1) * 0.5 + 0.5;
+        const flick2 = Math.sin(this.phase * 8.3 + i) * 0.5 + 0.5;
+        const fr = 1.0;
+        const fg = 0.18 + flick * 0.55; // 0.18 (red) → 0.73 (yellow)
+        const fb = 0.02 + flick2 * 0.12;
+        cr = cr * 0.25 + fr * 0.75;
+        cg = cg * 0.25 + fg * 0.75;
+        cb = cb * 0.25 + fb * 0.75;
       } else if (pool.chillTime[i]! > 0) {
-        cr = cr * 0.5 + 0.2 * 0.5;
-        cg = cg * 0.5 + 0.85 * 0.5;
-        cb = cb * 0.5 + 1.0 * 0.5;
+        // Frozen: cyan body with a slow icy shimmer toward frosty white.
+        const shimmer = Math.sin(this.phase * 5 + i * 0.7) * 0.5 + 0.5;
+        const ir = 0.32 + shimmer * 0.5; // pulses toward white
+        const ig = 0.8 + shimmer * 0.2;
+        const ib = 1.0;
+        cr = cr * 0.4 + ir * 0.6;
+        cg = cg * 0.4 + ig * 0.6;
+        cb = cb * 0.4 + ib * 0.6;
+      }
+      // Hit flash (T40): on damage, shimmer toward a hot red-white so hits read.
+      const hf = pool.hitFlash[i]!;
+      if (hf > 0) {
+        const k = hf * hf; // ease — punchy at the start, quick falloff
+        cr = cr * (1 - k) + 1.0 * k;
+        cg = cg * (1 - k) + 0.32 * k;
+        cb = cb * (1 - k) + 0.28 * k;
       }
       this.colorAttr.setXYZ(i, cr, cg, cb);
     }

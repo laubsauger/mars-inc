@@ -7,6 +7,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Unsupported } from './screens/Unsupported';
 import { UpgradeScreen } from './screens/UpgradeScreen';
 import { BossRewardScreen } from './screens/BossRewardScreen';
+import { PauseScreen } from './screens/PauseScreen';
+import { FloatingLayer } from './FloatingLayer';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { MainMenu } from './screens/MainMenu';
 import { Hud } from './Hud';
@@ -23,9 +25,11 @@ function App() {
     case 'arena':
       return (
         <>
+          <FloatingLayer />
           <Hud />
           <UpgradeScreen />
           <BossRewardScreen />
+          <PauseScreen />
         </>
       );
     case 'gameover':

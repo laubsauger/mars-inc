@@ -96,6 +96,8 @@ export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): 
       const removed = Math.min(mit.toHealth, pool.health[i]!);
       pool.health[i]! -= mit.toHealth;
       dealt += removed;
+      // Burn ticks float a number too (aggregation tallies the small ticks).
+      fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
       if (pool.burnTime[i]! <= 0) {
         pool.burnTime[i] = 0;
         pool.burnDps[i] = 0;

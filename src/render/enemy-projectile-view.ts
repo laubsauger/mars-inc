@@ -19,11 +19,13 @@ export class EnemyProjectileView {
   private dummy = new Object3D();
 
   constructor(scene: Scene, capacity: number = MAX_ENEMY_PROJECTILES) {
+    // Enemy fire reads as a hostile magenta — clearly NOT the player's gold
+    // tracers, and not the red of a ground hazard.
     const geo = new SphereGeometry(0.28, 8, 6);
     const mat = new MeshStandardMaterial({
-      color: COL.healthRed,
-      emissive: COL.marsDust,
-      emissiveIntensity: 0.5,
+      color: COL.eliteMagenta,
+      emissive: COL.eliteMagenta,
+      emissiveIntensity: 0.7,
       roughness: 0.5,
       metalness: 0.1,
     });

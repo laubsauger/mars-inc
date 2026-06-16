@@ -49,9 +49,26 @@ export interface Player {
   magnetRadius: number;
   /** Raises the odds of rarer upgrades in the draft (T41). */
   luck: number;
+  /** Chill (slow) from enemy frost effects (T33): time left + speed multiplier. */
+  chillTime: number;
+  chillMult: number;
   /** Extra per-run draft rerolls / banishes granted by permanents (T35). */
   bonusRerolls: number;
   bonusBanishes: number;
+  /** Recharging shield (T40 defensive): absorbs one instance of damage, then
+   *  recharges after `shieldRecharge`s without breaking. `shieldMax` charges. */
+  shieldMax: number;
+  shieldCharges: number;
+  shieldRecharge: number; // seconds to regenerate one broken charge
+  shieldTimer: number; // countdown to the next regen (0 = idle/full)
+  /** Companion drones orbiting the player that auto-hunt enemies (T40/T42). */
+  droneCount: number;
+  /** Repulsor nova (CC, T42): periodic radial push + light AoE. 0 interval = off. */
+  novaInterval: number;
+  novaTimer: number;
+  novaRadius: number;
+  novaForce: number;
+  novaDamage: number;
 }
 
 export function createPlayer(stats: MovementStats = LILU_STATS): Player {
@@ -77,6 +94,18 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     luck: 0,
     bonusRerolls: 0,
     bonusBanishes: 0,
+    chillTime: 0,
+    chillMult: 1,
+    shieldMax: 0, // off until a Shield upgrade is drafted
+    shieldCharges: 0,
+    shieldRecharge: 10,
+    shieldTimer: 0,
+    droneCount: 0,
+    novaInterval: 0,
+    novaTimer: 0,
+    novaRadius: 6,
+    novaForce: 16,
+    novaDamage: 8,
   };
 }
 
@@ -106,6 +135,18 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.luck = 0;
   p.bonusRerolls = 0;
   p.bonusBanishes = 0;
+  p.chillTime = 0;
+  p.chillMult = 1;
+  p.shieldMax = 0;
+  p.shieldCharges = 0;
+  p.shieldRecharge = 10;
+  p.shieldTimer = 0;
+  p.droneCount = 0;
+  p.novaInterval = 0;
+  p.novaTimer = 0;
+  p.novaRadius = 6;
+  p.novaForce = 16;
+  p.novaDamage = 8;
 }
 
 /** Advance the player one fixed step. */
@@ -120,8 +161,24 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
 
   p.sprint = updateSprint(p.sprint, input.sprint, p.stats, dt);
 
+  // Chill (enemy frost) slows the player until it expires.
+  if (p.chillTime > 0) {
+    p.chillTime = Math.max(0, p.chillTime - dt);
+    if (p.chillTime === 0) p.chillMult = 1;
+  }
+
+  // Shield recharge: regenerate a broken charge after the cooldown elapses.
+  if (p.shieldCharges < p.shieldMax) {
+    p.shieldTimer -= dt;
+    if (p.shieldTimer <= 0) {
+      p.shieldCharges = Math.min(p.shieldMax, p.shieldCharges + 1);
+      p.shieldTimer = p.shieldCharges < p.shieldMax ? p.shieldRecharge : 0;
+    }
+  }
+
   const dir = normalizeInput(input.moveX, input.moveZ);
-  const maxSpeed = p.stats.moveSpeed * (p.sprint.active ? p.stats.sprintMultiplier : 1);
+  const maxSpeed =
+    p.stats.moveSpeed * (p.sprint.active ? p.stats.sprintMultiplier : 1) * p.chillMult;
   p.vel = integrateVelocity(p.vel, dir, maxSpeed, p.stats.acceleration, p.stats.deceleration, dt);
 
   p.pos.x += p.vel.x * dt;
@@ -142,6 +199,13 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
   }
 }
 
+/** Apply (or refresh) a chill slow on the player — takes the stronger slow and
+ *  the longer duration (no infinite stacking). */
+export function applyChill(p: Player, duration: number, slowMult: number): void {
+  p.chillTime = Math.max(p.chillTime, duration);
+  p.chillMult = Math.min(p.chillMult, slowMult);
+}
+
 export const HIT_IFRAMES = 0.6; // short invuln after damage (§5.5)
 
 /**
@@ -150,6 +214,14 @@ export const HIT_IFRAMES = 0.6; // short invuln after damage (§5.5)
  */
 export function hitPlayer(p: Player, amount: number): boolean {
   if (p.invuln > 0 || p.sprint.forgiveness > 0) return false;
+  // Shield absorbs the whole instance, then breaks and starts its recharge. Still
+  // grants i-frames so a crowd can't strip every charge in one tick.
+  if (p.shieldCharges > 0) {
+    p.shieldCharges -= 1;
+    p.shieldTimer = p.shieldRecharge;
+    p.invuln = HIT_IFRAMES;
+    return false; // no health lost → callers see "no damage landed"
+  }
   p.health = Math.max(0, p.health - amount);
   p.invuln = HIT_IFRAMES;
   return true;

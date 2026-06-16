@@ -34,6 +34,7 @@ export interface SettingsView {
   uiScale: number;
   holdToSprint: boolean;
   pauseOnFocusLoss: boolean;
+  enemyHealthbars: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -70,6 +71,8 @@ export interface HudState {
   countdown: number; // > 0 → pre-combat countdown showing (T20)
   enemiesAlive: number;
   weapon: string; // current primary weapon display name (T33)
+  shieldCharges: number; // current recharging-shield charges (T40)
+  shieldMax: number; // 0 = no shield drafted yet
 }
 
 /** Transient combat announcement (T33): boss warning / new-enemy intro. The
@@ -118,6 +121,28 @@ export interface BossRewardState {
   options: BossRewardOption[];
 }
 
+/** World-anchored screen-space label (T33): damage numbers + pickup names. */
+export interface FloatingLabel {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size: number;
+  opacity: number;
+  kind: 'dmg' | 'pickup';
+  prompt?: boolean;
+  active?: boolean;
+}
+
+/** Reusable character/build sheet (T43) — end screen, pause, warrior panel. */
+export interface SheetView {
+  level: number;
+  weapon: string;
+  attributes: { label: string; value: string }[];
+  upgrades: { name: string; level: number }[];
+}
+
 /** Permanent (meta) upgrade as shown on the game-over Glory panel (T26). */
 export interface PermanentView {
   id: string;
@@ -145,6 +170,8 @@ export interface UiStore {
   announce: AnnounceState | null;
   draft: DraftState;
   bossReward: BossRewardState;
+  labels: FloatingLabel[];
+  sheet: SheetView | null;
   result: RunResultView | null;
   meta: MetaState;
   profile: ProfileView;
@@ -166,6 +193,8 @@ export interface UiStore {
   enterPit: () => void;
   /** Bridge to render — reset the orbit/zoom camera to the framed default. */
   resetView: () => void;
+  /** Bridge to sim — toggle pause (used by the pause-menu Resume button). */
+  togglePause: () => void;
   /** Bridge to save — buy a permanent upgrade with Martian Glory. */
   buyPermanent: (id: string) => void;
   /** Bridge to save — change settings/accessibility (persists + applies live). */
@@ -183,6 +212,8 @@ export interface UiStore {
   setChooseUpgrade: (fn: (index: number) => void) => void;
   setBossReward: (b: BossRewardState) => void;
   setChooseBossReward: (fn: (index: number) => void) => void;
+  setLabels: (l: FloatingLabel[]) => void;
+  setSheet: (s: SheetView | null) => void;
   setRerollDraft: (fn: (lockedIds: string[]) => void) => void;
   setBanishOption: (fn: (index: number) => void) => void;
   setSkipDraft: (fn: () => void) => void;
@@ -190,6 +221,7 @@ export interface UiStore {
   setToMenu: (fn: () => void) => void;
   setEnterPit: (fn: () => void) => void;
   setResetView: (fn: () => void) => void;
+  setTogglePause: (fn: () => void) => void;
   setBuyPermanent: (fn: (id: string) => void) => void;
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) => void;
 }
@@ -206,6 +238,8 @@ const INITIAL_HUD: HudState = {
   countdown: 3,
   enemiesAlive: 0,
   weapon: 'Contractual Sidearm',
+  shieldCharges: 0,
+  shieldMax: 0,
 };
 
 const INITIAL_DRAFT: DraftState = {
@@ -230,6 +264,7 @@ const INITIAL_SETTINGS: SettingsView = {
   uiScale: 1,
   holdToSprint: false,
   pauseOnFocusLoss: true,
+  enemyHealthbars: false,
   colorblind: 'off',
 };
 
@@ -241,6 +276,8 @@ export const useUiStore = create<UiStore>((set) => ({
   announce: null,
   draft: INITIAL_DRAFT,
   bossReward: { open: false, id: 0, options: [] },
+  labels: [],
+  sheet: null,
   result: null,
   meta: INITIAL_META,
   profile: INITIAL_PROFILE,
@@ -254,6 +291,7 @@ export const useUiStore = create<UiStore>((set) => ({
   toMenu: () => {},
   enterPit: () => {},
   resetView: () => {},
+  togglePause: () => {},
   buyPermanent: () => {},
   applySetting: () => {},
   setScreen: (screen) => set({ screen }),
@@ -268,6 +306,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setSettings: (settings) => set({ settings }),
   setChooseUpgrade: (chooseUpgrade) => set({ chooseUpgrade }),
   setBossReward: (bossReward) => set({ bossReward }),
+  setLabels: (labels) => set({ labels }),
+  setSheet: (sheet) => set({ sheet }),
   setChooseBossReward: (chooseBossReward) => set({ chooseBossReward }),
   setRerollDraft: (rerollDraft) => set({ rerollDraft }),
   setBanishOption: (banishOption) => set({ banishOption }),
@@ -276,6 +316,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setToMenu: (toMenu) => set({ toMenu }),
   setEnterPit: (enterPit) => set({ enterPit }),
   setResetView: (resetView) => set({ resetView }),
+  setTogglePause: (togglePause) => set({ togglePause }),
   setBuyPermanent: (buyPermanent) => set({ buyPermanent }),
   setApplySetting: (applySetting) => set({ applySetting }),
 }));
@@ -289,6 +330,8 @@ export const uiActions = {
   setAnnounce: (a: AnnounceState) => useUiStore.getState().setAnnounce(a),
   setDraft: (d: DraftState) => useUiStore.getState().setDraft(d),
   setBossReward: (b: BossRewardState) => useUiStore.getState().setBossReward(b),
+  setLabels: (l: FloatingLabel[]) => useUiStore.getState().setLabels(l),
+  setSheet: (sh: SheetView | null) => useUiStore.getState().setSheet(sh),
   setChooseBossReward: (fn: (i: number) => void) => useUiStore.getState().setChooseBossReward(fn),
   setResult: (r: RunResultView | null) => useUiStore.getState().setResult(r),
   setMeta: (m: MetaState) => useUiStore.getState().setMeta(m),
@@ -302,6 +345,7 @@ export const uiActions = {
   setToMenu: (fn: () => void) => useUiStore.getState().setToMenu(fn),
   setEnterPit: (fn: () => void) => useUiStore.getState().setEnterPit(fn),
   setResetView: (fn: () => void) => useUiStore.getState().setResetView(fn),
+  setTogglePause: (fn: () => void) => useUiStore.getState().setTogglePause(fn),
   setBuyPermanent: (fn: (id: string) => void) => useUiStore.getState().setBuyPermanent(fn),
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) =>
     useUiStore.getState().setApplySetting(fn),

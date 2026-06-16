@@ -173,7 +173,7 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'arc-garnishment',
     name: 'Arc Garnishment',
-    description: 'Hits arc to +1 nearby enemy.',
+    description: 'Hits release an INSTANT lightning arc to +1 nearby enemy (no projectile).',
     tags: ['chain', 'energy'],
     rarity: 'rare',
     maxLevel: 3,

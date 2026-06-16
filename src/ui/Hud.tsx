@@ -41,6 +41,29 @@ function SprintPips() {
   );
 }
 
+function ShieldPips() {
+  const charges = useUiStore((s) => s.hud.shieldCharges);
+  const max = useUiStore((s) => s.hud.shieldMax);
+  if (max <= 0) return null; // hidden until a shield upgrade is taken
+  return (
+    <div className="absolute bottom-12 left-6 flex items-center gap-1.5">
+      <span className="mr-1 font-mono text-[10px] uppercase tracking-widest text-cyan/70">
+        Shield
+      </span>
+      {Array.from({ length: max }).map((_, i) => (
+        <span
+          key={i}
+          className={`h-3 w-3 rotate-45 border ${
+            i < charges
+              ? 'border-cyan bg-cyan/70 shadow-[0_0_10px_rgba(50,215,255,0.6)]'
+              : 'border-cyan/40 bg-pit/60'
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function Timer() {
   const elapsed = useUiStore((s) => s.hud.elapsed);
   const m = Math.floor(elapsed / 60);
@@ -97,9 +120,17 @@ function Announce() {
 
   if (shown.kind === 'boss') {
     return (
-      <div className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 text-center font-mono">
-        <div className="text-xs tracking-[0.5em] text-ember">⚠ WARDEN INBOUND ⚠</div>
-        <div className="mt-1 text-3xl font-black uppercase tracking-widest text-gold drop-shadow-[0_0_22px_rgba(255,210,63,0.55)]">
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-16 py-6 text-center font-mono"
+        style={{
+          background:
+            'radial-gradient(ellipse at center, rgba(7,5,4,0.9) 0%, rgba(7,5,4,0.55) 40%, rgba(7,5,4,0) 75%)',
+        }}
+      >
+        <div className="text-xs tracking-[0.5em] text-ember [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
+          ⚠ WARDEN INBOUND ⚠
+        </div>
+        <div className="mt-1 text-3xl font-black uppercase tracking-widest text-gold [text-shadow:0_3px_12px_rgba(0,0,0,0.95),0_0_22px_rgba(255,210,63,0.45)]">
           {shown.text}
         </div>
       </div>
@@ -160,22 +191,13 @@ function Countdown() {
   const countdown = useUiStore((s) => s.hud.countdown);
   if (countdown <= 0) return null;
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="flex h-44 w-44 items-center justify-center rounded-full bg-pit/72 shadow-[0_0_70px_rgba(0,0,0,0.75)] ring-2 ring-ember/40 backdrop-blur-sm">
-        <div className="font-mono text-8xl font-bold tracking-widest text-sun [text-shadow:0_3px_14px_rgba(0,0,0,0.95)]">
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      <div className="relative flex h-40 w-40 items-center justify-center">
+        <div className="absolute inset-0 rounded-full bg-pit/65 ring-1 ring-gold/25 shadow-[0_0_90px_rgba(0,0,0,0.85),inset_0_0_46px_rgba(0,0,0,0.7)] backdrop-blur-md" />
+        <span className="relative font-mono text-[7.5rem] font-bold leading-none text-bone tabular-nums [text-shadow:0_4px_20px_rgba(0,0,0,0.95)]">
           {Math.ceil(countdown)}
-        </div>
+        </span>
       </div>
-    </div>
-  );
-}
-
-function PausedOverlay() {
-  const paused = useUiStore((s) => s.hud.paused);
-  if (!paused) return null;
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-pit/60">
-      <div className="font-mono text-3xl tracking-widest text-ember">PAUSED</div>
     </div>
   );
 }
@@ -197,6 +219,7 @@ export function Hud() {
   return (
     <>
       <HealthBar />
+      <ShieldPips />
       <SprintPips />
       <Timer />
       <LevelXp />
@@ -206,7 +229,6 @@ export function Hud() {
       <Announce />
       <Countdown />
       <ResetView />
-      <PausedOverlay />
     </>
   );
 }

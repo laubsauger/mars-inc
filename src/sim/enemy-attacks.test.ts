@@ -33,7 +33,7 @@ function gunner(pool: EnemyPool, x: number, z: number): number {
 describe('enemy lob attack', () => {
   it('cooks off and damages a stationary player in the blast radius', () => {
     const pool = new EnemyPool();
-    grenadier(pool, 20, 0);
+    grenadier(pool, 15, 0);
     const player = createPlayer(); // at origin, 100 hp
     const sys = new EnemyAttackSystem();
     const rng = new Rng(5);
@@ -50,7 +50,7 @@ describe('enemy lob attack', () => {
 
   it('misses a player who leaves the radius before detonation (dodgeable)', () => {
     const pool = new EnemyPool();
-    grenadier(pool, 20, 0);
+    grenadier(pool, 15, 0);
     const player = createPlayer();
     const sys = new EnemyAttackSystem();
     const rng = new Rng(5);
@@ -157,7 +157,7 @@ describe('enemy gun attack', () => {
 describe('mortar', () => {
   it('lobs a wide, heavy shell that cooks off into a large blast', () => {
     const pool = new EnemyPool();
-    const i = pool.spawn(FORECLOSURE_MORTAR, 28, 0, 0, 0);
+    const i = pool.spawn(FORECLOSURE_MORTAR, 22, 0, 0, 0);
     pool.state[i] = EnemyState.Active;
     const player = createPlayer();
     const sys = new EnemyAttackSystem();

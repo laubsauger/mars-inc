@@ -6,6 +6,7 @@
 
 import { useEffect } from 'react';
 import { useUiStore } from '../store';
+import { RunSheet } from '../RunSheet';
 
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -35,6 +36,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 
 export function GameOverScreen() {
   const result = useUiStore((s) => s.result);
+  const sheet = useUiStore((s) => s.sheet);
   const restart = useUiStore((s) => s.restartRun);
   const toMenu = useUiStore((s) => s.toMenu);
 
@@ -80,46 +82,32 @@ export function GameOverScreen() {
         </div>
       </div>
 
-      {/* Body: numbers + the build you became */}
-      <div className="grid w-[58rem] max-w-[92vw] grid-cols-3 gap-3">
-        <Panel title="SURVIVAL">
-          <Stat label="Time" value={fmtTime(result.durationSec)} />
-          <Stat label="Damage taken" value={`${Math.round(result.damageTaken)}`} />
-          <Stat label="Upgrades" value={`${result.upgradesTaken}`} />
-        </Panel>
-        <Panel title="OFFENSE">
-          <Stat label="Kills" value={`${result.kills}`} />
-          <Stat label="Damage" value={`${Math.round(result.damageDealt)}`} />
-          <Stat label="DPS" value={result.dps.toFixed(1)} />
-          <Stat label="Kills / min" value={result.killsPerMin.toFixed(1)} />
-        </Panel>
-        <Panel title="LOADOUT">
-          <Stat label="Weapon" value={result.weapon} />
-        </Panel>
-
-        <Panel title={`BUILD — ${result.upgrades.length} UPGRADES`}>
-          <div className="flex max-h-44 flex-col gap-1 overflow-y-auto pr-1">
-            {result.upgrades.length === 0 && (
-              <span className="text-xs text-bone/40">none taken</span>
-            )}
-            {result.upgrades.map((u) => (
-              <div key={u.name} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-bone/85">{u.name}</span>
-                <span className="text-gold tabular-nums">Lv{u.level}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="KILLS BY TYPE">
-          <div className="col-span-2 flex max-h-44 flex-col gap-1 overflow-y-auto pr-1">
-            {result.killsByType.map((k) => (
-              <div key={k.name} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-bone/85">{k.name}</span>
-                <span className="text-ember tabular-nums">×{k.count}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
+      {/* Body: numbers + kills + the reusable build sheet */}
+      <div className="flex w-[58rem] max-w-[92vw] flex-col gap-3">
+        <div className="grid grid-cols-3 gap-3">
+          <Panel title="SURVIVAL">
+            <Stat label="Time" value={fmtTime(result.durationSec)} />
+            <Stat label="Damage taken" value={`${Math.round(result.damageTaken)}`} />
+            <Stat label="Upgrades" value={`${result.upgradesTaken}`} />
+          </Panel>
+          <Panel title="OFFENSE">
+            <Stat label="Kills" value={`${result.kills}`} />
+            <Stat label="Damage" value={`${Math.round(result.damageDealt)}`} />
+            <Stat label="DPS" value={result.dps.toFixed(1)} />
+            <Stat label="Kills / min" value={result.killsPerMin.toFixed(1)} />
+          </Panel>
+          <Panel title="KILLS BY TYPE">
+            <div className="flex max-h-32 flex-col gap-1 overflow-y-auto pr-1">
+              {result.killsByType.map((k) => (
+                <div key={k.name} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-bone/85">{k.name}</span>
+                  <span className="text-ember tabular-nums">×{k.count}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+        {sheet && <RunSheet sheet={sheet} compact />}
       </div>
 
       <div className="mt-6 flex gap-4">

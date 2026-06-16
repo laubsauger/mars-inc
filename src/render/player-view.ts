@@ -25,15 +25,15 @@ const OUTLINE = COL.nearBlack;
 export class PlayerView {
   readonly group: Group;
   private facingMesh: Group;
+  private bodyMat: MeshStandardMaterial;
+  private flash = 0; // hurt flash 1 → 0 (red shimmer on taking damage)
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
 
     const radius = player.stats.collisionRadius;
-    const body = new Mesh(
-      new CapsuleGeometry(radius, 1.4, 6, 12),
-      new MeshStandardMaterial({ color: BODY, roughness: 0.6, metalness: 0.1 }),
-    );
+    this.bodyMat = new MeshStandardMaterial({ color: BODY, roughness: 0.6, metalness: 0.1 });
+    const body = new Mesh(new CapsuleGeometry(radius, 1.4, 6, 12), this.bodyMat);
     body.position.y = radius + 0.7;
     body.castShadow = true;
 
@@ -86,6 +86,20 @@ export class PlayerView {
     this.group.add(glow);
 
     scene.add(this.group);
+  }
+
+  /** Trigger the hurt flash (call when the player takes damage). */
+  hurt(): void {
+    this.flash = 1;
+  }
+
+  /** Decay + apply the hurt flash as a red emissive shimmer on the body. */
+  update(dt: number): void {
+    if (this.flash <= 0) return;
+    this.flash = Math.max(0, this.flash - dt * 6); // ~0.16s
+    const k = this.flash * this.flash;
+    this.bodyMat.emissive.setRGB(0.9 * k, 0.05 * k, 0.05 * k);
+    this.bodyMat.emissiveIntensity = 1;
   }
 
   /** Interpolate render transform between prev and current sim pos by alpha. */

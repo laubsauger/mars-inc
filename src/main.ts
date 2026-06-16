@@ -1,19 +1,26 @@
 // Boot. WebGPU detect → unsupported screen (§C, §I.url). Wires input + sim + render.
 
-import { Scene } from 'three';
+import { Scene, FogExp2 } from 'three';
 import { isWebGpuSupported, createRenderer } from './render/renderer';
+import { createPostProcessing } from './render/post';
 import { createCamera, screenToGround } from './render/camera';
 import { createControls } from './render/controls';
 import { ArenaView } from './render/arena';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
+import { EnemyHealthbarView } from './render/enemy-healthbar-view';
 import { ProjectileView } from './render/projectile-view';
 import { EnemyProjectileView } from './render/enemy-projectile-view';
 import { HazardView } from './render/hazard-view';
 import { WeaponDropView } from './render/weapon-drop-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
+import { DroneView } from './render/drone-view';
+import { AimLineView } from './render/aim-line-view';
 import { Effects } from './render/effects';
+import { FloatingText } from './render/floating-text';
+import { ChainView } from './render/chain-view';
+import { BloodView } from './render/blood-view';
 import { CameraShake } from './render/camera-shake';
 import { AudioBus } from './audio/audio';
 import { budgetAt } from './sim/director/wave-director';
@@ -65,22 +72,34 @@ async function boot(parent: HTMLElement): Promise<void> {
   await save.load();
 
   const scene = new Scene();
+  // Warm haze for rim depth only — kept FAINT so it doesn't grey out the whole
+  // arena (and dim the emissives before bloom sees them) at the default far
+  // camera distance. Just a touch of atmosphere toward the spectator dark.
+  scene.fog = new FogExp2(0x140c08, 0.0038);
   const camera = createCamera(window.innerWidth / window.innerHeight);
   const arena = new ArenaView(scene);
 
   const world = new World(seed, save.current.permanentUpgrades);
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene);
+  const enemyHealthbars = new EnemyHealthbarView(scene);
   const projectileView = new ProjectileView(scene);
   const enemyProjectileView = new EnemyProjectileView(scene);
   const hazardView = new HazardView(scene);
   const weaponDropView = new WeaponDropView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
+  const droneView = new DroneView(scene);
+  const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
+  const aimDirs = new Float32Array(64); // reused per frame (multishot fan)
   const effects = new Effects(scene);
+  const floating = new FloatingText();
+  const chainView = new ChainView(scene);
+  const bloodView = new BloodView(scene);
   const shake = new CameraShake();
   // Optional orbit/zoom (right-drag + wheel) with a reset; shake rides on top.
   const arenaControls = createControls(camera, canvas, window.innerWidth / window.innerHeight);
+  const post = createPostProcessing(renderer, scene, camera); // bloom on emissives
   let lastShakeX = 0;
   let lastShakeZ = 0;
   const audio = new AudioBus();
@@ -111,6 +130,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       uiScale: save.current.settings.uiScale,
       holdToSprint: save.current.accessibility.holdToSprint,
       pauseOnFocusLoss: save.current.settings.pauseOnFocusLoss,
+      enemyHealthbars: save.current.settings.enemyHealthbars,
       colorblind: save.current.accessibility.colorblindPalette,
     });
   };
@@ -130,6 +150,11 @@ async function boot(parent: HTMLElement): Promise<void> {
 
   // Reset the orbit/zoom camera back to the framed default (HUD button).
   uiActions.setResetView(() => arenaControls.reset());
+  // Pause-menu Resume button toggles the sim pause directly (V-safe: paused is a
+  // render-agnostic flag the loop already honours).
+  uiActions.setTogglePause(() => {
+    world.paused = !world.paused;
+  });
 
   // Bridge upgrade picks + draft actions from the React draft screen into the sim.
   uiActions.setChooseUpgrade((i) => world.choose(i));
@@ -140,6 +165,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   let draftShownFor = -1; // de-dupe store pushes while a draft is open
   let rewardShownFor = -1; // de-dupe boss-reward overlay pushes
   let endShown = false; // de-dupe the game-over transition
+  let wasPaused = false; // edge-detect pause to refresh the character sheet
   // Intro telegraphs (T33): announce the boss + each new enemy class once per run.
   let bossAnnounced = false;
   let lastAnnTick = 0;
@@ -220,7 +246,9 @@ async function boot(parent: HTMLElement): Promise<void> {
     audio.sfxVolume = s.sfxVolume;
     audio.applyVolumes();
     effects.reduceFlash = s.reduceFlash;
+    bloodView.reduceFlash = s.reduceFlash;
     shake.intensity = s.screenShake;
+    enemyHealthbars.enabled = s.enemyHealthbars;
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;
@@ -243,6 +271,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    aimLine.setResolution(window.innerWidth, window.innerHeight);
     arenaControls.controls.update(); // keep the current orbit, just re-fit aspect
   });
 
@@ -291,7 +320,12 @@ async function boot(parent: HTMLElement): Promise<void> {
       const fxEvents = world.fx.events;
       if (fxEvents.length) {
         effects.consume(fxEvents);
-        for (const e of fxEvents) audio.play(e.kind);
+        chainView.consume(fxEvents);
+        bloodView.consume(fxEvents);
+        for (const e of fxEvents) {
+          if (e.kind === 'dmg') floating.addDamage(e.x, e.z, e.dx, e.variant);
+          else audio.play(e.kind);
+        }
         world.fx.clear();
       }
       // Screen shake is reserved for taking a hit — not for our own shots/impacts
@@ -299,7 +333,10 @@ async function boot(parent: HTMLElement): Promise<void> {
       // the damage so a chip taps and a big bite jolts. Restart (health jumps up)
       // never triggers it.
       const hp = world.player.health;
-      if (hp < lastHealth) shake.add(Math.min(0.32, (lastHealth - hp) * 0.05));
+      if (hp < lastHealth) {
+        shake.add(Math.min(0.32, (lastHealth - hp) * 0.05));
+        playerView.hurt(); // red shimmer on taking damage
+      }
       lastHealth = hp;
       const fxDt = Math.min(frameMs / 1000, 0.05);
       // Spawn the sprint trail BEHIND the player (opposite movement) so it reads
@@ -315,6 +352,9 @@ async function boot(parent: HTMLElement): Promise<void> {
       }
       effects.sprintTrail(tx, tz, world.player.sprint.active, fxDt);
       effects.update(fxDt);
+      chainView.update(fxDt);
+      bloodView.update(fxDt);
+      chainView.sync();
 
       // Orbit/zoom owns the camera pose; shake rides ON TOP. Undo last frame's
       // shake offset before update() so OrbitControls' spherical baseline stays
@@ -328,18 +368,81 @@ async function boot(parent: HTMLElement): Promise<void> {
       lastShakeX = off.x;
       lastShakeZ = off.z;
 
+      // Floating world labels (damage numbers + pickup names) — project against
+      // the finalized camera pose, push the bounded list to the DOM overlay.
+      floating.update(fxDt);
+      camera.updateMatrixWorld();
+      uiActions.setLabels(
+        floating.collect(
+          camera,
+          window.innerWidth,
+          window.innerHeight,
+          world.weaponDrops.pool,
+          world.weaponDrops.promptIndex,
+        ),
+      );
+
       arena.update(world.enemies, fxDt); // animate gate doors as enemies enter
+      playerView.update(fxDt); // decay the hurt flash
       playerView.sync(world.player, alpha);
       enemyView.sync(world.enemies, alpha);
+      enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
       hazardView.sync(world.enemyAttacks.hazards);
       weaponDropView.sync(world.weaponDrops.pool);
       shardView.sync(world.shards, alpha);
+      droneView.sync(world.drones, alpha, fxDt);
       cursorView.sync(world.player);
 
+      // Aim lines — one per projectile, mirroring the weapon's multishot fan
+      // (same angles the weapon-system emits). Hidden outside active combat.
+      if (world.started && !world.paused && !world.leveling) {
+        const pl = world.player;
+        const w0 = world.weaponSystem.weapons[0];
+        let ax: number, az: number;
+        if (pl.aim.has) {
+          ax = pl.aim.x - pl.pos.x;
+          az = pl.aim.z - pl.pos.z;
+          const l = Math.hypot(ax, az) || 1;
+          ax /= l;
+          az /= l;
+        } else {
+          ax = -Math.sin(pl.facing);
+          az = -Math.cos(pl.facing);
+        }
+        const aimAngle = Math.atan2(ax, az);
+        const shots = w0 ? Math.max(1, (w0.def.pellets ?? 1) * world.mods.projectileCount) : 1;
+        const arc = w0 ? (w0.def.spreadArc ?? world.mods.spreadArc) : 0;
+        const count = Math.min(shots, 32);
+        for (let s = 0; s < count; s++) {
+          const fan = count > 1 ? (s / (count - 1) - 0.5) * arc : 0;
+          const a = aimAngle + fan;
+          aimDirs[s * 2] = Math.sin(a);
+          aimDirs[s * 2 + 1] = Math.cos(a);
+        }
+        // When mouse-aiming, the line ends AT the cursor reticle (so it visibly
+        // connects), unless a closer enemy stops it first — but never past weapon
+        // range. Without a cursor (keyboard facing), it shows the full reach.
+        const range = w0 ? w0.def.range : 16;
+        const cursorDist = pl.aim.has
+          ? Math.hypot(pl.aim.x - pl.pos.x, pl.aim.z - pl.pos.z)
+          : range;
+        aimLine.sync(
+          world.enemies,
+          pl.pos.x,
+          pl.pos.z,
+          aimDirs,
+          count,
+          Math.min(range, cursorDist),
+          pl.stats.collisionRadius + 0.4,
+        );
+      } else {
+        aimLine.hide();
+      }
+
       const r0 = performance.now();
-      void renderer.renderAsync(scene, camera);
+      void post.renderAsync(); // bloom post-stack (scene+camera bound in the pass)
       renderMs = performance.now() - r0;
 
       // Push HUD slice to the store (selectors re-render only changed widgets).
@@ -359,8 +462,14 @@ async function boot(parent: HTMLElement): Promise<void> {
         countdown: world.countdown,
         enemiesAlive: world.enemies.count,
         weapon: world.weaponSystem.weapons[0]?.def.displayName ?? '',
+        shieldCharges: world.player.shieldCharges,
+        shieldMax: world.player.shieldMax,
       });
       uiActions.setBoss(world.boss.snapshot());
+
+      // Refresh the character sheet when pause opens (the pause menu shows it).
+      if (world.paused && !wasPaused) uiActions.setSheet(world.characterSheet());
+      wasPaused = world.paused;
 
       // Intro telegraphs: boss warning banner + lighter new-enemy-class toasts.
       if (world.tick < lastAnnTick) {
@@ -419,6 +528,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         pushMeta();
         pushProfile();
         const sum = world.runSummary();
+        uiActions.setSheet(world.characterSheet());
         uiActions.setResult({
           ...r,
           weapon: sum.weapon,

@@ -21,7 +21,9 @@ export class ProjectileView {
   constructor(scene: Scene, capacity: number = MAX_PROJECTILES) {
     const geo = new SphereGeometry(1, 8, 6);
     const mat = new MeshBasicMaterial({
-      color: COL.kineticGold,
+      // Pushed brighter (HDR, toneMapped off) so projectiles keep blooming after
+      // the global bloom strength was lowered to calm the arena.
+      color: COL.kineticGold.clone().multiplyScalar(1.4),
       blending: AdditiveBlending,
       depthWrite: false,
       // Glowing plasma bolts read as light, not solid geometry — don't let the

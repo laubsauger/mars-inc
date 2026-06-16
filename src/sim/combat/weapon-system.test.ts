@@ -95,4 +95,75 @@ describe('WeaponSystem (T14 fire + collide + kill)', () => {
     // Lifetime expiry recycles slots — never unbounded growth.
     expect(ws.projectiles.count).toBeLessThan(10);
   });
+
+  it('ricochet redirects a spent projectile to a fresh enemy (visible bounce)', () => {
+    const enemies = new EnemyPool();
+    const a = enemies.spawn(RUST_MITE, 5, 0, 0, 0);
+    const b = enemies.spawn(RUST_MITE, 5, 3, 0, 0);
+    enemies.state[a] = EnemyState.Active;
+    enemies.state[b] = EnemyState.Active;
+    enemies.health[a] = 100; // survive the hit so we can detect both took damage
+    enemies.health[b] = 100;
+
+    const player = createPlayer();
+    const ws = new WeaponSystem();
+    ws.add(equip(contractualSidearm));
+    ws.weapons[0]!.cooldownLeft = 999; // suppress auto-fire; drive one manual projectile
+
+    // One projectile flying +x toward enemy a, with 1 ricochet bounce, no pierce.
+    ws.projectiles.spawn(
+      0,
+      0,
+      24,
+      0,
+      0.18,
+      5,
+      0,
+      { ...contractualSidearm.damage, critChance: 0 },
+      0,
+      0,
+      1,
+    );
+
+    const hash = new SpatialHash(2);
+    const mods = defaultMods();
+    mods.ricochet = 1;
+    const fx = new FxQueue();
+    const rng = new Rng(1);
+    for (let t = 0; t < 90; t++) {
+      rebuild(hash, enemies);
+      ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
+    }
+
+    expect(enemies.health[a]!).toBeLessThan(100); // direct hit
+    expect(enemies.health[b]!).toBeLessThan(100); // bounce reached the second enemy
+  });
+
+  it('without ricochet a spent projectile dies on first hit (no bounce)', () => {
+    const enemies = new EnemyPool();
+    const a = enemies.spawn(RUST_MITE, 5, 0, 0, 0);
+    const b = enemies.spawn(RUST_MITE, 5, 3, 0, 0);
+    enemies.state[a] = EnemyState.Active;
+    enemies.state[b] = EnemyState.Active;
+    enemies.health[a] = 100;
+    enemies.health[b] = 100;
+
+    const player = createPlayer();
+    const ws = new WeaponSystem();
+    ws.add(equip(contractualSidearm));
+    ws.weapons[0]!.cooldownLeft = 999;
+    ws.projectiles.spawn(0, 0, 24, 0, 0.18, 5, 0, { ...contractualSidearm.damage, critChance: 0 });
+
+    const hash = new SpatialHash(2);
+    const mods = defaultMods(); // ricochet 0
+    const fx = new FxQueue();
+    const rng = new Rng(1);
+    for (let t = 0; t < 90; t++) {
+      rebuild(hash, enemies);
+      ws.step(player, enemies, hash, mods, rng, 1 / 60, fx);
+    }
+
+    expect(enemies.health[a]!).toBeLessThan(100); // hit
+    expect(enemies.health[b]!).toBe(100); // untouched — no bounce
+  });
 });

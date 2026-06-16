@@ -7,6 +7,8 @@ export interface InputSnapshot {
   moveZ: number;
   sprint: boolean;
   pause: boolean;
+  /** Edge-triggered once per press: equip the weapon crate under the player. */
+  pickup: boolean;
   /** Mouse position in CSS pixels; -1 when pointer never seen. */
   mouseX: number;
   mouseY: number;
@@ -32,6 +34,7 @@ const MOVE_KEYS: Record<string, [axis: 'x' | 'z', dir: number]> = {
 export class Input {
   private down = new Set<string>();
   private pausePressed = false;
+  private pickupPressed = false;
   private mouseX = -1;
   private mouseY = -1;
   private mouseInside = false;
@@ -42,6 +45,9 @@ export class Input {
         e.preventDefault();
       }
       if (e.code === 'Escape' && !this.down.has('Escape')) this.pausePressed = true;
+      if ((e.code === 'KeyE' || e.code === 'KeyF') && !this.down.has(e.code)) {
+        this.pickupPressed = true;
+      }
       this.down.add(e.code);
     };
     const onUp = (e: KeyboardEvent): void => {
@@ -85,11 +91,14 @@ export class Input {
     }
     const pause = this.pausePressed;
     this.pausePressed = false;
+    const pickup = this.pickupPressed;
+    this.pickupPressed = false;
     return {
       moveX: Math.max(-1, Math.min(1, moveX)),
       moveZ: Math.max(-1, Math.min(1, moveZ)),
       sprint: this.down.has('ShiftLeft') || this.down.has('ShiftRight'),
       pause,
+      pickup,
       mouseX: this.mouseX,
       mouseY: this.mouseY,
       mouseInside: this.mouseInside,

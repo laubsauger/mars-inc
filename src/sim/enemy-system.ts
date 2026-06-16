@@ -5,6 +5,7 @@
 import { EnemyPool, EnemyState, steerEnemy, DEFAULT_STEER } from './enemies';
 import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
+import type { FxQueue } from './fx';
 import { ARENA_RADIUS } from './constants';
 
 const STEER_DIVISOR = 3; // re-steer each enemy every 3rd tick → ~20Hz
@@ -22,7 +23,7 @@ export class EnemySystem {
     this.hash = new SpatialHash(cellSize);
   }
 
-  step(player: Player, tick: number, dt: number): void {
+  step(player: Player, tick: number, dt: number, fx?: FxQueue): void {
     const p = this.pool;
 
     // Rebuild broad-phase over all live enemies.
@@ -85,6 +86,20 @@ export class EnemySystem {
       p.posX[i]! += p.velX[i]! * chill * dt;
       p.posZ[i]! += p.velZ[i]! * chill * dt;
 
+      // Knockback impulse (crowd control, T42): added on top of steering and
+      // decayed exponentially so a shove reads as a quick punch, not a slide.
+      const kx = p.kbX[i]!;
+      const kz = p.kbZ[i]!;
+      if (kx !== 0 || kz !== 0) {
+        p.posX[i]! += kx * dt;
+        p.posZ[i]! += kz * dt;
+        const decay = Math.max(0, 1 - 9 * dt); // ~0.11s to fade
+        p.kbX[i] = kx * decay;
+        p.kbZ[i] = kz * decay;
+        if (Math.abs(p.kbX[i]!) < 0.05) p.kbX[i] = 0;
+        if (Math.abs(p.kbZ[i]!) < 0.05) p.kbZ[i] = 0;
+      }
+
       // Keep inside the arena.
       const d = Math.hypot(p.posX[i]!, p.posZ[i]!);
       if (d > limit && d > 1e-6) {
@@ -96,7 +111,9 @@ export class EnemySystem {
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
       const rr = p.radius[i]! + player.stats.collisionRadius;
-      if (dx * dx + dz * dz <= rr * rr) hitPlayer(player, p.contactDmg[i]!);
+      if (dx * dx + dz * dz <= rr * rr && hitPlayer(player, p.contactDmg[i]!)) {
+        fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
+      }
     }
   }
 }
