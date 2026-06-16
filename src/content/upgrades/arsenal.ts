@@ -169,7 +169,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     role: 'converter',
     riskTier: 0,
     apply: ({ mods, effects }) => {
-      mods.knockback += 5;
+      mods.knockback += 11;
       effects.on('hit', (c) => {
         c.dealArea(c.x, c.z, 1.6, 4);
       });

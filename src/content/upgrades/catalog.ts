@@ -97,7 +97,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     baseWeight: 8,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      mods.knockback += 7;
+      mods.knockback += 15; // a real shove that buys space, not a nudge
     },
   },
   {
