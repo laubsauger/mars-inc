@@ -18,7 +18,7 @@ export interface PermanentUpgrade {
   id: string;
   name: string;
   description: string;
-  branch: 'arsenal' | 'biology' | 'mobility';
+  branch: 'arsenal' | 'biology' | 'mobility' | 'command' | 'arena' | 'infamy';
   rarity: GloryRarity;
   cost: number; // Martian Glory per level
   maxLevel: number;
@@ -215,43 +215,41 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     },
   },
   {
-    id: 'frostbrand',
-    name: 'Frostbrand',
-    description: 'Start with Chill-on-hit — seeds freeze & Blood-Crystal builds.',
-    branch: 'biology',
+    id: 'last-stand',
+    name: 'Last-Stand Clause',
+    description: 'RULE: while below 40% health you deal +40% damage — cornered, not finished.',
+    branch: 'infamy',
     rarity: 'rare',
     cost: 170,
-    maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('hit', (c) =>
-        c.applyStatus(c.targetIndex, 'chill', { duration: 2, slowMult: 0.7 }),
-      );
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const bonus = 1 + 0.4 * level;
+      effects.addConditional((c) => (c.hpFrac < 0.4 ? { damageMult: bonus } : {}));
     },
   },
   {
-    id: 'hemorrhage-writ',
-    name: 'Hemorrhage Writ',
-    description: 'Start with Bleed-on-hit — seeds stacking-DoT builds.',
-    branch: 'biology',
+    id: 'adrenal-flood',
+    name: 'Adrenal Flood',
+    description: 'RULE: below half health, your fire rate surges +20% — panic is a weapon.',
+    branch: 'infamy',
     rarity: 'rare',
     cost: 160,
-    maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('hit', (c) =>
-        c.applyStatus(c.targetIndex, 'bleed', { duration: 4, dps: 2, stacks: 1 }),
-      );
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const bonus = 1 + 0.2 * level;
+      effects.addConditional((c) => (c.hpFrac < 0.5 ? { fireRateMult: bonus } : {}));
     },
   },
   {
-    id: 'caustic-coating',
-    name: 'Caustic Coating',
-    description: 'Start with Corrode-on-hit — stacks shred armor so every later hit bites deeper.',
+    id: 'second-wind',
+    name: 'Second Wind',
+    description: 'KEYSTONE: cheat death once per run — a lethal hit leaves you at 40% instead.',
     branch: 'biology',
-    rarity: 'rare',
-    cost: 175,
+    rarity: 'legendary',
+    cost: 380,
     maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('hit', (c) => c.applyStatus(c.targetIndex, 'corrode', { duration: 4, stacks: 1 }));
+    apply: (p) => {
+      p.reviveCharges += 1;
     },
   },
   {
@@ -350,7 +348,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     id: 'house-odds',
     name: 'House Odds',
     description: '+1 draft reroll each run per level.',
-    branch: 'arsenal',
+    branch: 'arena',
     rarity: 'common',
     cost: 110,
     maxLevel: 2,
@@ -361,20 +359,34 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
   {
     id: 'blacklist-rights',
     name: 'Blacklist Rights',
-    description: '+1 draft banish each run per level.',
-    branch: 'arsenal',
+    description: '+1 draft banish each run per level; at level 2, also +1 tag banish.',
+    branch: 'arena',
     rarity: 'common',
     cost: 110,
     maxLevel: 2,
     apply: (p, level) => {
       p.bonusBanishes += level;
+      // Tier 2 unlocks dropping a whole tag from the run pool (T71).
+      p.bonusTagBanishes += Math.max(0, level - 1);
+    },
+  },
+  {
+    id: 'retainer-clause',
+    name: 'Retainer Clause',
+    description: '+1 draft lock each run per level — hold a card for the next level-up.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 130,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.bonusLocks += level;
     },
   },
   {
     id: 'lucky-streak',
     name: 'Lucky Streak',
     description: 'Better odds of rare upgrades (+luck) per level.',
-    branch: 'arsenal',
+    branch: 'arena',
     rarity: 'rare',
     cost: 130,
     maxLevel: 3,
@@ -386,7 +398,7 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     id: 'sponsor-auditor',
     name: 'Sponsor Auditor',
     description: '+1 luck and +2% pickup radius per level.',
-    branch: 'arsenal',
+    branch: 'arena',
     rarity: 'rare',
     cost: 150,
     maxLevel: 3,
@@ -432,40 +444,40 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     },
   },
   {
-    id: 'hair-trigger',
-    name: 'Hair-Trigger Coils',
-    description: 'Start with firmer recoil + recoil recharges Sprint — seeds recoil builds.',
+    id: 'hollow-points',
+    name: 'Hollow Points',
+    description: 'AMPLIFY: +40% critical hit DAMAGE per level — pays off once you build crit.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 160,
-    maxLevel: 1,
-    apply: (p, _level, mods) => {
-      mods.recoilMult += 0.25;
-      p.recoilSprintRecharge = true;
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      mods.critDamageMult += 0.4 * level;
     },
   },
   {
-    id: 'hunter-protocol',
-    name: 'Hunter Protocol',
-    description: 'Start each run with +1 companion drone per level.',
+    id: 'accelerant',
+    name: 'Accelerant',
+    description: 'AMPLIFY: +30% status (burn/bleed) damage per level — rewards a DoT build.',
     branch: 'arsenal',
     rarity: 'rare',
-    cost: 220,
+    cost: 170,
     maxLevel: 2,
-    apply: (p, level) => {
-      p.droneCount += level;
+    apply: (_p, level, mods) => {
+      mods.statusDamageMult += 0.3 * level;
     },
   },
   {
-    id: 'live-wire',
-    name: 'Live Wire',
-    description: 'KEYSTONE: start with Shock-on-hit — seeds chain & plasma builds.',
-    branch: 'arsenal',
+    id: 'wider-contracts',
+    name: 'Wider Contracts',
+    description:
+      'RULE: every level-up offers +1 upgrade choice — more shots at the build you want.',
+    branch: 'arena',
     rarity: 'legendary',
-    cost: 280,
+    cost: 360,
     maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('hit', (c) => c.applyStatus(c.targetIndex, 'shock', { duration: 3, stacks: 1 }));
+    apply: (p) => {
+      p.draftSize += 1;
     },
   },
   {
@@ -484,12 +496,13 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     id: 'orbital-lease',
     name: 'Orbital Lease',
     description: 'KEYSTONE: every shot detonates on impact — trade precision for area.',
-    branch: 'arsenal',
+    branch: 'command',
     rarity: 'legendary',
     cost: 380,
     maxLevel: 1,
     apply: (_p, _level, mods) => {
       mods.blastRadius += 2.2;
+      mods.blastDamageMult = Math.max(mods.blastDamageMult, 0.6); // keystone splash actually bites
     },
   },
   {
@@ -503,6 +516,180 @@ export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
     apply: (_p, _level, mods) => {
       mods.projectileCount += 1;
       mods.pierce += 1;
+    },
+  },
+
+  // ══ COMMAND (violet) — drones, orbital ordnance, automated firepower ═════════
+  {
+    id: 'hunter-protocol',
+    name: 'Hunter Protocol',
+    description: 'Start each run with +1 companion drone per level.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.droneCount += level;
+    },
+  },
+  {
+    id: 'drone-overclock',
+    name: 'Drone Overclock',
+    description: 'AMPLIFY: +35% drone damage per level — your swarm actually bites.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.droneDamageMult += 0.35 * level;
+    },
+  },
+  {
+    id: 'targeting-uplink',
+    name: 'Targeting Uplink',
+    description: 'AMPLIFY: +1 luck and +25% drone damage — better contracts, sharper drones.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 190,
+    maxLevel: 1,
+    apply: (p) => {
+      p.luck += 1;
+      p.droneDamageMult += 0.25;
+    },
+  },
+  {
+    id: 'grey-goo-license',
+    name: 'Grey Goo License',
+    description: 'KEYSTONE: +2 drones and +60% drone damage — a self-running kill machine.',
+    branch: 'command',
+    rarity: 'legendary',
+    cost: 400,
+    maxLevel: 1,
+    apply: (p) => {
+      p.droneCount += 2;
+      p.droneDamageMult += 0.6;
+    },
+  },
+
+  // ══ ARENA (amber) — Glory economy, sponsors, crowd favor ═════════════════════
+  {
+    id: 'vendor-contacts',
+    name: 'Vendor Contacts',
+    description: '+6% pickup radius and +6% magnet per level — never miss a payout.',
+    branch: 'arena',
+    rarity: 'common',
+    cost: 80,
+    maxLevel: 4,
+    apply: (p, level) => {
+      p.pickupRadius *= 1 + 0.06 * level;
+      p.magnetRadius *= 1 + 0.06 * level;
+    },
+  },
+  {
+    id: 'sponsorship-deal',
+    name: 'Sponsorship Deal',
+    description: 'ECONOMY: +12% Martian Glory earned from every run, per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 3,
+    apply: (p, level) => {
+      p.gloryMult += 0.12 * level;
+    },
+  },
+  {
+    id: 'crowd-pleaser',
+    name: 'Crowd-Pleaser',
+    description: 'AMPLIFY: +2 luck — the crowd loves a rare contract.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.luck += 2 * level;
+    },
+  },
+  {
+    id: 'high-roller',
+    name: 'High Roller',
+    description: 'RULE: +50% Glory earned, but you start every run with 25% less health.',
+    branch: 'arena',
+    rarity: 'legendary',
+    cost: 340,
+    maxLevel: 1,
+    apply: (p) => {
+      p.gloryMult += 0.5;
+      p.maxHealth = Math.max(1, Math.round(p.maxHealth * 0.75));
+      p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
+
+  // ══ INFAMY (bleed red) — rule-breaking risk: glass power, blood economy ═══════
+  {
+    id: 'berserk-doctrine',
+    name: 'Berserk Doctrine',
+    description: 'RULE: the lower your health, the harder you hit — up to +50% at death’s door.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 190,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      // Scales smoothly from +0% (full) to +50% (near death).
+      effects.addConditional((c) => ({ damageMult: 1 + 0.5 * (1 - c.hpFrac) }));
+    },
+  },
+  {
+    id: 'overdrive-coils',
+    name: 'Overdrive Coils',
+    description: 'RULE: +80% crit damage, but recoil kicks 40% harder — ride the kick.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 1,
+    apply: (_p, _level, mods) => {
+      mods.critDamageMult += 0.8;
+      mods.recoilMult += 0.4;
+    },
+  },
+  {
+    id: 'blood-tax',
+    name: 'Blood Tax',
+    description: 'ECONOMY: +30% Glory earned, paid for with 30 starting max health.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 180,
+    maxLevel: 1,
+    apply: (p) => {
+      p.gloryMult += 0.3;
+      p.maxHealth = Math.max(1, p.maxHealth - 30);
+      p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
+  {
+    id: 'glass-protocol',
+    name: 'Glass Protocol',
+    description: 'KEYSTONE: +60% damage, but your max health is HALVED. Win fast or die faster.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 360,
+    maxLevel: 1,
+    apply: (p, _level, mods) => {
+      mods.damageMult += 0.6;
+      p.maxHealth = Math.max(1, Math.round(p.maxHealth * 0.5));
+      p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
+  {
+    id: 'the-house-always-wins',
+    name: 'The House Always Wins',
+    description: 'KEYSTONE: +40% Glory and +2 luck — notoriety compounds into fortune.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 420,
+    maxLevel: 1,
+    apply: (p) => {
+      p.gloryMult += 0.4;
+      p.luck += 2;
     },
   },
 ];

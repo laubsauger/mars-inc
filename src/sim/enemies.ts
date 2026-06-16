@@ -199,7 +199,10 @@ export class EnemyPool {
     this.stateTimer[i] = telegraph;
     this.steerPhase[i] = phase & 0xff;
     this.attackCd[i] = 0;
-    this.contactDmg[i] = type.contactDamage ?? DEFAULT_CONTACT_DAMAGE;
+    // Contact damage also scales with difficulty (dampened ~sqrt of HP scale) so
+    // late-game / Act-2 hosts actually THREATEN, not just soak hits (T44/T-Act).
+    this.contactDmg[i] =
+      (type.contactDamage ?? DEFAULT_CONTACT_DAMAGE) * (1 + (hpScale - 1) * 0.55);
     this.aggroRange[i] = type.aggroRange ?? 0;
     this.burnTime[i] = 0;
     this.burnDps[i] = 0;

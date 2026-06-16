@@ -55,6 +55,7 @@ describe('advanced upgrades drive the build engine (T38)', () => {
       magnitude: 0,
       targetIndex: 0,
       procCoef: 1,
+      hitDamage: 0,
       depth: 0,
       applyStatus: () => {},
       dealArea: (_x, _z, _r, amount) => {
@@ -81,6 +82,7 @@ describe('advanced upgrades drive the build engine (T38)', () => {
       magnitude: 20,
       targetIndex: 0,
       procCoef: 1,
+      hitDamage: 0,
       depth: 0,
       applyStatus: () => {},
       dealArea: (_x, _z, r, _amount) => {

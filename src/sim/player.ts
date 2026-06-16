@@ -14,9 +14,10 @@ import type { InputSnapshot } from '../core/input';
 import { clampToArena } from './arena';
 import { xpRequired } from '../content/balance/xp-curve';
 
-// Recoil impulse decay rate (per second). ~0.35s to settle — a felt shove, not a
-// slide. Higher = snappier recovery (V10: recoil never makes you uncontrollable).
-const RECOIL_DECAY = 8;
+// Recoil impulse decay rate (per second). Slower now (~0.45s) so the kick PUSHES
+// you a real distance — recoil is a movement/strategy factor, not a flicker. Still
+// decays fully so it never makes you uncontrollable (V10).
+const RECOIL_DECAY = 5.5;
 
 // Lilu Tubs, Human Scrapper — balanced (§22).
 export const LILU_STATS: MovementStats = {
@@ -53,12 +54,19 @@ export interface Player {
   magnetRadius: number;
   /** Raises the odds of rarer upgrades in the draft (T41). */
   luck: number;
+  /** Glory-Tree reweave run modifiers (T35/T67). Set by permanents at run start. */
+  draftSize: number; // draft options shown per level-up (default 3; ARSENAL widens it)
+  reviveCharges: number; // survive a lethal hit, then consume one (BIOLOGY)
+  droneDamageMult: number; // COMMAND: scales companion-drone damage
+  gloryMult: number; // ARENA/INFAMY: multiplies Glory earned from this run
   /** Chill (slow) from enemy frost effects (T33): time left + speed multiplier. */
   chillTime: number;
   chillMult: number;
-  /** Extra per-run draft rerolls / banishes granted by permanents (T35). */
+  /** Extra per-run draft rerolls / banishes / locks / tag-banishes from permanents (T35/T71). */
   bonusRerolls: number;
   bonusBanishes: number;
+  bonusLocks: number;
+  bonusTagBanishes: number;
   /** Recharging shield (T40 defensive): absorbs one instance of damage, then
    *  recharges after `shieldRecharge`s without breaking. `shieldMax` charges. */
   shieldMax: number;
@@ -67,6 +75,10 @@ export interface Player {
   shieldTimer: number; // countdown to the next regen (0 = idle/full)
   /** Companion drones orbiting the player that auto-hunt enemies (T40/T42). */
   droneCount: number;
+  /** Networked Munitions keystone: when true, drone bolts INHERIT the build's
+   *  global on-hit mods (chain/knockback/status) + blast/pierce/ricochet. Off by
+   *  default — drones are dumb bolts unless you pay for the synergy. */
+  droneInheritMods: boolean;
   /** Repulsor nova (CC, T42): periodic radial push + light AoE. 0 interval = off. */
   novaInterval: number;
   novaTimer: number;
@@ -89,6 +101,10 @@ export interface Player {
   corpseChain: boolean; // Chain of Evidence: detonations seed a decaying child corpse
   corpsePlayerDanger: boolean; // liability downside: blasts can singe the player
   corpseMeteorThreshold: number; // Moonshot: stored ≥ this → telegraphed orbital strike (0 = off)
+  /** Gravedigger build: chance [0..1] that a slain enemy RISES as a pet that fights
+   *  for you and decays. 0 = off. `necroPower` scales pet HP + damage. */
+  necroChance: number;
+  necroPower: number;
   /** XP-as-resource build (T58). Off until the family's cards are drafted. */
   xpInterestRate: number; // Compound Interest: loose shards gain this frac/s (0 = off)
   xpMagnetar: boolean; // Magnetar: loose shards orbit the player and zap enemies
@@ -119,8 +135,14 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     pickupRadius: 1.6,
     magnetRadius: 5,
     luck: 0,
+    draftSize: 3,
+    reviveCharges: 0,
+    droneDamageMult: 1,
+    gloryMult: 1,
     bonusRerolls: 0,
     bonusBanishes: 0,
+    bonusLocks: 0,
+    bonusTagBanishes: 0,
     chillTime: 0,
     chillMult: 1,
     shieldMax: 0, // off until a Shield upgrade is drafted
@@ -128,6 +150,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     shieldRecharge: 10,
     shieldTimer: 0,
     droneCount: 0,
+    droneInheritMods: false,
     novaInterval: 0,
     novaTimer: 0,
     novaRadius: 3.4, // T44 nerf: was 6 — far too wide on the first level
@@ -144,6 +167,8 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     corpseChain: false,
     corpsePlayerDanger: false,
     corpseMeteorThreshold: 0,
+    necroChance: 0,
+    necroPower: 1,
     xpInterestRate: 0,
     xpMagnetar: false,
     xpLiquidation: 0,
@@ -178,8 +203,14 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.pickupRadius = 1.6;
   p.magnetRadius = 5;
   p.luck = 0;
+  p.draftSize = 3;
+  p.reviveCharges = 0;
+  p.droneDamageMult = 1;
+  p.gloryMult = 1;
   p.bonusRerolls = 0;
   p.bonusBanishes = 0;
+  p.bonusLocks = 0;
+  p.bonusTagBanishes = 0;
   p.chillTime = 0;
   p.chillMult = 1;
   p.shieldMax = 0;
@@ -187,6 +218,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.shieldRecharge = 10;
   p.shieldTimer = 0;
   p.droneCount = 0;
+  p.droneInheritMods = false;
   p.novaInterval = 0;
   p.novaTimer = 0;
   p.novaRadius = 3.4;
@@ -203,6 +235,8 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.corpseChain = false;
   p.corpsePlayerDanger = false;
   p.corpseMeteorThreshold = 0;
+  p.necroChance = 0;
+  p.necroPower = 1;
   p.xpInterestRate = 0;
   p.xpMagnetar = false;
   p.xpLiquidation = 0;
@@ -301,5 +335,11 @@ export function hitPlayer(p: Player, amount: number): boolean {
   }
   p.health = Math.max(0, p.health - amount);
   p.invuln = HIT_IFRAMES;
+  // Revive charge (BIOLOGY keystone, T35): a lethal hit is survived once, not fatal.
+  if (p.health <= 0 && p.reviveCharges > 0) {
+    p.reviveCharges -= 1;
+    p.health = Math.max(1, Math.round(p.maxHealth * 0.4));
+    p.invuln = 2; // longer mercy window after a revive
+  }
   return true;
 }

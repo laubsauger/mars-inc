@@ -222,7 +222,9 @@ export class CorpseSystem {
         { amount, damageType: 'explosive', fx },
         rng,
       );
-      fx.push('impact', x, z, 0, 0, 4 /* ImpactProfile.Blast */);
+      // Distinct TOXIC-GREEN burst so an overkill-corpse detonation reads clearly
+      // apart from a normal (gold) explosive blast — you can SEE the recycling.
+      fx.push('corpseblast', x, z);
       if (meteor) fx.push('death', x, z, 0, 0, p.variant[i]!); // extra punch
 
       // Liability danger (V30): the player takes a fraction if caught in the blast.

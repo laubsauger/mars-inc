@@ -22,7 +22,7 @@ import {
 import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
 import { GATE_COUNT } from '../constants';
-import { gateOuterPoint, interiorPoint } from '../arena';
+import { gateOuterPoint, interiorPoint, activeArena } from '../arena';
 
 const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
 const TELE_TELEGRAPH = 1.0; // teleport materialize tell before the stalker is live (V9)
@@ -30,13 +30,14 @@ const TELE_AT = 60; // seconds → Phase Stalkers start blinking in
 const TELE_PERIOD = 14; // base seconds between teleport waves (shrinks late)
 const CHEAPEST = RUST_MITE.threat;
 const HARD_CAP = 1200; // absolute ceiling regardless of curve (≤ pool capacity, V8)
-const BOSS_AT = 90; // escalation-time seconds → Gatekeeper milestone spawn (T33/T29)
-// The whole pre-boss timeline is stretched by this factor: the director reads
+const BOSS_AT = 75; // escalation-time seconds → first Gatekeeper (× TIMELINE_STRETCH 2 = 150s real)
+const BOSS_PERIOD = 75; // REAL seconds between boss waves after the previous one falls
+// The whole timeline is stretched by this factor: the director reads
 // elapsed/TIMELINE_STRETCH for ALL escalation (budget, waves, patterns, variant
-// intros, teleporters, the boss), so spawn pressure, enemy variety, and the boss
-// all arrive 3× later with the SAME shape — a longer, more gradual ramp. Real boss
-// time = BOSS_AT × TIMELINE_STRETCH = 270s. dt-based accrual stays real-time.
-export const TIMELINE_STRETCH = 3;
+// intros, teleporters, the boss), so the run ramps with the SAME shape but spread
+// out. Real first-boss time = BOSS_AT × TIMELINE_STRETCH = 150s. dt-based accrual
+// stays real-time.
+export const TIMELINE_STRETCH = 2;
 
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
@@ -107,8 +108,13 @@ export function budgetAt(elapsed: number): SpawnBudget {
     // Opening accrual must fund the first clustered pulses (waveGroup × gates),
     // else the bank trickle starves the waves and almost nothing spawns in the
     // first minute. Still gentle vs late game and monotonic (V8).
-    threatPoints: 3.0 + elapsed * 0.15,
-    maxConcurrentEnemies: Math.min(HARD_CAP, Math.floor(6 + elapsed * 1.6)),
+    // Numbers ramp HARD and keep ramping (accelerating) so late waves are a real
+    // horde, not a trickle — the bank funds bigger bursts, the cap lets more stand.
+    threatPoints: 3.0 + elapsed * 0.32 + elapsed * elapsed * 0.0018,
+    maxConcurrentEnemies: Math.min(
+      HARD_CAP,
+      Math.floor(8 + elapsed * 2.4 + elapsed * elapsed * 0.01),
+    ),
     eliteBudget: Math.floor(elapsed / 30),
     rangedBudget: 0,
     hazardBudget: 0,
@@ -118,7 +124,9 @@ export function budgetAt(elapsed: number): SpawnBudget {
 export class WaveDirector {
   private bank = 0;
   private phase = 0;
-  private boss = false; // Gatekeeper milestone fired this run
+  private boss = false; // at least one boss has spawned this run
+  private bossWaveTimer = 0; // countdown to the next boss wave (0 = spawn ASAP at BOSS_AT)
+  private bossesSpawned = 0; // how many bosses fielded → escalates each one's HP
   private waveTimer = 1.0; // first wave lands shortly after the countdown
   private sweepGate = 0; // clockwise cursor for the Sweep pattern
 
@@ -126,6 +134,8 @@ export class WaveDirector {
     this.bank = 0;
     this.phase = 0;
     this.boss = false;
+    this.bossWaveTimer = 0;
+    this.bossesSpawned = 0;
     this.waveTimer = 1.0;
     this.sweepGate = 0;
     this.teleTimer = TELE_PERIOD;
@@ -167,11 +177,19 @@ export class WaveDirector {
     return RUST_MITE;
   }
 
-  private spawnAtGate(pool: EnemyPool, rng: Rng, type: EnemyType): boolean {
+  private spawnAtGate(pool: EnemyPool, rng: Rng, type: EnemyType, hpScale = 1): boolean {
     const gate = rng.int(0, GATE_COUNT - 1);
     // Appear OUTSIDE the gate; the telegraph walk carries them in (shape-aware).
     const p = gateOuterPoint(gate, rng.range(-1, 1), 2.5);
-    return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++) >= 0;
+    return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++, hpScale) >= 0;
+  }
+
+  /** Is a boss currently on the field (active or telegraphing)? Gates the next wave. */
+  private bossOnField(pool: EnemyPool): boolean {
+    for (let i = 0; i < pool.count; i++) {
+      if (pool.variant[i] === BOSS_GATEKEEPER.variant) return true;
+    }
+    return false;
   }
 
   /** Spawn-time HP scale for fodder this step (run-phase escalation, T44). */
@@ -194,14 +212,32 @@ export class WaveDirector {
     const b = budgetAt(elapsed);
     const pace = clamp(adapt.pace, PACE_MIN, PACE_MAX); // re-clamp: director owns bounds (V12)
     const houndBias = clamp(adapt.houndBias, 0, BIAS_MAX);
-    this.bank += b.threatPoints * pace * dt;
+    // Act pace multiplier — higher Acts accrue threat faster AND raise the concurrent
+    // cap, so the Crown fields more enemies, sooner (still V8-bounded by pool cap).
+    const actPace = activeArena().paceMult;
+    this.bank += b.threatPoints * pace * actPace * dt;
 
-    const cap = Math.min(b.maxConcurrentEnemies, pool.capacity);
+    const cap = Math.min(Math.floor(b.maxConcurrentEnemies * actPace), pool.capacity);
 
-    // Boss milestone: claim a free slot before the fodder fill so the concurrent
-    // count never exceeds the cap (V8). Spawned free (not bought from the bank).
-    if (!this.boss && elapsed >= BOSS_AT && pool.count < cap) {
-      if (this.spawnAtGate(pool, rng, BOSS_GATEKEEPER)) this.boss = true;
+    // Recurring boss waves (V22 hinge × N): the first Gatekeeper at BOSS_AT, then a
+    // TOUGHER one each BOSS_PERIOD after the previous falls — you fight through an
+    // escalating gauntlet of bosses, not a single milestone. Each boss's HP scales
+    // with how many you've already felled (× the Act multiplier). Spawned free
+    // (not from the bank) and only while none is on the field (≤ cap, V8).
+    if (elapsed >= BOSS_AT && pool.count < cap) {
+      if (this.bossOnField(pool)) {
+        this.bossWaveTimer = BOSS_PERIOD; // hold the countdown while a boss lives
+      } else {
+        this.bossWaveTimer -= dt;
+        if (this.bossWaveTimer <= 0) {
+          const scale = (1 + this.bossesSpawned * 0.6) * activeArena().difficultyMult;
+          if (this.spawnAtGate(pool, rng, BOSS_GATEKEEPER, scale)) {
+            this.bossesSpawned++;
+            this.boss = true;
+            this.bossWaveTimer = BOSS_PERIOD;
+          }
+        }
+      }
     }
 
     // Wave rhythm: hold spawns between pulses (the breather), then release a
@@ -226,7 +262,7 @@ export class WaveDirector {
     }
 
     // Clamp so a long breather can't accumulate an unbounded burst (V8 bounded).
-    this.bank = Math.min(this.bank, b.threatPoints * 4 + CHEAPEST);
+    this.bank = Math.min(this.bank, b.threatPoints * 4 * actPace + CHEAPEST);
   }
 
   /** Release one wave: tight clustered groups from the gates a directional
@@ -345,14 +381,18 @@ export class WaveDirector {
  * AND steps up per boss kill (bosses are the progression hinge, §G). Bounded
  * growth, deterministic (pure function of run state). Boss HP is NOT scaled.
  */
-export function difficultyScale(elapsed: number, bossKills: number): number {
-  // Bosses are the progression hinge (§G): NO time-based HP growth until the first
-  // boss falls. Pre-boss, every unit spawns at base HP — the field never quietly
-  // inflates. After a kill, HP steps up per boss and ramps with time BETWEEN bosses
-  // (stretched to the slowed escalation clock). Applied at spawn only; live units
-  // are never re-scaled on the field.
-  if (bossKills <= 0) return 1;
-  return 1 + bossKills * 0.7 + (elapsed / TIMELINE_STRETCH) * 0.014;
+export function difficultyScale(elapsed: number, bossKills: number, level = 1): number {
+  // Enemy HP must KEEP PACE with the player or everything becomes paper. Three
+  // compounding sources, all from the start (no flat early phase — a maxed build
+  // levels fast and would otherwise wipe weak waves forever):
+  //   • LEVEL — the dominant term: player damage scales with level/upgrades, so
+  //     enemy HP scales with level too (they never fall behind your output).
+  //   • TIME — an accelerating quadratic so a long farm meets ever-tankier hosts.
+  //   • BOSS kills — a step each boss felled (the gauntlet ratchets up).
+  // Applied at spawn only; live units are never re-scaled (V12). Act mult stacks.
+  const t = elapsed / TIMELINE_STRETCH;
+  const lvl = 1 + Math.max(0, level - 1) * 0.16;
+  return (1 + t * 0.04 + t * t * 0.0007 + bossKills * 1.5) * lvl;
 }
 
 /** Seconds between waves — long at the open, shrinking to a floor. */
@@ -362,5 +402,5 @@ function waveGap(elapsed: number): number {
 
 /** Max enemies per gate this wave — small groups that grow over the run. */
 function waveGroup(elapsed: number): number {
-  return 3 + Math.floor(elapsed / 18);
+  return 4 + Math.floor(elapsed / 9); // more bodies per gate, climbing over the run
 }

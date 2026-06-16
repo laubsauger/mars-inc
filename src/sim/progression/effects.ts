@@ -85,6 +85,9 @@ export interface TriggerCtx {
   /** Firing weapon's proc coefficient for this event (T69, V32); on hit/crit it
    *  scales this ctx's status/magnitude. 1 for non-weapon events (kill/shot/reaction). */
   procCoef: number;
+  /** Damage this hit dealt (T70, V33); lets on-hit DoTs scale as a fraction of the
+   *  hit (`dotCoef`). 0 for non-hit events. */
+  hitDamage: number;
   /** Proc-chain re-entry depth (V32); 0 = primary hit, bounded by `MAX_PROC_DEPTH`. */
   depth: number;
   /** Re-roll on-hit triggers on another enemy at a reduced (inherited) coefficient,

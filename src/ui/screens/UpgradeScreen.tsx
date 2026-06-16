@@ -67,6 +67,8 @@ export function UpgradeScreen() {
   const choose = useUiStore((s) => s.chooseUpgrade);
   const reroll = useUiStore((s) => s.rerollDraft);
   const banish = useUiStore((s) => s.banishOption);
+  const hold = useUiStore((s) => s.lockCard);
+  const banishTag = useUiStore((s) => s.banishTag);
   const skip = useUiStore((s) => s.skipDraft);
 
   const [locked, setLocked] = useState<Set<string>>(new Set());
@@ -111,6 +113,7 @@ export function UpgradeScreen() {
       <div className="flex max-w-full flex-col gap-4 md:flex-row">
         {draft.options.map((o, i) => {
           const isLocked = locked.has(o.id);
+          const isHeld = draft.lockedId === o.id;
           const style = styleFor(o.rarity);
           return (
             <div
@@ -130,8 +133,27 @@ export function UpgradeScreen() {
                   <div className="mt-0.5 text-[10px] uppercase text-bone/42">Mars Inc contract</div>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {isHeld ? (
+                    <span
+                      title="Held for the next level-up"
+                      className="flex h-7 items-center justify-center rounded-sm border border-elite bg-elite/15 px-2 text-[9px] font-black uppercase tracking-widest text-elite"
+                    >
+                      Held
+                    </span>
+                  ) : (
+                    draft.locksLeft > 0 &&
+                    draft.lockedId === null && (
+                      <button
+                        title={`Hold for the next draft (${draft.locksLeft} left)`}
+                        onClick={() => hold(i)}
+                        className="flex h-7 w-7 items-center justify-center rounded-sm border border-elite/45 bg-pit/82 text-xs font-black text-elite/70 transition hover:border-elite hover:text-elite focus:border-elite focus:outline-none"
+                      >
+                        ⊕
+                      </button>
+                    )
+                  )}
                   <button
-                    title={isLocked ? 'Unlock' : 'Lock across reroll'}
+                    title={isLocked ? 'Unlock' : 'Keep across reroll'}
                     onClick={() => toggleLock(o.id)}
                     className={`flex h-7 w-7 items-center justify-center rounded-sm border bg-pit/82 text-xs font-black transition hover:border-gold hover:text-gold focus:border-gold focus:outline-none ${
                       isLocked ? 'border-gold text-gold' : 'border-bone/30 text-bone/50'
@@ -181,17 +203,30 @@ export function UpgradeScreen() {
                     ))}
                   </div>
                 )}
-                <div className="mt-auto flex flex-wrap gap-1">
-                  {o.tags.map((t) => (
+              </button>
+
+              {/* Tags row — clickable to banish a whole tag from the run pool (T71). */}
+              <div className="-mt-1 mb-1 flex flex-wrap gap-1">
+                {o.tags.map((t) =>
+                  draft.tagBanishesLeft > 0 ? (
+                    <button
+                      key={t}
+                      title={`Banish all "${t}" cards from this run (${draft.tagBanishesLeft} left)`}
+                      onClick={() => banishTag(t)}
+                      className="rounded-sm border border-rust/60 bg-pit/82 px-1.5 py-0.5 text-[10px] uppercase text-gold transition hover:border-bleed hover:text-bleed"
+                    >
+                      {t} ✕
+                    </button>
+                  ) : (
                     <span
                       key={t}
                       className="rounded-sm border border-rust/60 bg-pit/82 px-1.5 py-0.5 text-[10px] uppercase text-gold"
                     >
                       {t}
                     </span>
-                  ))}
-                </div>
-              </button>
+                  ),
+                )}
+              </div>
 
               <div className="text-[10px] uppercase text-bone/38">{contractClause(o.tags)}</div>
 
@@ -239,7 +274,11 @@ export function UpgradeScreen() {
         </button>
       </div>
       <div className="mt-3 text-xs text-bone/40">
-        click or press 1–{draft.options.length} · R to reroll · ◇ to lock
+        click or press 1–{draft.options.length} · R to reroll · ◇ keep across reroll
+        {draft.locksLeft > 0 ? ` · ⊕ hold for next (${draft.locksLeft})` : ''}
+        {draft.tagBanishesLeft > 0
+          ? ` · tag ✕ banishes a whole tag (${draft.tagBanishesLeft})`
+          : ''}
       </div>
     </div>
   );

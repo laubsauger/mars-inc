@@ -14,9 +14,9 @@ const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
 // Player knockback on a body-check: base shove, scaled by the enemy's footprint
 // (a brute/boss launches you far harder than fodder) and reduced by resistance.
 // recoilVel is clamped after so a cluster contact can't fling you across the pit.
-const CONTACT_KNOCKBACK = 9; // base impulse (u/s) for a baseline-size enemy
+const CONTACT_KNOCKBACK = 15; // base impulse (u/s) for a baseline-size enemy — punchy
 const KNOCKBACK_REF_RADIUS = 0.8; // enemy radius that maps to the base shove
-const MAX_PLAYER_RECOIL = 16; // hard cap on the impulse channel (V10 spirit)
+const MAX_PLAYER_RECOIL = 26; // hard cap on the impulse channel (V10 spirit)
 
 export class EnemySystem {
   readonly pool: EnemyPool;
@@ -127,7 +127,9 @@ export class EnemySystem {
       if (kx !== 0 || kz !== 0) {
         p.posX[i]! += kx * dt;
         p.posZ[i]! += kz * dt;
-        const decay = Math.max(0, 1 - 9 * dt); // ~0.11s to fade
+        // Slow decay (~0.25s) → every shove pushes far for the same force, so all
+        // enemy knockback (hits, nova, dash) lands with serious weight (T42).
+        const decay = Math.max(0, 1 - 4 * dt);
         p.kbX[i] = kx * decay;
         p.kbZ[i] = kz * decay;
         if (Math.abs(p.kbX[i]!) < 0.05) p.kbX[i] = 0;

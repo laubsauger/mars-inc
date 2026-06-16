@@ -22,6 +22,7 @@ import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
 import { CorpseView } from './render/corpse-view';
+import { PetView } from './render/pet-view';
 import { AimLineView } from './render/aim-line-view';
 import { Effects } from './render/effects';
 import { FloorReflectionView } from './render/floor-reflection-view';
@@ -35,7 +36,7 @@ import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
-import { arenaContains, setActiveArena, ARENAS } from './sim/arena';
+import { setActiveArena, ARENAS } from './sim/arena';
 import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
@@ -165,6 +166,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const cursorView = new CursorView(scene);
   const droneView = new DroneView(scene);
   const corpseView = new CorpseView(scene);
+  const petView = new PetView(scene);
   const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
   const aimDirs = new Float32Array(64); // reused per frame (multishot fan)
   const effects = new Effects(scene);
@@ -263,6 +265,8 @@ async function boot(parent: HTMLElement): Promise<void> {
   uiActions.setChooseUpgrade((i) => world.choose(i));
   uiActions.setRerollDraft((ids) => world.reroll(ids));
   uiActions.setBanishOption((i) => world.banish(i));
+  uiActions.setLockCard((i) => world.lockCard(i));
+  uiActions.setBanishTag((tag) => world.banishTag(tag));
   uiActions.setSkipDraft(() => world.skipDraft());
   uiActions.setChooseBossReward((i) => world.chooseBossReward(i));
   let draftShownFor = -1; // de-dupe store pushes while a draft is open
@@ -406,7 +410,10 @@ async function boot(parent: HTMLElement): Promise<void> {
         return;
       }
       const snap = input.sample();
-      // Render layer owns the camera → resolve the ground aim point here.
+      // Render layer owns the camera → resolve the ground aim point here. Aim works
+      // ANYWHERE the cursor projects onto the ground plane — do NOT require it to be
+      // inside the arena (that caged aiming to the floor and dropped to auto-aim the
+      // instant the cursor left it). We always shoot toward the cursor (V-aim).
       if (snap.mouseInside) {
         const g = screenToGround(
           camera,
@@ -415,7 +422,7 @@ async function boot(parent: HTMLElement): Promise<void> {
           window.innerWidth,
           window.innerHeight,
         );
-        if (g && arenaContains(g.x, g.z, 4)) {
+        if (g) {
           snap.aimX = g.x;
           snap.aimZ = g.z;
           snap.hasAim = true;
@@ -518,6 +525,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
       corpseView.sync(world.corpses.pool, alpha);
+      petView.sync(world.pets.pool, camera, alpha);
       cursorView.sync(world.player);
 
       // Aim lines — one per projectile, mirroring the weapon's multishot fan
@@ -637,7 +645,10 @@ async function boot(parent: HTMLElement): Promise<void> {
       if (world.ended && world.result && !endShown) {
         endShown = true;
         const r = world.result;
-        lastGlory = gloryFor(r, ARENAS[save.current.settings.arenaId].gloryMult);
+        lastGlory = gloryFor(
+          r,
+          ARENAS[save.current.settings.arenaId].gloryMult * world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
+        );
         save.mutate((p) => {
           p.currencies.martianGlory += lastGlory;
           // Felling the Gatekeeper (or winning the run) permanently unlocks Act 2.
@@ -687,6 +698,9 @@ async function boot(parent: HTMLElement): Promise<void> {
           level: world.player.level,
           rerollsLeft: world.rerollsLeft,
           banishesLeft: world.banishesLeft,
+          locksLeft: world.locksLeft,
+          tagBanishesLeft: world.tagBanishesLeft,
+          lockedId: world.heldLock,
           options: world.draft.map((d) => {
             const info = world.upgradeInfo(d);
             return {
@@ -709,6 +723,9 @@ async function boot(parent: HTMLElement): Promise<void> {
           options: [],
           rerollsLeft: 0,
           banishesLeft: 0,
+          locksLeft: 0,
+          tagBanishesLeft: 0,
+          lockedId: null,
         });
       }
 

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useUiStore, type MenuView } from '../store';
 import { SocialFooter } from '../SocialFooter';
 import { WEAPONS } from '../../content/weapons/index';
+import { PERMANENT_UPGRADES } from '../../content/permanent/index';
 import { ARENAS, type ArenaId } from '../../sim/arena';
 
 const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run' };
@@ -348,143 +349,116 @@ function SettingsPanel() {
   );
 }
 
-type GloryBranch = 'arsenal' | 'biology' | 'mobility';
+type GloryBranch = 'arsenal' | 'biology' | 'mobility' | 'command' | 'arena' | 'infamy';
 
 const BRANCHES: { id: GloryBranch; label: string; blurb: string }[] = [
-  { id: 'arsenal', label: 'Arsenal', blurb: 'Drafting & firepower contracts' },
-  { id: 'biology', label: 'Biology', blurb: 'Survival & status seeds' },
   { id: 'mobility', label: 'Mobility', blurb: 'Speed, sprint & kinetics' },
+  { id: 'biology', label: 'Biology', blurb: 'Survival, sustain & second chances' },
+  { id: 'arsenal', label: 'Arsenal', blurb: 'Firepower, drafting & amplifiers' },
+  { id: 'command', label: 'Command', blurb: 'Drones & automated ordnance' },
+  { id: 'arena', label: 'Arena', blurb: 'Glory economy & sponsors' },
+  { id: 'infamy', label: 'Infamy', blurb: 'Rule-breaking risk & blood economy' },
 ];
 
-// Layout in % of the (big, pannable) inner canvas. Lower y = higher up the tree.
-// Three arms radiate from the root: mobility climbs the centre, biology fans up-
-// left, arsenal up-right. Branch tips end in LEGENDARY keystones. Node ids match
-// the permanent-upgrade catalog 1:1 (content/permanent) so each is a real buy.
-const TREE_NODES = {
-  root: { x: 50, y: 93, branch: 'mobility', icon: '◆' },
+const BRANCH_ORDER = BRANCHES.map((b) => b.id);
+const RARITY_ICON: Record<string, string> = { common: '•', rare: '◆', legendary: '★' };
 
-  // ── Mobility (centre column) ──────────────────────────────────────────────
-  'fleet-footed': { x: 50, y: 82, branch: 'mobility', icon: '↟' },
-  'nimble-frame': { x: 43, y: 75, branch: 'mobility', icon: '⟂' },
-  'redline-servos': { x: 57, y: 75, branch: 'mobility', icon: '↯' },
-  'jump-start': { x: 50, y: 68, branch: 'mobility', icon: '⚡' },
-  'afterburn-clause': { x: 42, y: 61, branch: 'mobility', icon: '»' },
-  'kinetic-boots': { x: 58, y: 61, branch: 'mobility', icon: '⇶' },
-  'repulsor-core': { x: 50, y: 54, branch: 'mobility', icon: '◌' },
-  'phase-stride': { x: 43, y: 45, branch: 'mobility', icon: '⇆' },
-  'singularity-engine': { x: 52, y: 37, branch: 'mobility', icon: '⊛' },
+function gloryBranch(branch: string): GloryBranch {
+  return (BRANCH_ORDER as string[]).includes(branch) ? (branch as GloryBranch) : 'mobility';
+}
 
-  // ── Biology (up-left arm) ─────────────────────────────────────────────────
-  'reinforced-plating': { x: 35, y: 81, branch: 'biology', icon: '♥' },
-  'adrenal-glut': { x: 26, y: 78, branch: 'biology', icon: '◍' },
-  'organ-repo-insurance': { x: 30, y: 72, branch: 'biology', icon: '+' },
-  'magnetized-marrow': { x: 22, y: 67, branch: 'biology', icon: '◎' },
-  'thick-hide': { x: 33, y: 63, branch: 'biology', icon: '▣' },
-  frostbrand: { x: 17, y: 59, branch: 'biology', icon: '❄' },
-  'hemorrhage-writ': { x: 28, y: 54, branch: 'biology', icon: '⧫' },
-  'caustic-coating': { x: 14, y: 49, branch: 'biology', icon: '☣' },
-  'emergency-plating': { x: 25, y: 45, branch: 'biology', icon: '⛨' },
-  'second-heart': { x: 15, y: 38, branch: 'biology', icon: '❣' },
-  'toxic-bloom': { x: 27, y: 36, branch: 'biology', icon: '✸' },
+// ── Auto-layout (T35 reweave) ────────────────────────────────────────────────
+// The root sits at CENTRE; each branch RADIATES outward on its own spoke (6
+// branches → evenly spaced around the circle), nodes stacked cheap→far along the
+// spoke. Generated from the catalog so any branch/node set lays out organically
+// without hand-placing — the tree grows like a real web as content lands.
+type NodeLayout = { x: number; y: number; branch: GloryBranch; icon: string };
+type TreeNodeId = string;
 
-  // ── Arsenal (up-right arm) ────────────────────────────────────────────────
-  'gyro-bracing': { x: 65, y: 81, branch: 'arsenal', icon: '⌖' },
-  'overcharged-rounds': { x: 71, y: 78, branch: 'arsenal', icon: '✦' },
-  'quickdraw-clause': { x: 78, y: 80, branch: 'arsenal', icon: '↯' },
-  'house-odds': { x: 67, y: 72, branch: 'arsenal', icon: '⇄' },
-  'hairline-sights': { x: 84, y: 74, branch: 'arsenal', icon: '⊹' },
-  'blacklist-rights': { x: 75, y: 68, branch: 'arsenal', icon: '×' },
-  'lucky-streak': { x: 69, y: 62, branch: 'arsenal', icon: '?' },
-  'sponsor-auditor': { x: 85, y: 64, branch: 'arsenal', icon: '§' },
-  'splinter-rounds': { x: 77, y: 58, branch: 'arsenal', icon: '➶' },
-  'arc-garnishment': { x: 67, y: 54, branch: 'arsenal', icon: '⌁' },
-  'ricochet-clause': { x: 86, y: 56, branch: 'arsenal', icon: '⟿' },
-  'hunter-protocol': { x: 92, y: 50, branch: 'arsenal', icon: '◇' },
-  'hair-trigger': { x: 80, y: 50, branch: 'arsenal', icon: '↻' },
-  'live-wire': { x: 70, y: 46, branch: 'arsenal', icon: '⌇' },
-  'wide-load': { x: 84, y: 44, branch: 'arsenal', icon: '⁂' },
-  'orbital-lease': { x: 92, y: 40, branch: 'arsenal', icon: '☉' },
-  'war-profiteering': { x: 77, y: 38, branch: 'arsenal', icon: '✷' },
-} satisfies Record<string, { x: number; y: number; branch: GloryBranch; icon: string }>;
+const TREE_NODES: Record<string, NodeLayout> = {
+  root: { x: 50, y: 50, branch: 'mobility', icon: '◆' },
+};
+const TREE_EDGES: Array<[TreeNodeId, TreeNodeId]> = [];
+const TREE_PARENT: Record<string, TreeNodeId> = {};
+const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch }> = [];
 
-type TreeNodeId = keyof typeof TREE_NODES;
-
-const TREE_EDGES: ReadonlyArray<readonly [TreeNodeId, TreeNodeId]> = [
-  // Mobility spine.
-  ['root', 'fleet-footed'],
-  ['fleet-footed', 'nimble-frame'],
-  ['fleet-footed', 'redline-servos'],
-  ['fleet-footed', 'jump-start'],
-  ['jump-start', 'afterburn-clause'],
-  ['jump-start', 'kinetic-boots'],
-  ['afterburn-clause', 'repulsor-core'],
-  ['kinetic-boots', 'repulsor-core'],
-  ['repulsor-core', 'phase-stride'],
-  ['phase-stride', 'singularity-engine'],
-  // Biology arm.
-  ['root', 'reinforced-plating'],
-  ['reinforced-plating', 'adrenal-glut'],
-  ['reinforced-plating', 'organ-repo-insurance'],
-  ['organ-repo-insurance', 'magnetized-marrow'],
-  ['organ-repo-insurance', 'thick-hide'],
-  ['magnetized-marrow', 'frostbrand'],
-  ['thick-hide', 'hemorrhage-writ'],
-  ['frostbrand', 'caustic-coating'],
-  ['hemorrhage-writ', 'emergency-plating'],
-  ['caustic-coating', 'second-heart'],
-  ['emergency-plating', 'toxic-bloom'],
-  // Arsenal arm.
-  ['root', 'gyro-bracing'],
-  ['gyro-bracing', 'overcharged-rounds'],
-  ['gyro-bracing', 'quickdraw-clause'],
-  ['overcharged-rounds', 'house-odds'],
-  ['quickdraw-clause', 'hairline-sights'],
-  ['house-odds', 'blacklist-rights'],
-  ['blacklist-rights', 'lucky-streak'],
-  ['hairline-sights', 'sponsor-auditor'],
-  ['lucky-streak', 'splinter-rounds'],
-  ['lucky-streak', 'arc-garnishment'],
-  ['sponsor-auditor', 'ricochet-clause'],
-  ['sponsor-auditor', 'hunter-protocol'],
-  ['splinter-rounds', 'hair-trigger'],
-  ['arc-garnishment', 'live-wire'],
-  ['ricochet-clause', 'wide-load'],
-  ['hunter-protocol', 'orbital-lease'],
-  ['hair-trigger', 'war-profiteering'],
-  ['wide-load', 'war-profiteering'],
-] as const;
-
-// Prerequisite chain: a node unlocks only once the node it branches from is
-// owned (root is always available). Forces players to spend INWARD before
-// reaching the outer milestones, so a branch is a progression, not a free pick.
-// A node reached by multiple edges keeps its FIRST parent (cheapest path in).
-const TREE_PARENT: Partial<Record<TreeNodeId, TreeNodeId>> = {};
-for (const [a, b] of TREE_EDGES) if (TREE_PARENT[b] === undefined) TREE_PARENT[b] = a;
-
-const TREE_ORBITS: ReadonlyArray<{ x: number; y: number; r: number; branch: GloryBranch }> = [
-  { x: 49, y: 62, r: 20, branch: 'mobility' },
-  { x: 24, y: 60, r: 24, branch: 'biology' },
-  { x: 78, y: 60, r: 26, branch: 'arsenal' },
-];
+{
+  const n = BRANCH_ORDER.length;
+  // The canvas is 1140×920 (x-units ~1.24× wider than y on screen), so COMPRESS x to
+  // keep the radial star round instead of flattening the diagonal spokes.
+  const XS = 0.81;
+  const SECTOR = ((2 * Math.PI) / n) * 0.92; // angular width each branch owns (gap between)
+  const R0 = 15; // depth-0 node distance from the hub
+  const RSTEP = 10; // radial gap per tree depth
+  BRANCH_ORDER.forEach((branch, bi) => {
+    const center = -Math.PI / 2 + (bi * 2 * Math.PI) / n; // spoke direction
+    const nodes = PERMANENT_UPGRADES.filter((u) => u.branch === branch)
+      .slice()
+      .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
+    const count = nodes.length;
+    if (count === 0) return;
+    // Cost-ordered BINARY tree (heap layout): node k's children are 2k+1 / 2k+2, so a
+    // branch FORKS into sub-branches as it grows. Lay it out tidily — each subtree
+    // gets an angular wedge sized by its leaf count, so siblings never overlap.
+    const kids = (k: number) => [2 * k + 1, 2 * k + 2].filter((c) => c < count);
+    const leaves: number[] = new Array(count).fill(0);
+    const countLeaves = (k: number): number => {
+      const ch = kids(k);
+      if (ch.length === 0) return (leaves[k] = 1);
+      let s = 0;
+      for (const c of ch) s += countLeaves(c);
+      return (leaves[k] = s);
+    };
+    countLeaves(0);
+    let maxDepth = 0;
+    const place = (k: number, a0: number, a1: number, depth: number) => {
+      if (depth > maxDepth) maxDepth = depth;
+      const a = (a0 + a1) / 2; // node sits at the centre of its wedge
+      const radius = R0 + depth * RSTEP;
+      TREE_NODES[nodes[k]!.id] = {
+        x: 50 + Math.cos(a) * radius * XS,
+        y: 50 + Math.sin(a) * radius,
+        branch,
+        icon: RARITY_ICON[nodes[k]!.rarity] ?? '•',
+      };
+      const parent = k === 0 ? 'root' : nodes[(k - 1) >> 1]!.id;
+      TREE_PARENT[nodes[k]!.id] = parent;
+      TREE_EDGES.push([parent, nodes[k]!.id]);
+      const ch = kids(k);
+      if (ch.length === 0) return;
+      const total = ch.reduce((s, c) => s + leaves[c]!, 0);
+      let cur = a0;
+      for (const c of ch) {
+        const span = (a1 - a0) * (leaves[c]! / total);
+        place(c, cur, cur + span, depth + 1);
+        cur += span;
+      }
+    };
+    place(0, center - SECTOR / 2, center + SECTOR / 2, 0);
+    const midR = R0 + (maxDepth * RSTEP) / 2;
+    TREE_ORBITS.push({
+      x: 50 + Math.cos(center) * midR * XS,
+      y: 50 + Math.sin(center) * midR,
+      r: 9,
+      branch,
+    });
+  });
+}
 
 function isTreeNodeId(id: string): id is TreeNodeId {
   return id in TREE_NODES;
 }
 
-function gloryBranch(branch: string): GloryBranch {
-  return branch === 'arsenal' || branch === 'biology' || branch === 'mobility'
-    ? branch
-    : 'mobility';
-}
-
 function branchPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  // Gentle bow PERPENDICULAR to the segment (consistent rotational sway) so radial
+  // spokes read as organic vines rather than always arcing "up".
   const dx = to.x - from.x;
-  const curve = Math.max(6, Math.min(18, Math.abs(dx) * 0.45));
-  const c1x = from.x + dx * 0.18;
-  const c2x = to.x - dx * 0.22;
-  const c1y = from.y - curve;
-  const c2y = to.y + curve;
-  return `M ${from.x} ${from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${to.x} ${to.y}`;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const bow = Math.min(7, len * 0.16);
+  const mx = (from.x + to.x) / 2 + (-dy / len) * bow;
+  const my = (from.y + to.y) / 2 + (dx / len) * bow;
+  return `M ${from.x} ${from.y} Q ${mx} ${my}, ${to.x} ${to.y}`;
 }
 
 // Branch colours: Arsenal = RED (firepower), Biology = GREEN (survival), Mobility
@@ -515,6 +489,30 @@ const BRANCH_STYLE = {
     text: 'text-cyan',
     ring: 'shadow-[0_0_22px_rgba(50,215,255,0.3)]',
   },
+  command: {
+    line: 'stroke-elite',
+    stroke: '#d84cff',
+    bg: 'bg-elite',
+    border: 'border-elite',
+    text: 'text-elite',
+    ring: 'shadow-[0_0_22px_rgba(216,76,255,0.3)]',
+  },
+  arena: {
+    line: 'stroke-sun',
+    stroke: '#ff9d3c',
+    bg: 'bg-sun',
+    border: 'border-sun',
+    text: 'text-sun',
+    ring: 'shadow-[0_0_22px_rgba(255,157,60,0.3)]',
+  },
+  infamy: {
+    line: 'stroke-ember',
+    stroke: '#ff5a36',
+    bg: 'bg-ember',
+    border: 'border-ember',
+    text: 'text-ember',
+    ring: 'shadow-[0_0_22px_rgba(255,90,54,0.3)]',
+  },
 } as const;
 
 // Legendary keystones override their branch colour with ORANGE so the build-
@@ -537,7 +535,7 @@ function GloryTree() {
   const [hovered, setHovered] = useState<TreeNodeId | null>(null);
   // Start zoomed out a touch — the tree is bigger than the viewport now, so the
   // player sees the whole sprawl first, then pans/zooms into a branch.
-  const [view, setView] = useState({ x: 0, y: 0, scale: 0.7 });
+  const [view, setView] = useState({ x: 0, y: 0, scale: 0.98 });
   const drag = useRef<{
     px: number;
     py: number;
@@ -567,7 +565,7 @@ function GloryTree() {
     return parent !== undefined && isUnlocked(parent);
   };
   const hoveredP = hovered ? byId.get(hovered) : undefined;
-  const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered].branch) : 'mobility';
+  const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered]!.branch) : 'mobility';
   const hoveredLocked = hovered ? !isUnlocked(hovered) : false;
   const hoveredParent = hovered ? TREE_PARENT[hovered] : undefined;
 
@@ -596,7 +594,7 @@ function GloryTree() {
     drag.current = null;
     if (d) setView((v) => ({ ...v, x: d.nx, y: d.ny })); // commit once
   };
-  const reset = () => setView({ x: 0, y: 0, scale: 0.7 });
+  const reset = () => setView({ x: 0, y: 0, scale: 0.98 });
 
   // Wheel zoom via a non-passive listener (React's onWheel is passive → can't
   // preventDefault the page scroll, and we must never scroll the page — rule #1).
@@ -620,11 +618,9 @@ function GloryTree() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setMenuView]);
 
-  // Horizontal compression: pulls the side branches toward centre. Eased off
-  // (0.82 → 0.92) because the centred blue (mobility) branch was getting squeezed
-  // between green/yellow — let the side clusters sit a touch wider so blue
-  // breathes. Applied to every x a layout consumes (nodes, root, edges, rings).
-  const COMPRESS = 0.92;
+  // The radial layout already applies its own aspect compression (XS), so px() is a
+  // straight pass-through now — no extra horizontal squeeze on top.
+  const COMPRESS = 1;
   const px = (x: number) => 50 + (x - 50) * COMPRESS;
   const proj = (n: { x: number; y: number }) => ({ x: px(n.x), y: n.y });
 
@@ -719,9 +715,9 @@ function GloryTree() {
               );
             })}
             {TREE_EDGES.map(([a, b]) => {
-              const from = proj(TREE_NODES[a]);
-              const to = proj(TREE_NODES[b]);
-              const style = BRANCH_STYLE[TREE_NODES[b].branch];
+              const from = proj(TREE_NODES[a]!);
+              const to = proj(TREE_NODES[b]!);
+              const style = BRANCH_STYLE[TREE_NODES[b]!.branch];
               const open = ownedOf(a) > 0; // prerequisite met → branch edge is "live"
               const lit = hovered === a || hovered === b;
               return (
@@ -754,15 +750,15 @@ function GloryTree() {
           </svg>
 
           <div
-            className="absolute flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-cyan bg-pit text-2xl text-cyan shadow-[0_0_30px_rgba(50,215,255,0.38)]"
-            style={{ left: `${px(TREE_NODES.root.x)}%`, top: `${TREE_NODES.root.y}%` }}
+            className="absolute flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-cyan bg-pit text-lg text-cyan shadow-[0_0_30px_rgba(50,215,255,0.38)]"
+            style={{ left: `${px(TREE_NODES.root!.x)}%`, top: `${TREE_NODES.root!.y}%` }}
           >
-            {TREE_NODES.root.icon}
+            {TREE_NODES.root!.icon}
           </div>
 
           {meta.permanents.map((p) => {
             if (!isTreeNodeId(p.id)) return null;
-            const node = TREE_NODES[p.id];
+            const node = TREE_NODES[p.id]!;
             const maxed = p.owned >= p.maxLevel;
             const owned = p.owned > 0;
             const reachable = isUnlocked(p.id);
@@ -782,10 +778,10 @@ function GloryTree() {
             //  • legendary  → biggest, hex-cut feel + permanent glow (a KEYSTONE)
             const sizeClass =
               rarity === 'legendary'
-                ? 'h-[4.6rem] w-[4.6rem] text-3xl'
+                ? 'h-[3.3rem] w-[3.3rem] text-xl'
                 : rarity === 'rare'
-                  ? 'h-[3.9rem] w-[3.9rem] text-2xl'
-                  : 'h-14 w-14 text-xl';
+                  ? 'h-[2.7rem] w-[2.7rem] text-base'
+                  : 'h-[2.2rem] w-[2.2rem] text-sm';
             // Rarity rim: rare gets an inner ring, legendary an animated outer glow
             // (only once owned/buyable — locked legendaries stay quiet).
             const rarityRim =
@@ -851,10 +847,10 @@ function GloryTree() {
             <div
               className="pointer-events-none absolute z-20"
               style={{
-                left: `${px(TREE_NODES[hovered].x)}%`,
-                top: `${TREE_NODES[hovered].y}%`,
-                transform: `translate(${px(TREE_NODES[hovered].x) > 55 ? 'calc(-100% - 30px)' : '30px'}, -50%) scale(${1 / view.scale})`,
-                transformOrigin: px(TREE_NODES[hovered].x) > 55 ? 'right center' : 'left center',
+                left: `${px(TREE_NODES[hovered]!.x)}%`,
+                top: `${TREE_NODES[hovered]!.y}%`,
+                transform: `translate(${px(TREE_NODES[hovered]!.x) > 55 ? 'calc(-100% - 30px)' : '30px'}, -50%) scale(${1 / view.scale})`,
+                transformOrigin: px(TREE_NODES[hovered]!.x) > 55 ? 'right center' : 'left center',
               }}
             >
               <div

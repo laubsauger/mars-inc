@@ -58,6 +58,25 @@ function mat(color: Color, roughness = 0.85, metalness = 0.12): MeshStandardMate
   return new MeshStandardMaterial({ color, roughness, metalness });
 }
 
+// Mark a flat gate/floor piece as a DECAL: drawn before the movers and with depth-
+// write OFF, so a player / projectile / enemy / blood splat is never occluded by it
+// under the angled camera. Floors sit at renderOrder -2 (below decals at -1), and
+// everything that moves stays at the default 0 → always painted on top. "Nothing
+// running around ever renders below the floor."
+const FLOOR_ORDER = -2;
+const DECAL_ORDER = -1;
+function asFloorDecal(m: Mesh): void {
+  m.renderOrder = DECAL_ORDER;
+  const material = m.material;
+  if (!Array.isArray(material)) {
+    // Pure floor underlay: write NO depth and test NO depth, so it occludes nothing
+    // that moves (drawn early via renderOrder, painted over by every mover). Matches
+    // how the projectile glow stays unoccluded — but inverted (always BELOW movers).
+    material.depthWrite = false;
+    material.depthTest = false;
+  }
+}
+
 function outlineHull(mesh: Mesh, thickness: number): void {
   const hull = new Mesh(
     mesh.geometry,
@@ -121,6 +140,7 @@ export class ArenaView {
     const floor = new Mesh(new PlaneGeometry(halfW * 2, halfZ * 2), mat(FLOOR, 0.95, 0.04));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
+    floor.renderOrder = FLOOR_ORDER; // floor below all decals + movers
     this.group.add(floor);
 
     // Floor grid lines (panel seams) — faint emissive so they read on the dark floor.
@@ -315,6 +335,7 @@ export class ArenaView {
     const disc = new Mesh(new CircleGeometry(ARENA_RADIUS, 96), mat(FLOOR, 0.95, 0.04));
     disc.rotation.x = -Math.PI / 2;
     disc.receiveShadow = true;
+    disc.renderOrder = FLOOR_ORDER; // floor below all decals + movers
     this.group.add(disc);
 
     // Concentric inlay rings + radial seams break up the flat floor (readable).
@@ -452,20 +473,25 @@ export class ArenaView {
     const cz = sin * wallR;
     const faceY = Math.PI / 2 - angle; // face the arena centre
 
-    // Approach apron on the floor inside the gate (hazard-striped landing).
+    // Approach apron on the floor inside the gate (hazard-striped landing). It's
+    // FLOOR — flush + flagged as a decal so a mover (player/projectile/enemy) is
+    // never occluded by it under the angled camera (nothing on the floor renders
+    // over things running around). asFloorDecal: low + depthWrite off + drawn first.
     const apron = new Mesh(
-      new BoxGeometry(GATE_HALF_WIDTH * 2 + 1, 0.06, 8),
+      new BoxGeometry(GATE_HALF_WIDTH * 2 + 1, 0.04, 8),
       mat(STEEL_DARK, 0.85, 0.3),
     );
     const apronR = ARENA_RADIUS - 3.5;
-    apron.position.set(cos * apronR, 0.06, sin * apronR);
+    apron.position.set(cos * apronR, 0.02, sin * apronR);
     apron.rotation.y = faceY;
     apron.receiveShadow = true;
+    asFloorDecal(apron);
     this.group.add(apron);
     for (const o of [-(GATE_HALF_WIDTH - 0.6), GATE_HALF_WIDTH - 0.6]) {
-      const stripe = new Mesh(new BoxGeometry(0.4, 0.08, 7), mat(TRIM, 0.7, 0.1));
-      stripe.position.set(cos * apronR + tx * o, 0.1, sin * apronR + tz * o);
+      const stripe = new Mesh(new BoxGeometry(0.4, 0.05, 7), mat(TRIM, 0.7, 0.1));
+      stripe.position.set(cos * apronR + tx * o, 0.045, sin * apronR + tz * o);
       stripe.rotation.y = faceY;
+      asFloorDecal(stripe);
       this.group.add(stripe);
     }
 
@@ -511,15 +537,16 @@ export class ArenaView {
     // Glowing threshold strip on the room floor at the door line — marks where
     // they emerge, and adds a warm read to the chamber.
     const sill = new Mesh(
-      new BoxGeometry(GATE_HALF_WIDTH * 2, 0.06, 0.5),
+      new BoxGeometry(GATE_HALF_WIDTH * 2, 0.05, 0.5),
       new MeshStandardMaterial({
         color: PORTAL_GLOW,
         emissive: PORTAL_GLOW,
         emissiveIntensity: 0.6,
       }),
     );
-    sill.position.set(cos * (ARENA_RADIUS + 1.4), 0.12, sin * (ARENA_RADIUS + 1.4));
+    sill.position.set(cos * (ARENA_RADIUS + 1.4), 0.045, sin * (ARENA_RADIUS + 1.4));
     sill.rotation.y = faceY;
+    asFloorDecal(sill);
     this.group.add(sill);
 
     const ceil = new Mesh(

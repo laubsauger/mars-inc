@@ -57,9 +57,10 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
+    // Bleed DoT scales with the hit (T70, V33): dps = 0.7 × hitDamage / 4s per stack.
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
-        ctx.applyStatus(ctx.targetIndex, 'bleed', { duration: 4, dps: 2, stacks: 1 }),
+        ctx.applyStatus(ctx.targetIndex, 'bleed', { duration: 4, dotCoef: 0.7, stacks: 1 }),
       ),
   },
 

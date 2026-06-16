@@ -12,16 +12,16 @@
 
 ## 0. TL;DR — what to steal, ranked by payoff
 
-| # | Pattern | Source | MARS PIT gap it fills | Effort |
-|---|---------|--------|-----------------------|--------|
-| 1 | **Proc coefficient per weapon** | RoR2 | Statuses apply flat — no weapon identity in proc strength. Fast spray vs slow hammer feel identical for on-hit | Low |
-| 2 | **DoT = % of hit damage** | PoE1 | Burn is flat `3 dps` — doesn't scale, dead by minute 8 | Low |
-| 3 | **Rarity-first roll + Lock** | Soulstone | Draft has reroll/banish/skip but no Lock; rarity is a continuous fudge not a clean tier roll | Low |
-| 4 | **Glory = root(run score)** | Cookie Clicker / Egg Inc | `gloryFor` curve undefined as a pacing dial | Med |
-| 5 | **Geometric permanent cost + Labor Costs inflation** | RL2 | Permanents are *linear* per level → no anti-snowball brake, late nodes trivial | Med |
-| 6 | **Cap-raising 2nd prestige layer (Red Dust)** | RL2 Soul Shop | Red Dust defined in §I economy but unbuilt; no cap-lifting mechanic | Med |
-| 7 | **Additive-within / multiplicative-across discipline** | Cookie Clicker | Catalog mixes the two ad-hoc; some "+25% dmg" cards dilute, some multiply | Audit |
-| 8 | **Poison-style independent stacking fork** | PoE1 | All statuses currently MAX-refresh; no build that rewards fire-rate via stacking | Low |
+| #   | Pattern                                                | Source                   | MARS PIT gap it fills                                                                                          | Effort |
+| --- | ------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------ |
+| 1   | **Proc coefficient per weapon**                        | RoR2                     | Statuses apply flat — no weapon identity in proc strength. Fast spray vs slow hammer feel identical for on-hit | Low    |
+| 2   | **DoT = % of hit damage**                              | PoE1                     | Burn is flat `3 dps` — doesn't scale, dead by minute 8                                                         | Low    |
+| 3   | **Rarity-first roll + Lock**                           | Soulstone                | Draft has reroll/banish/skip but no Lock; rarity is a continuous fudge not a clean tier roll                   | Low    |
+| 4   | **Glory = root(run score)**                            | Cookie Clicker / Egg Inc | `gloryFor` curve undefined as a pacing dial                                                                    | Med    |
+| 5   | **Geometric permanent cost + Labor Costs inflation**   | RL2                      | Permanents are _linear_ per level → no anti-snowball brake, late nodes trivial                                 | Med    |
+| 6   | **Cap-raising 2nd prestige layer (Red Dust)**          | RL2 Soul Shop            | Red Dust defined in §I economy but unbuilt; no cap-lifting mechanic                                            | Med    |
+| 7   | **Additive-within / multiplicative-across discipline** | Cookie Clicker           | Catalog mixes the two ad-hoc; some "+25% dmg" cards dilute, some multiply                                      | Audit  |
+| 8   | **Poison-style independent stacking fork**             | PoE1                     | All statuses currently MAX-refresh; no build that rewards fire-rate via stacking                               | Low    |
 
 ---
 
@@ -33,7 +33,7 @@
 per rarity by `1 + (level*0.035 + luck*0.12) * RARITY_BOOST`. Works, but rarity odds are entangled with
 synergy weight and tag gates in a single `weightOf` — hard to reason about "what % chance is a legendary."
 
-**Proposed** (Soulstone model — *roll the tier first, then pick within tier*):
+**Proposed** (Soulstone model — _roll the tier first, then pick within tier_):
 
 ```
 TIER_WEIGHT = { common: 50, uncommon: 25, rare: 12, corrupted: 5, prototype: 4, legendary: 1 }
@@ -89,15 +89,16 @@ effectiveStacks   = max(1, round(baseStacks * weapon.procCoef))   // for stackin
 
 Suggested family coefficients (tune against fire rate — fast weapons get low coef so DPS-of-procs stays flat):
 
-| Weapon family | Fire cadence | `procCoef` | Rationale |
-|---------------|--------------|-----------|-----------|
-| Rotary / SMG | very fast | 0.4–0.6 | many hits, each weak proc (RoR2 Nailgun = 0.6) |
-| Ballistic rifle | medium | 1.0 | the reference |
-| Explosive / cannon | slow, hits many | 0.7 (per target) | AoE already multi-applies |
-| Beam / energy | continuous tick | 0.25–0.4 per tick | ticks constantly |
-| Orbital / sniper | very slow, huge hit | 2.0–3.0 | rare big hits → long burns (RoR2 Railgunner = 3.0) |
+| Weapon family      | Fire cadence        | `procCoef`        | Rationale                                          |
+| ------------------ | ------------------- | ----------------- | -------------------------------------------------- |
+| Rotary / SMG       | very fast           | 0.4–0.6           | many hits, each weak proc (RoR2 Nailgun = 0.6)     |
+| Ballistic rifle    | medium              | 1.0               | the reference                                      |
+| Explosive / cannon | slow, hits many     | 0.7 (per target)  | AoE already multi-applies                          |
+| Beam / energy      | continuous tick     | 0.25–0.4 per tick | ticks constantly                                   |
+| Orbital / sniper   | very slow, huge hit | 2.0–3.0           | rare big hits → long burns (RoR2 Railgunner = 3.0) |
 
 Worked example (PoE-style bleed primer at base `10% / 3s / 1 stack`):
+
 - on the rotary (0.5): `5% / 1.5s` per hit — but 10 hits/s ⇒ frequent short bleeds
 - on the orbital (3.0): `30% / 9s / 3 stacks` per hit — rare, massive bleeds
 
@@ -125,13 +126,13 @@ procCtx.depth                // thread depth through TriggerCtx; refuse fire() w
 **Problem:** `incendiary-rounds` applies burn `3 dps / 3s` flat (`advanced.ts`). At minute 1 that's meaningful;
 at minute 10 with a 400-damage hit it's noise. Burn should scale with the weapon that lit it.
 
-**PoE1 damaging-ailment math** (anchor PoE1, *not* PoE2 — PoE2 ignite is 20% vs PoE1 90%):
+**PoE1 damaging-ailment math** (anchor PoE1, _not_ PoE2 — PoE2 ignite is 20% vs PoE1 90%):
 
-| Ailment | Magnitude (% of inflicting hit's matching dmg/s) | Base duration |
-|---------|--------------------------------------------------|---------------|
-| Ignite (burn) | 90% fire dmg/s | 4s |
-| Bleed | 70% phys dmg/s (×3 while target moves) | 5s |
-| Poison | 30% (phys+chaos) dmg/s | 2s |
+| Ailment       | Magnitude (% of inflicting hit's matching dmg/s) | Base duration |
+| ------------- | ------------------------------------------------ | ------------- |
+| Ignite (burn) | 90% fire dmg/s                                   | 4s            |
+| Bleed         | 70% phys dmg/s (×3 while target moves)           | 5s            |
+| Poison        | 30% (phys+chaos) dmg/s                           | 2s            |
 
 ### Portable formula
 
@@ -150,11 +151,11 @@ because the weapon got stronger. This is the fix for "statuses fall off."
 Right now burn/chill/mark MAX-refresh; shock/corrode/bleed count-stack (`status.ts:50-88`). Formalize the fork
 as a **deliberate design axis**:
 
-| Stacking rule | Rewards | Use for |
-|---------------|---------|---------|
-| **Independent stacks** (poison-style: each application is its own concurrent instance) | **fire rate / multishot** (more hits = more stacks) | bleed, poison-analog |
-| **Strongest-applies** (only the single biggest instance ticks) | **burst / big crits** | ignite/burn, mark |
-| **Count-capped stacks** (N stacks, each adds a fixed %) | steady ramp | corrode (armor shred), shock (chain primer) |
+| Stacking rule                                                                          | Rewards                                             | Use for                                     |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------- |
+| **Independent stacks** (poison-style: each application is its own concurrent instance) | **fire rate / multishot** (more hits = more stacks) | bleed, poison-analog                        |
+| **Strongest-applies** (only the single biggest instance ticks)                         | **burst / big crits**                               | ignite/burn, mark                           |
+| **Count-capped stacks** (N stacks, each adds a fixed %)                                | steady ramp                                         | corrode (armor shred), shock (chain primer) |
 
 This makes "rotary + bleed" and "sniper + burn" genuinely different builds rather than reskins.
 
@@ -162,13 +163,13 @@ This makes "rotary + bleed" and "sniper + burn" genuinely different builds rathe
 
 Reserve a second class of statuses as **modifiers**, magnitude-capped, scaled by hit (already half-built: chill, mark):
 
-| Ailment | Effect | Cap (PoE1 reference) |
-|---------|--------|----------------------|
-| Chill | enemy slow | up to 30% (we use 40–60% — fine, our pace is faster) |
-| Shock | enemy takes +% damage | up to +50% |
-| Brittle | +crit chance vs target | up to +6% base (was +15%, nerfed — start low) |
-| Sap | enemy deals −% damage | up to −20% |
-| Scorch | −% elemental resist | up to −30% |
+| Ailment | Effect                 | Cap (PoE1 reference)                                 |
+| ------- | ---------------------- | ---------------------------------------------------- |
+| Chill   | enemy slow             | up to 30% (we use 40–60% — fine, our pace is faster) |
+| Shock   | enemy takes +% damage  | up to +50%                                           |
+| Brittle | +crit chance vs target | up to +6% base (was +15%, nerfed — start low)        |
+| Sap     | enemy deals −% damage  | up to −20%                                           |
+| Scorch  | −% elemental resist    | up to −30%                                           |
 
 We have `shock` as a chain-primer today; giving it the **+damage-taken** identity (RoR2/PoE convergence)
 makes it a universal amplifier worth drafting in any build. Strong candidate.
@@ -180,13 +181,13 @@ makes it a universal amplifier worth drafting in any build. Strong candidate.
 T53/T54 already ship the 5 reactions (Thermal Shock, Plasma Bloom, Rust Lightning, Blood Crystal, Acid Fog)
 with atomic stack consumption (V28). Soulstone adds two ideas worth grafting:
 
-1. **Source-count escalation.** In Soulstone, the Nth *source* of a status upgrades its behavior:
+1. **Source-count escalation.** In Soulstone, the Nth _source_ of a status upgrades its behavior:
    1 source = apply on hit · 2 = also apply on crit · 3 = instant damage / faster tick.
    Map to our system: count how many owned upgrades grant a given status (`grantsTags`/status tags); at 2+,
    unlock on-crit application; at 3+, +tick-rate or an instant chunk. Pure content/weight logic on existing data.
 
 2. **Cyclic combo chain.** Soulstone's `Burn→Slow→Disarray→Bleed→Poison→Doom→Burn`: two sources of status A
-   *unlock the next status in the ring*. Our reactions are pairwise; a **ring** gives long-term build identity
+   _unlock the next status in the ring_. Our reactions are pairwise; a **ring** gives long-term build identity
    (a "status cycler" archetype). Optional — only if we want a dedicated ailment-stacking lane.
 
 ---
@@ -197,7 +198,7 @@ with atomic stack consumption (V28). Soulstone adds two ideas worth grafting:
 
 Kongregate/Pecorella, verified: cost grows **exponentially**, production grows **polynomially**, so
 `lim x^k / n^x = 0` — any single power tier eventually stalls. **Justification** for MARS PIT's structure:
-per-run power must plateau and feed a *separate* permanent multiplier layer rather than scaling unbounded in-run.
+per-run power must plateau and feed a _separate_ permanent multiplier layer rather than scaling unbounded in-run.
 We already do this (RunMods plateau → Glory permanents). Keep it; don't let any single in-run stat go unbounded
 without a soft cap.
 
@@ -205,11 +206,11 @@ without a soft cap.
 
 Prestige currency keys off a **root** of lifetime/run earnings; the exponent IS the pace knob (verified):
 
-| Game | Exponent | "double prestige needs…" | Feel |
-|------|----------|--------------------------|------|
-| Cookie Clicker | cube root (1/3) | 8× score | frequent, satisfying |
-| Realm Grinder | sqrt (1/2) | 4× score | very frequent |
-| Egg Inc | ~1/7 | 128× score | grindy, active-play |
+| Game           | Exponent        | "double prestige needs…" | Feel                 |
+| -------------- | --------------- | ------------------------ | -------------------- |
+| Cookie Clicker | cube root (1/3) | 8× score                 | frequent, satisfying |
+| Realm Grinder  | sqrt (1/2)      | 4× score                 | very frequent        |
+| Egg Inc        | ~1/7            | 128× score               | grindy, active-play  |
 
 Define a **RunScore**, then Glory as a sub-linear function of it:
 
@@ -221,7 +222,7 @@ RunScore = survivalSeconds
 Glory    = floor(GLORY_K * RunScore ^ GLORY_P)  // GLORY_K ≈ 2.5, GLORY_P ≈ 0.7
 ```
 
-- `GLORY_P < 1` ⇒ **diminishing returns on a single long run** → rewards *more frequent* runs (Cookie-Clicker pacing).
+- `GLORY_P < 1` ⇒ **diminishing returns on a single long run** → rewards _more frequent_ runs (Cookie-Clicker pacing).
   Lower it toward 0.6 if early runs feel too rewarding; raise toward 0.85 to reward pushing deep.
 - Boss term is additive-pre-root, so a boss kill is a meaningful score jump but still passes through the root.
 - This is the lever for "how grindy is the Glory Tree." Pick one number, tune live.
@@ -244,7 +245,7 @@ finalCost           = ceil(levelCost(node, n) * globalMult(totalPurchasesAcrossT
 ```
 
 - Geometric per-level keeps maxing a single node a real decision (level 4 of an 80-base node at growth 1.55 ≈ 298, not 320 — but level 6 ≈ 715).
-- "Labor Costs" makes *breadth* cost more as you snowball: after 50 total purchases, everything costs ×1.5.
+- "Labor Costs" makes _breadth_ cost more as you snowball: after 50 total purchases, everything costs ×1.5.
   Deliberate brake (RL2 triggers it at Manor Lv30). Bounded, telegraphed in the buy UI ("Labor surcharge: +50%").
 - Tune `COST_GROWTH` 1.5–1.6, `INFLATION_STEP` 0.015–0.025. Verify against the Glory curve (5b) so total
   tree completion takes the intended number of runs.
@@ -255,10 +256,10 @@ finalCost           = ceil(levelCost(node, n) * globalMult(totalPurchasesAcrossT
 Manor nodes have a rank cap; a separate Soul Shop prestige layer **raises the caps** (Strength 10 → 30 → 130
 via "Cosmic Overload"). Apply:
 
-- Glory buys node *levels* up to a base cap. **Red Dust buys cap increases** (and rule-breaks per V31).
+- Glory buys node _levels_ up to a base cap. **Red Dust buys cap increases** (and rule-breaks per V31).
 - E.g. `Overcharged Rounds` caps at +4% dmg ×5 levels with Glory; a Red Dust node lifts the cap to ×8, then ×12.
 - Keeps Glory meaningful run-to-run while Red Dust is the long-horizon "break the ceiling" layer.
-- Pairs with V31 ("Red Dust changes foundational rules") — cap-lift is the *numeric* half, rule-break the *qualitative* half.
+- Pairs with V31 ("Red Dust changes foundational rules") — cap-lift is the _numeric_ half, rule-break the _qualitative_ half.
 
 ---
 
@@ -267,13 +268,13 @@ via "Cosmic Overload"). Apply:
 Verified: incremental power stacks **additively within a category, multiplicatively across categories**
 (Cookie Clicker kittens ×1.36 × flavored cookies ×12373… → huge from many small %). Design rule for our catalog:
 
-| Layer | Rule | Why |
-|-------|------|-----|
-| **Within a stat** (e.g. all +dmg% cards) | **additive**, then applied once | each card dilutes the last → soft cap, no single-stat infinite |
-| **Across stats** (dmg × fireRate × crit × multishot) | **multiplicative** | builds compound; many small cards stay meaningful |
+| Layer                                                | Rule                            | Why                                                            |
+| ---------------------------------------------------- | ------------------------------- | -------------------------------------------------------------- |
+| **Within a stat** (e.g. all +dmg% cards)             | **additive**, then applied once | each card dilutes the last → soft cap, no single-stat infinite |
+| **Across stats** (dmg × fireRate × crit × multishot) | **multiplicative**              | builds compound; many small cards stay meaningful              |
 
 **Audit action:** our `damageMult` is "additive per card, multiplied in pipeline" (`mods.ts`) — correct.
-But verify catalog cards labelled "+X% damage" all feed the *same additive bucket* (so 5× `overcharge` = +125%,
+But verify catalog cards labelled "+X% damage" all feed the _same additive bucket_ (so 5× `overcharge` = +125%,
 not ×1.25^5), while distinct multipliers (heavy-barrel's ×1.35, glass-cannon ×1.8) stay as separate
 **multiplicative** factors. Tag each card `stackMode: 'additive' | 'multiplicative'` to make this explicit and
 testable (V19). Distinguishing the two is what stops "+5% dmg" cards from being either useless or broken.
@@ -284,18 +285,18 @@ testable (V19). Distinguishing the two is what stops "+5% dmg" cards from being 
 
 All slot into existing `UpgradeDefinition` + `BuildEffects` — no new systems beyond §2/§3 hooks.
 
-| id | rarity | role | effect | needs |
-|----|--------|------|--------|-------|
-| `volatile-conduction` | rare | converter | shock now adds +25% damage-taken (PoE shock identity) instead of pure chain-primer | §3 shock rework |
-| `hairline-fracture` | uncommon | primer | on-crit apply brittle: +4% crit vs target, 3s | brittle status |
-| `arterial-spray` | rare | engine | bleed uses independent stacking; +1 max bleed stack/level | §3 stacking fork |
-| `slow-burn` | uncommon | engine | burn duration ×1.5, burnDps ×0.7 (longer, gentler — strongest-applies synergy) | §3 DoT rework |
-| `overpressure-primer` | rare | primer | weapon gains +1.0 procCoef (turns a spray gun into a status applicator) | §2 procCoef |
-| `cascade-failure` | legendary | catastrophe | proc chains gain +1 depth (MAX_PROC_DEPTH 1→2), self-stagger on big chains (riskTier 3) | §2 chain depth |
-| `compound-bleed` | corrupted | liability | +100% bleed dps, you also bleed when hit (telegraphed, counterplay = lifesteal node) | V30 |
-| `retainer-clause` | uncommon | — | +1 draft Lock per run | §1b |
-| `actuarial-tables` | rare | — | +15% Glory from this run per boss killed (greed/economy) | §5b score |
-| `union-dues` | corrupted | liability | enemies drop +50% XP but gain +1 status resistance over time (Selective Pressure tie, T62) | T62 |
+| id                    | rarity    | role        | effect                                                                                     | needs            |
+| --------------------- | --------- | ----------- | ------------------------------------------------------------------------------------------ | ---------------- |
+| `volatile-conduction` | rare      | converter   | shock now adds +25% damage-taken (PoE shock identity) instead of pure chain-primer         | §3 shock rework  |
+| `hairline-fracture`   | uncommon  | primer      | on-crit apply brittle: +4% crit vs target, 3s                                              | brittle status   |
+| `arterial-spray`      | rare      | engine      | bleed uses independent stacking; +1 max bleed stack/level                                  | §3 stacking fork |
+| `slow-burn`           | uncommon  | engine      | burn duration ×1.5, burnDps ×0.7 (longer, gentler — strongest-applies synergy)             | §3 DoT rework    |
+| `overpressure-primer` | rare      | primer      | weapon gains +1.0 procCoef (turns a spray gun into a status applicator)                    | §2 procCoef      |
+| `cascade-failure`     | legendary | catastrophe | proc chains gain +1 depth (MAX_PROC_DEPTH 1→2), self-stagger on big chains (riskTier 3)    | §2 chain depth   |
+| `compound-bleed`      | corrupted | liability   | +100% bleed dps, you also bleed when hit (telegraphed, counterplay = lifesteal node)       | V30              |
+| `retainer-clause`     | uncommon  | —           | +1 draft Lock per run                                                                      | §1b              |
+| `actuarial-tables`    | rare      | —           | +15% Glory from this run per boss killed (greed/economy)                                   | §5b score        |
+| `union-dues`          | corrupted | liability   | enemies drop +50% XP but gain +1 status resistance over time (Selective Pressure tie, T62) | T62              |
 
 (Names lean into the Martian-corporate-brutalism voice already in the catalog: "clause", "dues", "writ", "audit".)
 

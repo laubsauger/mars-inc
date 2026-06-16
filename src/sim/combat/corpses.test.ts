@@ -53,12 +53,12 @@ describe('CorpseSystem ingest (Waste Not primer)', () => {
   it('stores overkill ONLY when corpseStore is on', () => {
     const off = new CorpseSystem();
     const p = createPlayer();
-    off.ingest([kill(0, 0, 50)], p);
+    off.ingest([kill(0, 0, 50)], p, new FxQueue());
     expect(off.pool.count).toBe(0); // primer not taken → no body
 
     const on = new CorpseSystem();
     p.corpseStore = true;
-    on.ingest([kill(1, 2, 50)], p);
+    on.ingest([kill(1, 2, 50)], p, new FxQueue());
     expect(on.pool.count).toBe(1);
     expect(on.pool.stored[0]).toBe(50);
     expect(on.pool.posX[0]).toBe(1);
@@ -68,7 +68,7 @@ describe('CorpseSystem ingest (Waste Not primer)', () => {
     const s = new CorpseSystem();
     const p = createPlayer();
     p.corpseStore = true;
-    s.ingest([kill(0, 0, 0)], p);
+    s.ingest([kill(0, 0, 0)], p, new FxQueue());
     expect(s.pool.count).toBe(0);
   });
 });
@@ -85,9 +85,9 @@ describe('CorpseSystem detonation (engine, V3)', () => {
     const p = player();
     p.corpseDetonate = true;
     const sys = new CorpseSystem();
-    sys.ingest([kill(0, 0, 80)], p);
+    sys.ingest([kill(0, 0, 80)], p, new FxQueue());
     const hp0 = pool.health[0]!;
-    const dealt = sys.step(p, pool, hash, new Rng(1), new FxQueue(), 1.0); // exhaust fuse
+    const dealt = sys.step(p, pool, hash, new Rng(1), new FxQueue(), 1.4); // exhaust fuse
     expect(dealt).toBeGreaterThan(0);
     expect(pool.health[0]!).toBeLessThan(hp0);
     expect(sys.pool.count).toBe(0); // corpse consumed
@@ -97,9 +97,9 @@ describe('CorpseSystem detonation (engine, V3)', () => {
     const { pool, hash } = tankAt(0.5, 0);
     const p = player(); // corpseDetonate stays false
     const sys = new CorpseSystem();
-    sys.ingest([kill(0, 0, 80)], p);
+    sys.ingest([kill(0, 0, 80)], p, new FxQueue());
     const hp0 = pool.health[0]!;
-    const dealt = sys.step(p, pool, hash, new Rng(1), new FxQueue(), 1.0);
+    const dealt = sys.step(p, pool, hash, new Rng(1), new FxQueue(), 1.4);
     expect(dealt).toBe(0);
     expect(pool.health[0]!).toBe(hp0); // untouched
     expect(sys.pool.count).toBe(0); // body still decays
@@ -110,7 +110,7 @@ describe('CorpseSystem detonation (engine, V3)', () => {
     const p = player();
     p.corpseBallistics = true;
     const sys = new CorpseSystem();
-    sys.ingest([kill(0, 0, 80)], p);
+    sys.ingest([kill(0, 0, 80)], p, new FxQueue());
     sys.step(p, pool, hash, new Rng(1), new FxQueue(), 0.1); // one short tick of flight
     expect(sys.pool.count).toBe(1); // still in flight
     expect(sys.pool.posX[0]!).toBeGreaterThan(0); // moved toward the enemy
@@ -125,7 +125,7 @@ describe('CorpseSystem chain (liability, bounded V30)', () => {
     p.corpseDetonate = true;
     p.corpseChain = true;
     const sys = new CorpseSystem();
-    sys.ingest([kill(0, 0, 400)], p); // max store
+    sys.ingest([kill(0, 0, 400)], p, new FxQueue()); // max store
     let maxSeen = 0;
     for (let s = 0; s < 40; s++) {
       sys.step(p, pool, hash, new Rng(s + 1), new FxQueue(), 1.0);
@@ -145,7 +145,7 @@ describe('CorpseSystem Moonshot (catastrophe)', () => {
     p.corpseMeteorThreshold = 120;
     const sys = new CorpseSystem();
     const fx = new FxQueue();
-    sys.ingest([kill(0, 0, 300)], p); // ≥ threshold
+    sys.ingest([kill(0, 0, 300)], p, new FxQueue()); // ≥ threshold
     // First step: arms the meteor + telegraph, doesn't land yet.
     sys.step(p, pool, hash, new Rng(1), fx, 0.1);
     expect(sys.pool.count).toBe(1);
@@ -165,7 +165,7 @@ describe('CorpseSystem determinism (V16)', () => {
       p.corpseStore = true;
       p.corpseDetonate = true;
       const sys = new CorpseSystem();
-      sys.ingest([kill(0, 0, 80)], p);
+      sys.ingest([kill(0, 0, 80)], p, new FxQueue());
       sys.step(p, pool, hash, new Rng(42), new FxQueue(), 1.0);
       return pool.health[0]!;
     };

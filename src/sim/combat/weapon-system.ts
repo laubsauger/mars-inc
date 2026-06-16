@@ -20,7 +20,7 @@ import {
   equip,
 } from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
-import { corrodeAmp } from './status';
+import { corrodeAmp, shockAmp } from './status';
 import { procCoefOf } from './proc';
 import { applyAreaDamage } from './aoe';
 import { knockbackFrom } from './knockback';
@@ -58,11 +58,12 @@ export interface KillEvent {
 
 /** Called at hit time (before compaction) so the enemy index is still valid —
  *  on-hit triggers + status application hang off this (T38/T39). `procCoef` is the
- *  firing weapon's proc coefficient (T69, V32), scaling on-hit effect strength. */
-export type OnHit = (enemy: number, crit: boolean, procCoef: number) => void;
+ *  firing weapon's proc coefficient (T69, V32); `hitDamage` is the damage this hit
+ *  dealt (T70, V33) so on-hit DoTs can scale as a fraction of the hit. */
+export type OnHit = (enemy: number, crit: boolean, procCoef: number, hitDamage: number) => void;
 
-const RECOIL_CAP = 0.4; // max per-shot velocity kick (V10)
-const RICOCHET_RETAIN = 0.8; // damage kept per ricochet bounce
+const RECOIL_CAP = 2.6; // max per-shot velocity kick (V10) — high so heavy guns really shove
+const RECOIL_SCALE = 3.6; // global recoil punch-up so kick is a real movement factor (per-weapon feel)
 const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
 const PIERCE_GAP = 0.07; // after a pierce hit, ignore collisions this long (clear the body)
 
@@ -145,6 +146,8 @@ export class WeaponSystem {
         ...w.def.damage,
         multiplier: w.def.damage.multiplier * mods.damageMult * cond.damageMult,
         critChance: Math.min(1, w.def.damage.critChance + mods.critChanceAdd + cond.critAdd),
+        // Crit-damage amplifier (T35): scale the BONUS above 1× by critDamageMult.
+        critMultiplier: 1 + (w.def.damage.critMultiplier - 1) * mods.critDamageMult,
       };
 
       const p = w.def.projectile;
@@ -163,7 +166,8 @@ export class WeaponSystem {
       const arc = w.def.spreadArc ?? mods.spreadArc;
       const pierce = p.pierce + Math.max(0, Math.floor(mods.pierce)); // run-mod pierce
       const profile = impactProfile(w.def.family); // per-family hit FX (T37)
-      const procCoef = procCoefOf(w.def); // proc strength rides the projectile (T69, V32)
+      // Proc strength rides the projectile (T69, V32); build mods can raise it (T70 status lane).
+      const procCoef = Math.max(0, procCoefOf(w.def) + mods.procCoefBonus);
       // Fan multishot evenly across the arc; single shot gets random jitter.
       for (let s = 0; s < shots; s++) {
         const fan = shots > 1 ? (s / (shots - 1) - 0.5) * arc : 0;
@@ -199,7 +203,7 @@ export class WeaponSystem {
         player.recoilVel,
         -aim.x,
         -aim.z,
-        w.def.recoil * mods.recoilMult, // recoil build scales the kick (still V10-capped)
+        w.def.recoil * mods.recoilMult * RECOIL_SCALE, // punched up so kick really moves you
         player.stats.recoilResistance,
         dt,
         RECOIL_CAP,
@@ -264,7 +268,7 @@ export class WeaponSystem {
             weaponId: 'projectile',
             baseDamage: pr.dmgBase[i]!,
             additive: pr.dmgAdd[i]!,
-            multiplier: pr.dmgMult[i]! * corrodeAmp(enemies, e),
+            multiplier: pr.dmgMult[i]! * corrodeAmp(enemies, e) * shockAmp(enemies, e),
             critChance: pr.critChance[i]!,
             critMultiplier: pr.critMult[i]!,
           });
@@ -274,8 +278,13 @@ export class WeaponSystem {
           // run stats — must match what the sim actually removed (V20).
           this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
           enemies.health[e]! -= mit.toHealth;
+          // Drone (and other "dumb") bolts don't inherit the build's GLOBAL on-hit
+          // mods — chain, knockback, on-hit status triggers all gate on `inherit`,
+          // so a companion drone isn't secretly an explosive/chaining murder-bot
+          // unless the Networked Munitions keystone flips it on.
+          const inheritMods = pr.inherit[i] !== 0;
           // Concussive knockback: shove the enemy along the shot line (T42 CC).
-          if (mods.knockback > 0) {
+          if (inheritMods && mods.knockback > 0) {
             knockbackFrom(enemies, e, pr.posX[i]!, pr.posZ[i]!, mods.knockback);
           }
           {
@@ -295,11 +304,12 @@ export class WeaponSystem {
           // Floating damage number at the enemy (amount in dx, crit flag in variant).
           fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
           // On-hit hook (before compaction → index valid): triggers + status (T38/T39).
-          // Proc coefficient rides the projectile → scales on-hit effects (T69, V32).
-          if (onHit) onHit(e, out.crit, pr.procCoef[i]!);
+          // Proc coefficient rides the projectile → scales on-hit effects (T69, V32);
+          // the hit's damage (T70, V33) lets on-hit DoTs scale as a fraction of it.
+          if (onHit && inheritMods) onHit(e, out.crit, pr.procCoef[i]!, mit.toHealth);
 
           // Chain lightning: arc reduced damage to nearby enemies (Arc Garnishment).
-          if (mods.chainCount > 0) {
+          if (inheritMods && mods.chainCount > 0) {
             this.chainLightning(enemies, hash, e, pr, i, mods, rng, fx);
           }
 
@@ -313,7 +323,9 @@ export class WeaponSystem {
               pr.posZ[i]!,
               pr.blast[i]!,
               {
-                amount: pr.dmgBase[i]! * pr.dmgMult[i]!,
+                // Splash carries only a FRACTION of weapon damage by default
+                // (mods.blastDamageMult starts low); explosive upgrades scale it up.
+                amount: pr.dmgBase[i]! * pr.dmgMult[i]! * mods.blastDamageMult,
                 critChance: pr.critChance[i]!,
                 critMultiplier: pr.critMult[i]!,
                 damageType: 'explosive',
@@ -397,7 +409,7 @@ export class WeaponSystem {
     const clear = enemies.radius[fromE]! + pr.radius[i]! + 0.1;
     pr.posX[i]! += (dx / l) * clear;
     pr.posZ[i]! += (dz / l) * clear;
-    pr.dmgMult[i]! *= RICOCHET_RETAIN; // each bounce a bit weaker
+    pr.dmgMult[i]! *= mods.ricochetRetain; // each bounce weaker (starts low; upgrades raise it)
     pr.bounces[i]!--;
     pr.hold[i] = RICOCHET_HOLD; // brief dwell → reads as a hit→hit sequence
     fx.push('muzzle', ox, oz, dx / l, dz / l); // small pop at the bounce point

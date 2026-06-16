@@ -9,6 +9,7 @@ import { EnemyState, type EnemyPool } from '../enemies';
 import type { SpatialHash } from '../spatial-hash';
 import type { ProjectilePool } from './projectiles';
 import type { WeaponDamageSpec } from './weapon';
+import type { RunMods } from '../progression/mods';
 
 const MAX_DRONES = 16;
 const ORBIT_RADIUS = 2.8;
@@ -60,6 +61,9 @@ export class DroneSystem {
     projectiles: ProjectilePool,
     dt: number,
     dmgMult: number,
+    // Non-null only with the Networked Munitions keystone → drone bolts then carry
+    // the build's blast/pierce/ricochet AND inherit global on-hit mods. Null = dumb.
+    inheritMods: RunMods | null = null,
   ): void {
     if (this.count === 0) return;
     this.spin += ORBIT_SPEED * dt;
@@ -96,6 +100,11 @@ export class DroneSystem {
       const ez = enemies.posZ[best]! - dz0;
       const d = Math.hypot(ex, ez) || 1;
       const dmg: WeaponDamageSpec = { ...DRONE_DMG, multiplier: DRONE_DMG.multiplier * dmgMult };
+      // Dumb bolt by default (no blast/pierce/ricochet, inherit OFF). With Networked
+      // Munitions the drone carries the build's projectile mods + inherits on-hit.
+      const blast = inheritMods ? inheritMods.blastRadius : 0;
+      const pierce = inheritMods ? Math.max(0, Math.floor(inheritMods.pierce)) : 0;
+      const bounces = inheritMods ? Math.max(0, Math.floor(inheritMods.ricochet)) : 0;
       projectiles.spawn(
         dx0,
         dz0,
@@ -103,9 +112,13 @@ export class DroneSystem {
         (ez / d) * PROJ_SPEED,
         PROJ_RADIUS,
         PROJ_LIFETIME,
-        0,
+        pierce,
         dmg,
-        0,
+        blast,
+        0, // profile
+        bounces,
+        1, // procCoef
+        inheritMods ? 1 : 0, // inherit global on-hit mods?
       );
       this.cd[i] = FIRE_INTERVAL;
     }

@@ -28,9 +28,11 @@ export interface BossSnapshot {
 export class BossController {
   active = false;
   hp01 = 0;
-  /** True once the boss has been on the field and then killed (run win). */
+  /** True once ANY boss has been felled (Act-2 unlock / run "won"). */
   defeated = false;
-  private everActive = false;
+  /** Per-kill EDGE: true only the step a boss dies — the world grants one reward +
+   *  counts the kill, then the controller re-arms for the next boss wave (V22 ×N). */
+  justDefeated = false;
   private phase = 0;
   private timer = 0;
 
@@ -38,7 +40,7 @@ export class BossController {
     this.active = false;
     this.hp01 = 0;
     this.defeated = false;
-    this.everActive = false;
+    this.justDefeated = false;
     this.phase = 0;
     this.timer = 0;
   }
@@ -54,20 +56,23 @@ export class BossController {
   ): void {
     const b = this.findBoss(enemies);
     if (b < 0) {
-      // Was on the field and now gone → killed (the run is won).
-      if (this.everActive) this.defeated = true;
+      // Boss left the field. If one was active it just DIED this step → fire the
+      // per-kill edge (world rewards + counts it) and re-arm for the next wave.
+      this.justDefeated = this.active;
+      if (this.active) this.defeated = true;
       this.active = false;
       this.hp01 = 0;
       return;
     }
+    this.justDefeated = false;
     if (!this.active) {
       this.active = true;
-      this.everActive = true;
       this.phase = 0;
       this.timer = this.cadence(0);
     }
     const hp = Math.max(0, enemies.health[b]!);
-    this.hp01 = hp / BOSS_GATEKEEPER.maxHealth;
+    // Per-instance max so the HP bar reads correctly for SCALED (escalating) bosses.
+    this.hp01 = hp / Math.max(1, enemies.maxHp[b]! || BOSS_GATEKEEPER.maxHealth);
 
     // Phase break: crossing a threshold escalates + punishes with a shockwave/adds.
     const want = this.phaseFor(this.hp01);

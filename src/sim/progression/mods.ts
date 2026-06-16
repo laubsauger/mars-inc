@@ -18,10 +18,15 @@ export interface RunMods {
   // LONG reach — a travelling pick that crosses the arena, one enemy at a time.
   ricochet: number; // times a projectile bounces to a new enemy on hit (0 = off)
   ricochetRange: number; // LONG max distance to find a bounce target (world units)
+  ricochetRetain: number; // dmg kept per ricochet bounce — starts LOW, upgrades raise it
   blastRadius: number; // universal explosive radius added to every shot (0 = off)
+  blastDamageMult: number; // fraction of weapon dmg the splash carries — starts LOW, scales up
   rangeMult: number; // weapon targeting/effective range multiplier (T33 progression)
   knockback: number; // outward impulse applied to enemies on projectile hit (0 = off)
   recoilMult: number; // scales per-shot recoil impulse (T55; still capped by V10)
+  procCoefBonus: number; // added to the weapon's proc coefficient (T69/T70; status builds)
+  statusDamageMult: number; // global DoT amplifier — burn/bleed × this (T35/T70 status lane)
+  critDamageMult: number; // scales the crit BONUS damage (T35; 1 = weapon default)
 }
 
 export function defaultMods(): RunMods {
@@ -37,10 +42,15 @@ export function defaultMods(): RunMods {
     chainFalloff: 0.7, // stays useful across several hops (it has no travel time)
     ricochet: 0,
     ricochetRange: 13, // long reach — bounce can cross open space
+    ricochetRetain: 0.2, // each bounce keeps only 20% — weak until upgrades pump it
     blastRadius: 0,
+    blastDamageMult: 0.34, // splash starts at 34% of weapon dmg — scale up via upgrades
     rangeMult: 1,
     knockback: 0,
     recoilMult: 1,
+    procCoefBonus: 0,
+    statusDamageMult: 1,
+    critDamageMult: 1,
   };
 }
 

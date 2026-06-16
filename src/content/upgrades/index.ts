@@ -4,6 +4,7 @@
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 import { CATALOG_UPGRADES } from './catalog';
+import { ARSENAL_UPGRADES } from './arsenal';
 
 const BASE_UPGRADES: UpgradeDefinition[] = [
   {
@@ -59,19 +60,6 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
     },
   },
   {
-    id: 'precision-audit',
-    name: 'Precision Audit',
-    description: '+8% critical chance.',
-    tags: ['critical', 'damage'],
-    rarity: 'uncommon',
-    maxLevel: 4,
-    baseWeight: 6,
-    synergyWeight: 2,
-    apply: ({ mods }) => {
-      mods.critChanceAdd += 0.08;
-    },
-  },
-  {
     id: 'haste-waiver',
     name: 'Haste Waiver',
     description: '+10% move speed.',
@@ -95,20 +83,6 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 1,
     apply: ({ player }) => {
       player.magnetRadius *= 1.4;
-    },
-  },
-  {
-    id: 'hazard-pay',
-    name: 'Hazard Pay',
-    description: '+25 max health, healed now.',
-    tags: ['defense'],
-    rarity: 'common',
-    maxLevel: 4,
-    baseWeight: 8,
-    synergyWeight: 1,
-    apply: ({ player }) => {
-      player.maxHealth += 25;
-      player.health = Math.min(player.maxHealth, player.health + 25);
     },
   },
   // Gated evolution: unlocked only after investing in multishot (§9.4 prereq).
@@ -187,5 +161,10 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
   },
 ];
 
-/** Full base draft catalog: starter set + the deep multi-rarity catalog. */
-export const UPGRADES: UpgradeDefinition[] = [...BASE_UPGRADES, ...CATALOG_UPGRADES];
+/** Full base draft catalog: starter set + deep multi-rarity catalog + arsenal
+ *  expansion (T40 variety pass — triggers/conditionals/status/economy/risk). */
+export const UPGRADES: UpgradeDefinition[] = [
+  ...BASE_UPGRADES,
+  ...CATALOG_UPGRADES,
+  ...ARSENAL_UPGRADES,
+];

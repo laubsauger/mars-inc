@@ -27,6 +27,10 @@ const MARGIN_DECAY = 0.3; // frac/s a crashing shard loses
 const MARGIN_FLOOR = 0.2; // a crashed shard never drops below this (still worth grabbing)
 
 export const ORBIT_RANGE = 5.5; // shards within this of the player orbit + zap
+const ORBIT_INWARD = 0.07; // GENTLE pull → orbits stay at VARIED radii (no collapse to a few spots)
+/** A magnetar shard orbits + zaps for this long, then matures and is collected as
+ *  XP (the orbit is a temporary weapon, not a black hole — leveling never stalls). */
+export const ORBIT_CONSUME_AGE = 4.5;
 const ORBIT_SPEED = 2.6; // rad/s swirl (visual; sim positions, view follows)
 const ZAP_RADIUS = 1.0; // each orbiting shard's damage radius
 const ZAP_SCALE = 0.7; // zap damage = shard value × this
@@ -77,18 +81,21 @@ export function stepXpResource(
     }
   }
 
-  // 2. Magnetar — loose shards near the player swirl and zap enemies (XP weapon).
+  // 2. Magnetar — loose shards near the player swirl and zap enemies (XP weapon),
+  //    spiralling slowly INWARD so they eventually reach pickup range and cash in
+  //    as XP (the orbit is a temporary weapon, not an XP black hole).
   if (player.xpMagnetar) {
     const r2 = ORBIT_RANGE * ORBIT_RANGE;
     const c = Math.cos(ORBIT_SPEED * dt);
     const s = Math.sin(ORBIT_SPEED * dt);
+    const inward = Math.max(0, 1 - ORBIT_INWARD * dt); // shrink the orbit radius
     for (let i = 0; i < pool.count; i++) {
       const dx = pool.posX[i]! - px;
       const dz = pool.posZ[i]! - pz;
       if (dx * dx + dz * dz > r2) continue;
-      // Rotate the shard around the player (swirl).
-      pool.posX[i] = px + dx * c - dz * s;
-      pool.posZ[i] = pz + dx * s + dz * c;
+      // Rotate around the player AND spiral inward a touch each step.
+      pool.posX[i] = px + (dx * c - dz * s) * inward;
+      pool.posZ[i] = pz + (dx * s + dz * c) * inward;
       // Zap whatever it's touching, scaled by the shard's (interest-grown) value.
       dealt += applyAreaDamage(
         enemies,

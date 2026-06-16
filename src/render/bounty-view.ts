@@ -52,12 +52,14 @@ export class BountyView {
       transparent: true,
       blending: AdditiveBlending,
       depthWrite: false,
+      depthTest: false, // floor beacon — never culled by a gate plate / prop (§B1)
       toneMapped: false,
     });
     this.halo = new InstancedMesh(new RingGeometry(0.7, 1.2, 40), haloMat, capacity);
     this.halo.instanceMatrix.setUsage(DynamicDrawUsage);
     this.halo.frustumCulled = false;
     this.halo.count = 0;
+    this.halo.renderOrder = 1;
     scene.add(this.halo);
 
     // Tall light beam — the long-range beacon. Additive, soft, never occludes.

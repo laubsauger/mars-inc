@@ -45,14 +45,15 @@ describe('Phase Stalker teleporter (T33+)', () => {
 });
 
 describe('difficultyScale (T44 run-phase escalation)', () => {
-  it('stays flat pre-boss, then grows with time + steps up per boss kill', () => {
-    // §G hinge: no time-based growth until the first boss falls.
-    expect(difficultyScale(0, 0)).toBe(1);
-    expect(difficultyScale(120, 0)).toBe(1); // pre-boss: still base HP
-    expect(difficultyScale(30, 0)).toBe(1);
-    // After a boss: time ramp re-enables and each kill steps up.
-    expect(difficultyScale(360, 1)).toBeGreaterThan(difficultyScale(60, 1));
-    expect(difficultyScale(60, 1)).toBeGreaterThan(difficultyScale(60, 0) + 0.5);
+  it('ramps with time, player level, and boss kills (keeps pace with the build)', () => {
+    expect(difficultyScale(0, 0, 1)).toBe(1); // fresh start = base HP
+    // Grows with TIME from the start (no flat early phase anymore).
+    expect(difficultyScale(120, 0, 1)).toBeGreaterThan(difficultyScale(30, 0, 1));
+    // Grows with PLAYER LEVEL (enemy HP tracks the player's own power).
+    expect(difficultyScale(60, 0, 30)).toBeGreaterThan(difficultyScale(60, 0, 1));
+    // Steps up per BOSS kill.
+    expect(difficultyScale(60, 1, 1)).toBeGreaterThan(difficultyScale(60, 0, 1) + 0.5);
+    expect(difficultyScale(360, 2, 20)).toBeGreaterThan(difficultyScale(60, 1, 5));
   });
 
   it('applies the HP scale to spawned fodder (per-instance maxHp)', () => {

@@ -172,6 +172,11 @@ class EffectPool {
 const _tmp = new Color();
 // Muted cyan for the sprint wake — additive shieldCyan at full is too loud.
 const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
+// Dim, DESATURATED warm for the explosive blast — additive + bloom blow a bright
+// colour straight to white, so the base value is kept low to read as smoke-fire,
+// not a flashbang. Leaves headroom for statuses / other FX.
+const BLAST_RING = new Color(0.34, 0.16, 0.06);
+const BLAST_DUST = new Color(0.2, 0.1, 0.05);
 
 export class Effects {
   private muzzle: EffectPool;
@@ -317,6 +322,28 @@ export class Effects {
             color: COL.kineticGold,
           });
           break;
+        case 'corpseblast':
+          // Overkill detonation — a TOXIC-GREEN ring + dust, unmistakably its own
+          // read vs the gold explosive blast (so you learn the corpse mechanic).
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.8,
+            s1: 4.0,
+            life: 0.4,
+            spin: 0,
+            color: COL.toxicGreen,
+          });
+          this.dust.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 1.4,
+            s1: 3.6,
+            life: 0.44,
+            spin: 3,
+            color: COL.toxicGreen,
+          });
+          break;
         case 'ember':
           // Tiny rising fire fleck on a burn tick — subtle, no sound.
           this.muzzle.spawn({
@@ -418,9 +445,11 @@ export class Effects {
           stretch: hasDir ? 2.5 : 1,
         });
         break;
-      case ImpactProfile.Blast: // explosive: big radial ring + heavy dust wall
-        this.impact.spawn({ x, z, s0: 0.8, s1: 3.4, life: 0.34, spin: 0, color: COL.sunHigh });
-        this.dust.spawn({ x, z, s0: 1.6, s1: 3.4, life: 0.4, spin: 3, color: COL.marsDust });
+      case ImpactProfile.Blast: // explosive: a contained warm puff — NOT a screen-eater
+        // Smaller + dimmer (muted dust-orange, not bright sun-gold) so it reads as a
+        // blast but leaves room for statuses / other FX to show over the crowd.
+        this.impact.spawn({ x, z, s0: 0.6, s1: 1.9, life: 0.24, spin: 0, color: BLAST_RING });
+        this.dust.spawn({ x, z, s0: 1.1, s1: 2.1, life: 0.32, spin: 3, color: BLAST_DUST });
         break;
       default: // generic (enemy attacks, drops, status ticks)
         this.impact.spawn({ x, z, s0: 0.8, s1: 2.6, life: 0.28, spin: 0, color: COL.sunHigh });

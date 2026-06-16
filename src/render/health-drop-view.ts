@@ -82,12 +82,14 @@ export class HealthDropView {
       transparent: true,
       blending: AdditiveBlending,
       depthWrite: false,
+      depthTest: false, // floor beacon — never let a gate plate / prop cull it (§B1)
       toneMapped: false,
     });
     this.halo = new InstancedMesh(new RingGeometry(0.5, 0.92, 36), haloMat, capacity);
     this.halo.instanceMatrix.setUsage(DynamicDrawUsage);
     this.halo.frustumCulled = false;
     this.halo.count = 0;
+    this.halo.renderOrder = 1; // above floor decals, drawn as a flat glow
     scene.add(this.halo);
   }
 

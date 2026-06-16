@@ -20,8 +20,10 @@ export interface ArenaDef {
   readonly act: number;
   /** One-line pitch shown on the menu Act selector. */
   readonly tagline: string;
-  /** Enemy HP/threat multiplier for this Act (1 = baseline). */
+  /** Enemy HP multiplier for this Act (1 = baseline). */
   readonly difficultyMult: number;
+  /** Spawn pace + concurrent-cap multiplier — higher Acts field MORE enemies, faster. */
+  readonly paceMult: number;
   /** Martian Glory reward multiplier — harder Acts pay more (the growth outlet). */
   readonly gloryMult: number;
 }
@@ -35,6 +37,7 @@ export const COLD_VAULT: ArenaDef = {
   act: 1,
   tagline: 'Standard contract. Learn the pit, build your loadout.',
   difficultyMult: 1,
+  paceMult: 1,
   gloryMult: 1,
 };
 
@@ -46,9 +49,10 @@ export const RUST_CROWN: ArenaDef = {
   shape: { kind: 'circle', radius: 35 },
   accent: '#f0c879', // warm sun highlight
   act: 2,
-  tagline: 'Tougher hosts, denser waves — but the Crown pays in Glory.',
-  difficultyMult: 1.45,
-  gloryMult: 1.6,
+  tagline: 'Brutal hosts, denser + faster waves — the Crown pays in Glory.',
+  difficultyMult: 3.5, // hosts have 3.5× the HP (and hit ~2.4× harder via contact scaling)
+  paceMult: 1.85, // ~85% more enemies, ramping faster
+  gloryMult: 2.3,
 };
 
 /** Selectable arenas (settings). */

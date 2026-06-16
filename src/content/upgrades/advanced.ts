@@ -67,14 +67,17 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'incendiary-rounds',
     name: 'Incendiary Rounds',
-    description: 'Hits set enemies on fire (3 dmg/s for 3s).',
+    description: 'Hits set enemies on fire (burns for 90% of the hit over 3s).',
     tags: ['burn', 'status'],
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 5,
     synergyWeight: 2,
+    // DoT scales with the hit (T70, V33): dps = 0.9 × hitDamage / 3s.
     apply: ({ effects }) =>
-      effects.on('hit', (ctx) => ctx.applyStatus(ctx.targetIndex, 'burn', { duration: 3, dps: 3 })),
+      effects.on('hit', (ctx) =>
+        ctx.applyStatus(ctx.targetIndex, 'burn', { duration: 3, dotCoef: 0.9 }),
+      ),
   },
   // STATUS — on-hit chill (control direction, T39).
   {

@@ -15,16 +15,16 @@ function stepFor(sys: BountySystem, seconds: number, player = createPlayer(), rn
 describe('BountySystem (timed map upgrade source)', () => {
   it('spawns the first relic only after the initial delay', () => {
     const sys = new BountySystem();
-    stepFor(sys, 8); // before FIRST_AT (10s)
+    stepFor(sys, 20); // before FIRST_AT (24s)
     expect(sys.pool.count).toBe(0);
-    stepFor(sys, 4); // cross 10s
+    stepFor(sys, 6); // cross 24s
     expect(sys.pool.count).toBe(1);
   });
 
   it('spawns relics away from the player', () => {
     const sys = new BountySystem();
     const player = createPlayer(); // at origin
-    stepFor(sys, 11, player);
+    stepFor(sys, 26, player);
     expect(sys.pool.count).toBe(1);
     const dx = sys.pool.posX[0]! - player.pos.x;
     const dz = sys.pool.posZ[0]! - player.pos.z;
@@ -35,7 +35,7 @@ describe('BountySystem (timed map upgrade source)', () => {
     const sys = new BountySystem();
     const player = createPlayer();
     const rng = new Rng(7);
-    stepFor(sys, 11, player, rng);
+    stepFor(sys, 26, player, rng);
     expect(sys.pool.count).toBe(1);
     // Walk onto the relic.
     player.pos.x = sys.pool.posX[0]!;
@@ -47,11 +47,11 @@ describe('BountySystem (timed map upgrade source)', () => {
 
   it('reset clears relics and re-arms the first-spawn timer', () => {
     const sys = new BountySystem();
-    stepFor(sys, 11);
+    stepFor(sys, 26);
     expect(sys.pool.count).toBe(1);
     sys.reset();
     expect(sys.pool.count).toBe(0);
-    stepFor(sys, 8); // before FIRST_AT again
+    stepFor(sys, 20); // before FIRST_AT again
     expect(sys.pool.count).toBe(0);
   });
 });

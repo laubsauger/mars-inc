@@ -33,7 +33,7 @@ export class CorpseView {
       roughness: 0.85,
       metalness: 0.1,
       emissive: new Color(0xff5a2a),
-      emissiveIntensity: 0.5,
+      emissiveIntensity: 0.9,
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);

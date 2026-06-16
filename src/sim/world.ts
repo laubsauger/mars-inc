@@ -16,6 +16,7 @@ import { WaveDirector, computeAdaptation, difficultyScale } from './director/wav
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
 import { CorpseSystem } from './combat/corpses';
+import { PetSystem } from './combat/pets';
 import { radialPush } from './combat/knockback';
 import { equip } from './combat/weapon';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
@@ -36,6 +37,7 @@ import {
   type UpgradeDefinition,
   type UpgradeLevels,
   rollDraft,
+  available,
   applyUpgrade,
   taken,
 } from './progression/upgrades';
@@ -46,6 +48,8 @@ import { REACTION_UPGRADES } from '../content/upgrades/reactions';
 import { RECOIL_UPGRADES } from '../content/upgrades/recoil';
 import { CORPSE_UPGRADES } from '../content/upgrades/corpse';
 import { XP_RESOURCE_UPGRADES } from '../content/upgrades/xp-resource';
+import { SYNERGY_UPGRADES } from '../content/upgrades/synergy';
+import { NECRO_UPGRADES } from '../content/upgrades/necro';
 import type { InputSnapshot } from '../core/input';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
@@ -57,6 +61,8 @@ const DRAFT_POOL: UpgradeDefinition[] = [
   ...RECOIL_UPGRADES,
   ...CORPSE_UPGRADES,
   ...XP_RESOURCE_UPGRADES,
+  ...SYNERGY_UPGRADES,
+  ...NECRO_UPGRADES,
 ];
 
 /** Rich post-game summary (T23) — what the run actually became. */
@@ -80,6 +86,8 @@ const COUNTDOWN_SECONDS = 3;
 const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
+const STARTING_LOCKS = 1; // per-run draft locks — hold a card for the next draft (T71)
+const STARTING_TAG_BANISHES = 1; // per-run tag banishes — drop a whole tag from the pool (T71)
 const SKIP_HEAL_FRAC = 0.15; // skipping a draft heals this fraction of max HP
 
 const ZERO_INPUT: InputSnapshot = {
@@ -121,6 +129,8 @@ export class World {
   readonly drones = new DroneSystem();
   /** Overkill corpses: detonate/launch/chain/meteor build family (T65). */
   readonly corpses = new CorpseSystem();
+  /** Gravedigger pets: slain enemies rise to fight for you, then decay (T-necro). */
+  readonly pets = new PetSystem();
   readonly shards: ShardPool;
   readonly mods: RunMods;
   /** Dynamic build engine (T38): conditional modifiers + triggers. */
@@ -164,9 +174,12 @@ export class World {
   bossReward = false;
   bossRewardChoices: BossReward[] = [];
   bossRewardId = 0; // bumps when the overlay opens (UI refresh key)
-  private bossRewarded = false; // a kill grants its reward once
   rerollsLeft = STARTING_REROLLS;
   banishesLeft = STARTING_BANISHES;
+  locksLeft = STARTING_LOCKS;
+  tagBanishesLeft = STARTING_TAG_BANISHES;
+  /** Card id held by Lock for the NEXT draft (T71); null = none held. */
+  private lockedId: string | null = null;
   private readonly banished = new Set<string>();
   private readonly upgradeLevels: UpgradeLevels = {};
   /** Owned permanent (meta) upgrade levels, applied to the player at run start. */
@@ -240,7 +253,8 @@ export class World {
       computeAdaptation(this.mods),
       // Fold the Act's difficulty multiplier into the spawn-time HP scale (Act 2's
       // hosts are tankier) — still spawn-time only, never re-scales live units.
-      difficultyScale(this.elapsed, this.stats.bossKills) * activeArena().difficultyMult,
+      difficultyScale(this.elapsed, this.stats.bossKills, this.player.level) *
+        activeArena().difficultyMult,
       this.fx,
     );
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
@@ -254,7 +268,9 @@ export class World {
       this.enemySystem.hash,
       this.weaponSystem.projectiles,
       dt,
-      this.mods.damageMult,
+      this.mods.damageMult * this.player.droneDamageMult, // COMMAND drone amp (T35)
+      // Drones inherit the build's projectile mods ONLY with Networked Munitions.
+      this.player.droneInheritMods ? this.mods : null,
     );
     // Repulsor nova (CC, T42): on its interval, shove every nearby enemy outward
     // and deal light AoE through the pipeline (V3) — cuts space in a blob.
@@ -323,7 +339,8 @@ export class World {
     this.hitTriggerDamage = 0;
     const onHit =
       this.effects.has('hit') || this.effects.has('crit')
-        ? (e: number, crit: boolean, coef: number): void => this.fireHitTrigger(e, crit, coef)
+        ? (e: number, crit: boolean, coef: number, dmg: number): void =>
+            this.fireHitTrigger(e, crit, coef, dmg)
         : undefined;
     this.weaponSystem.step(
       this.player,
@@ -341,7 +358,7 @@ export class World {
     // On-kill / overkill triggers fire after combat resolves (T38, V21 pipeline).
     const triggerDmg = this.fireKillTriggers();
     // Status step (§5.4): burn DoT, chill/mark decay (T39).
-    const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx);
+    const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx, this.mods.statusDamageMult);
     // Status reactions (T53): primed status pairs consume + burst (V28). Off
     // until an upgrade enables one, so this is free in the base game.
     const reactionDmg = this.resolveReactions();
@@ -377,6 +394,15 @@ export class World {
       this.fx,
       dt,
     );
+    // Gravedigger pets hunt + claw the swarm, then decay (T-necro, pipeline-routed).
+    const petDmg = this.pets.step(
+      this.player,
+      this.enemies,
+      this.enemySystem.hash,
+      this.rng,
+      this.fx,
+      dt,
+    );
     const leveled = stepXp(this.shards, this.player, dt);
     // XP-as-resource builds (T58): interest/magnetar/liquidation/crash over the
     // loose shard pool (pipeline-routed, V3/V21). Free until a card is taken.
@@ -405,6 +431,10 @@ export class World {
       // Splitter (blob): rupture into smaller children at the death site (V9
       // telegraphed pop). Children are a terminal variant — no further splits.
       splitOnDeath(this.enemies, v, k.x, k.z, this.rng);
+      // Gravedigger: a slain enemy may RISE as a pet that fights for you (T-necro).
+      if (this.player.necroChance > 0 && this.rng.next() < this.player.necroChance) {
+        this.pets.raise(k.x, k.z, v, k.size ?? 0.7, this.player.necroPower, this.fx);
+      }
     }
     this.stats.damageDealt +=
       this.weaponSystem.damageThisStep +
@@ -414,6 +444,7 @@ export class World {
       reactionDmg +
       this.novaDamageThisStep +
       corpseDmg +
+      petDmg +
       xpResDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
@@ -426,10 +457,11 @@ export class World {
       else this.openDraft();
     }
 
-    // Death ends the run (loss). A boss kill is the progression hinge: it opens a
-    // major in-run reward (freezes the sim) and the run continues, harder (V22).
+    // Death ends the run (loss). EACH boss kill is a progression hinge: it opens a
+    // major in-run reward (freezes the sim) and the run continues, harder — and a
+    // tougher boss follows (recurring gauntlet, V22 ×N).
     if (!this.alive) this.end(false);
-    else if (this.boss.defeated && !this.bossRewarded) this.openBossReward();
+    else if (this.boss.justDefeated) this.openBossReward();
   }
 
   /** Build the conditional context for this step and combine all modifiers (T38). */
@@ -459,7 +491,13 @@ export class World {
    *  time (enemy index still valid). On-hit status + magnitude scale by the firing
    *  weapon's proc coefficient (T69, V32); `procChain` re-enters at a reduced coef,
    *  depth-bounded so chains terminate (V32, deterministic V16/V21). */
-  private fireHitTrigger(e: number, crit: boolean, procCoef: number, depth = 0): void {
+  private fireHitTrigger(
+    e: number,
+    crit: boolean,
+    procCoef: number,
+    hitDamage: number,
+    depth = 0,
+  ): void {
     if (depth > MAX_PROC_DEPTH) return; // bound proc-chain recursion (V32)
     const ctx: TriggerCtx = {
       x: this.enemies.posX[e]!,
@@ -473,9 +511,10 @@ export class World {
       magnitude: 0,
       targetIndex: e,
       procCoef,
+      hitDamage,
       depth,
       procChain: (index, c) =>
-        this.fireHitTrigger(index, c, procCoef * PROC_CHAIN_INHERIT, depth + 1),
+        this.fireHitTrigger(index, c, procCoef * PROC_CHAIN_INHERIT, hitDamage, depth + 1),
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
           this.enemies,
@@ -489,8 +528,15 @@ export class World {
         this.hitTriggerDamage += d;
         return d;
       },
-      applyStatus: (index, type, opts) =>
-        applyStatusScaled(this.enemies, index, type, opts, procCoef, this.rng),
+      // On-hit status: a `dotCoef` opt becomes hit-scaled dps (T70, V33); proc
+      // coefficient then scales duration/stacks/chance (T69, V32).
+      applyStatus: (index, type, opts) => {
+        const o =
+          opts.dotCoef !== undefined
+            ? { ...opts, dps: (opts.dotCoef * hitDamage) / opts.duration }
+            : opts;
+        applyStatusScaled(this.enemies, index, type, o, procCoef, this.rng);
+      },
     };
     this.effects.fire('hit', ctx);
     if (crit) this.effects.fire('crit', ctx);
@@ -511,6 +557,7 @@ export class World {
       magnitude: 0,
       targetIndex: -1,
       procCoef: 1,
+      hitDamage: 0,
       depth: 0,
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
@@ -556,6 +603,7 @@ export class World {
               magnitude: dealt,
               targetIndex: -1,
               procCoef: 1, // reaction burst is not a weapon hit → full-strength (V32)
+              hitDamage: 0,
               depth: 0,
               dealArea: (ax, az, radius, amount) => {
                 const d = applyAreaDamage(
@@ -598,6 +646,7 @@ export class World {
       magnitude: 0,
       targetIndex: -1, // enemy already removed by the time kill triggers fire
       procCoef: 1, // kill triggers are not a weapon hit → full-strength proc (V32)
+      hitDamage: 0,
       depth: 0,
       dealArea: (x, z, radius, amount) => {
         const d = applyAreaDamage(
@@ -646,7 +695,6 @@ export class World {
     this.levelUpDelay = 0;
     this.bossReward = false;
     this.bossRewardChoices = [];
-    this.bossRewarded = false;
     this.banished.clear();
     this.countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
     this.started = false;
@@ -661,6 +709,9 @@ export class World {
     // Draft resources include permanent bonuses applied above (T35).
     this.rerollsLeft = STARTING_REROLLS + this.player.bonusRerolls;
     this.banishesLeft = STARTING_BANISHES + this.player.bonusBanishes;
+    this.locksLeft = STARTING_LOCKS + this.player.bonusLocks;
+    this.tagBanishesLeft = STARTING_TAG_BANISHES + this.player.bonusTagBanishes;
+    this.lockedId = null;
     this.enemies.count = 0;
     this.enemyAttacks.reset();
     this.weaponDrops.reset();
@@ -674,6 +725,7 @@ export class World {
     this.director.reset();
     this.drones.reset();
     this.corpses.pool.clear();
+    this.pets.reset();
     this.prevSprintActive = false;
     this.weaponSystem.reset();
     this.weaponSystem.add(equip(contractualSidearm));
@@ -683,9 +735,10 @@ export class World {
   /** Roll a fresh draft, keeping any locked entries (T41). `keep` = upgrade ids
    *  to preserve in place (for reroll); empty for a new level-up draft. */
   private rollInto(keep: ReadonlySet<string>): UpgradeDefinition[] {
+    const size = this.player.draftSize;
     const kept = this.draft.filter((d) => keep.has(d.id));
-    const need = 3 - kept.length;
-    if (need <= 0) return kept.slice(0, 3);
+    const need = size - kept.length;
+    if (need <= 0) return kept.slice(0, size);
     // Exclude already-kept ids so the reroll brings genuinely new options.
     const exclude = new Set(this.banished);
     for (const d of kept) exclude.add(d.id);
@@ -713,7 +766,7 @@ export class World {
   }
 
   private openDraft(): void {
-    this.draft = this.rollInto(new Set());
+    this.draft = this.rollFresh();
     if (this.draft.length === 0) {
       // Pool exhausted — nothing to offer; consume pending level-ups.
       this.pendingLevelUps = 0;
@@ -722,6 +775,72 @@ export class World {
     }
     this.draftId += 1;
     this.leveling = true;
+  }
+
+  /** Build a NEW level-up draft (T71), seeding a Lock-held card into slot 0 if it
+   *  is still available, then rolling the rest. Consumes the held lock. */
+  private rollFresh(): UpgradeDefinition[] {
+    const forced: UpgradeDefinition[] = [];
+    const exclude = new Set(this.banished);
+    if (this.lockedId !== null) {
+      const def = available(DRAFT_POOL, this.upgradeLevels, this.banished).find(
+        (u) => u.id === this.lockedId,
+      );
+      if (def) {
+        forced.push(def);
+        exclude.add(def.id);
+      }
+      this.lockedId = null; // served (or no longer available) — released either way
+    }
+    const need = this.player.draftSize - forced.length;
+    const fresh =
+      need > 0
+        ? rollDraft(DRAFT_POOL, this.upgradeLevels, this.rng, {
+            count: need,
+            level: this.player.level,
+            luck: this.player.luck,
+            banished: exclude,
+          })
+        : [];
+    return [...forced, ...fresh];
+  }
+
+  /** Id of the card currently held by Lock for the next draft (UI), or null. */
+  get heldLock(): string | null {
+    return this.lockedId;
+  }
+
+  /** Hold an offered card for the NEXT draft (T71). Bounded per-run; one held at a
+   *  time. Survives the current pick/skip — guaranteed to reappear next level-up. */
+  lockCard(index: number): void {
+    if (!this.leveling || this.locksLeft <= 0 || this.lockedId !== null) return;
+    const def = this.draft[index];
+    if (!def) return;
+    this.locksLeft -= 1;
+    this.lockedId = def.id;
+    this.draftId += 1; // re-push the draft slice so the UI shows the held lock
+  }
+
+  /** Banish EVERY card carrying `tag` from the run pool (T71). Bounded; refuses if
+   *  it would shrink the pool below a full draft (V11). Re-rolls shown cards so any
+   *  now-banished options are replaced. Deterministic (V16). */
+  banishTag(tag: string): void {
+    if (!this.leveling || this.tagBanishesLeft <= 0) return;
+    const ids: string[] = [];
+    for (const u of DRAFT_POOL) {
+      if (u.tags.includes(tag) || u.grantsTags?.includes(tag)) ids.push(u.id);
+    }
+    if (ids.length === 0) return;
+    const next = new Set(this.banished);
+    for (const id of ids) next.add(id);
+    // V11: never starve the draft — keep at least a full hand available.
+    if (available(DRAFT_POOL, this.upgradeLevels, next).length < 3) return;
+    this.tagBanishesLeft -= 1;
+    for (const id of ids) this.banished.add(id);
+    if (this.lockedId !== null && ids.includes(this.lockedId)) this.lockedId = null; // drop held
+    const keep = new Set(this.draft.filter((d) => !ids.includes(d.id)).map((d) => d.id));
+    this.draft = this.rollInto(keep);
+    this.draftId += 1;
   }
 
   /** Re-roll the unlocked draft options (T41). `lockedIds` stay in place. */
@@ -798,7 +917,6 @@ export class World {
 
   /** Boss kill → open the 3-choice major reward and freeze the sim (T43, V22). */
   private openBossReward(): void {
-    this.bossRewarded = true;
     this.stats.bossKills += 1;
     this.bossRewardChoices = rollBossRewards(this.rewardCtx(), this.rng);
     if (this.bossRewardChoices.length === 0) return; // nothing to offer → run continues

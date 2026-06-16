@@ -7,7 +7,7 @@ import type { Player } from './player';
 import type { KillEvent } from './combat/weapon-system';
 import { xpRequired, SHARD_VALUE } from '../content/balance/xp-curve';
 import { ENEMY_BY_VARIANT } from './enemies';
-import { ORBIT_RANGE } from './xp-resource';
+import { ORBIT_RANGE, ORBIT_CONSUME_AGE } from './xp-resource';
 
 const MAGNET_SPEED = 18;
 
@@ -70,14 +70,25 @@ export function stepXp(pool: ShardPool, player: Player, dt: number): number {
     const dz = pz - pool.posZ[i]!;
     const d2 = dx * dx + dz * dz;
 
-    if (orbitHold && d2 <= orbit2) {
-      pool.state[i] = ShardState.Loose; // released from magnet → orbits, not collected
-      continue;
-    }
-
+    // ALWAYS collect at pickup range — even Magnetar shards cash in once they
+    // reach you (they spiral inward in stepXpResource), so XP never stalls.
     if (d2 <= pickup2) {
       gained += pool.value[i]!;
       pool.kill(i);
+      continue;
+    }
+
+    // Magnetar: inside orbit range, hold the shard LOOSE (no fast magnet snap) so
+    // it swirls + zaps as a weapon at a VARIED radius — then once it has MATURED
+    // (orbited long enough) it's cashed in as XP, so leveling never stalls and the
+    // orbit doesn't pile shards in a few spots forever.
+    if (orbitHold && d2 <= orbit2) {
+      if (pool.age[i]! >= ORBIT_CONSUME_AGE) {
+        gained += pool.value[i]!;
+        pool.kill(i);
+        continue;
+      }
+      pool.state[i] = ShardState.Loose;
       continue;
     }
 

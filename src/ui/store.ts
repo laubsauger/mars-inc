@@ -143,6 +143,10 @@ export interface DraftState {
   options: DraftOption[];
   rerollsLeft: number;
   banishesLeft: number;
+  locksLeft: number;
+  tagBanishesLeft: number;
+  /** Id of the card held by Lock for the next draft (T71), or null. */
+  lockedId: string | null;
 }
 
 /** Boss-reward overlay (T43). Three major picks shown on a boss kill. */
@@ -223,6 +227,10 @@ export interface UiStore {
   rerollDraft: (lockedIds: string[]) => void;
   /** Bridge to sim — banish a draft option for the run (T41). */
   banishOption: (index: number) => void;
+  /** Bridge to sim — hold a draft option for the next level-up (T71). */
+  lockCard: (index: number) => void;
+  /** Bridge to sim — banish every card carrying a tag from the run pool (T71). */
+  banishTag: (tag: string) => void;
   /** Bridge to sim — skip the draft for a heal (T41). */
   skipDraft: () => void;
   /** Bridge to sim — restart the run in place (no reload), set by boot glue. */
@@ -257,6 +265,8 @@ export interface UiStore {
   setSheet: (s: SheetView | null) => void;
   setRerollDraft: (fn: (lockedIds: string[]) => void) => void;
   setBanishOption: (fn: (index: number) => void) => void;
+  setLockCard: (fn: (index: number) => void) => void;
+  setBanishTag: (fn: (tag: string) => void) => void;
   setSkipDraft: (fn: () => void) => void;
   setRestartRun: (fn: () => void) => void;
   setToMenu: (fn: () => void) => void;
@@ -289,6 +299,9 @@ const INITIAL_DRAFT: DraftState = {
   options: [],
   rerollsLeft: 0,
   banishesLeft: 0,
+  locksLeft: 0,
+  tagBanishesLeft: 0,
+  lockedId: null,
 };
 const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
 const INITIAL_PROFILE: ProfileView = {
@@ -334,6 +347,8 @@ export const useUiStore = create<UiStore>((set) => ({
   chooseBossReward: () => {},
   rerollDraft: () => {},
   banishOption: () => {},
+  lockCard: () => {},
+  banishTag: () => {},
   skipDraft: () => {},
   restartRun: () => {},
   toMenu: () => {},
@@ -360,6 +375,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setChooseBossReward: (chooseBossReward) => set({ chooseBossReward }),
   setRerollDraft: (rerollDraft) => set({ rerollDraft }),
   setBanishOption: (banishOption) => set({ banishOption }),
+  setLockCard: (lockCard) => set({ lockCard }),
+  setBanishTag: (banishTag) => set({ banishTag }),
   setSkipDraft: (skipDraft) => set({ skipDraft }),
   setRestartRun: (restartRun) => set({ restartRun }),
   setToMenu: (toMenu) => set({ toMenu }),
@@ -390,6 +407,8 @@ export const uiActions = {
   setChooseUpgrade: (fn: (i: number) => void) => useUiStore.getState().setChooseUpgrade(fn),
   setRerollDraft: (fn: (ids: string[]) => void) => useUiStore.getState().setRerollDraft(fn),
   setBanishOption: (fn: (i: number) => void) => useUiStore.getState().setBanishOption(fn),
+  setLockCard: (fn: (i: number) => void) => useUiStore.getState().setLockCard(fn),
+  setBanishTag: (fn: (tag: string) => void) => useUiStore.getState().setBanishTag(fn),
   setSkipDraft: (fn: () => void) => useUiStore.getState().setSkipDraft(fn),
   setRestartRun: (fn: () => void) => useUiStore.getState().setRestartRun(fn),
   setToMenu: (fn: () => void) => useUiStore.getState().setToMenu(fn),

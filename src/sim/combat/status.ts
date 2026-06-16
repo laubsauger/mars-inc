@@ -12,6 +12,12 @@ import { makePacket, computeOutgoing, applyMitigation } from './damage';
 
 export type StatusType = 'burn' | 'chill' | 'mark' | 'shock' | 'corrode' | 'bleed';
 
+// Stacking rule per status (T70, V33), so builds diverge:
+//   burn / mark  → STRONGEST-APPLIES (max dps/duration) — rewards burst/big crits.
+//   chill        → STRONGEST-APPLIES (smallest mult = strongest slow).
+//   bleed        → COUNT-CAPPED stacks (each adds a stack; dps is the strongest
+//                  applied) — rewards fire-rate/multishot.
+//   shock/corrode→ COUNT-CAPPED amplifier markers (read on-hit, no own DoT).
 /** Per-status stack ceilings (bounded, V5 — ⊥ infinite accumulation). */
 const MAX_STACKS: Record<'shock' | 'corrode' | 'bleed', number> = {
   shock: 6,
@@ -21,13 +27,22 @@ const MAX_STACKS: Record<'shock' | 'corrode' | 'bleed', number> = {
 /** Corrosion armor-shred: each stack amplifies incoming damage by this (proxy
  *  until enemy armor exists). Read via `corrodeAmp`. */
 const CORRODE_PER_STACK = 0.06;
+/** Shock = a magnitude-capped damage-taken amplifier (T70, V33, PoE shock identity):
+ *  each stack raises incoming damage, capped so it can't snowball. Read via `shockAmp`. */
+const SHOCK_DMG_TAKEN_PER_STACK = 0.1;
+const SHOCK_DMG_TAKEN_MAX = 0.5; // +50% ceiling (PoE1 reference)
 
 export interface StatusOpts {
   /** Application chance 0..1 (rolled by caller or here). */
   chance?: number;
   duration: number;
-  /** Burn / bleed damage-per-second (bleed is per-stack). */
+  /** Burn / bleed damage-per-second (bleed is per-stack). Pass this for a FLAT DoT,
+   *  or `dotCoef` for a hit-scaled one (V33) — the on-hit applier derives dps. */
   dps?: number;
+  /** DoT as a fraction of the inflicting hit's damage (T70, V33): the on-hit
+   *  `applyStatus` closure computes `dps = dotCoef × hitDamage / duration` so burn/
+   *  bleed scale with the weapon. Ignored when no hit damage is in context. */
+  dotCoef?: number;
   /** Chill movement multiplier (e.g. 0.6 = 40% slow). */
   slowMult?: number;
   /** Mark status-damage amplifier (e.g. 1.5 = +50%). */
@@ -40,6 +55,12 @@ export interface StatusOpts {
  *  weapon system so corroded targets take more (armor-shred, V3-routed). */
 export function corrodeAmp(pool: EnemyPool, i: number): number {
   return 1 + pool.corrodeStacks[i]! * CORRODE_PER_STACK;
+}
+
+/** Incoming-damage multiplier from shock on enemy `i` (1 = none), capped (T70, V33).
+ *  Read alongside `corrodeAmp` so shocked targets take more (pipeline-routed). */
+export function shockAmp(pool: EnemyPool, i: number): number {
+  return 1 + Math.min(SHOCK_DMG_TAKEN_MAX, pool.shockStacks[i]! * SHOCK_DMG_TAKEN_PER_STACK);
 }
 
 /**
@@ -92,7 +113,13 @@ export function applyStatus(
  * neutral on expiry, and applies burn damage (amplified by an active mark) via
  * the pipeline. Returns total health removed (for run stats, V20).
  */
-export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): number {
+export function tickStatus(
+  pool: EnemyPool,
+  rng: Rng,
+  dt: number,
+  fx: FxQueue,
+  statusMult = 1, // global DoT amplifier (T35 Glory Tree); 1 = unmodified
+): number {
   let dealt = 0;
   for (let i = 0; i < pool.count; i++) {
     if (pool.state[i] !== EnemyState.Active) continue;
@@ -122,7 +149,7 @@ export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): 
       pool.burnTime[i]! -= dt;
       const packet = makePacket({
         weaponId: 'burn',
-        baseDamage: pool.burnDps[i]! * dt * amp,
+        baseDamage: pool.burnDps[i]! * dt * amp * statusMult,
         damageType: 'thermal',
       });
       const out = computeOutgoing(packet, rng);
@@ -147,7 +174,7 @@ export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): 
       pool.bleedTime[i]! -= dt;
       const packet = makePacket({
         weaponId: 'bleed',
-        baseDamage: pool.bleedDps[i]! * pool.bleedStacks[i]! * dt * amp,
+        baseDamage: pool.bleedDps[i]! * pool.bleedStacks[i]! * dt * amp * statusMult,
         damageType: 'kinetic',
       });
       const out = computeOutgoing(packet, rng);

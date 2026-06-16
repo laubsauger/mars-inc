@@ -42,6 +42,10 @@ export class ProjectilePool {
   /** Proc coefficient of the firing weapon (T69, V32): scales on-hit status/trigger
    *  strength when this projectile lands. 1 = reference. */
   readonly procCoef: Float32Array;
+  /** 1 = this projectile inherits the build's GLOBAL on-hit mods (chain, knockback,
+   *  status-on-hit triggers); 0 = a "dumb" bolt (drones) that does NOT, unless the
+   *  Networked Munitions keystone is taken. Per-projectile so the pool stays shared. */
+  readonly inherit: Uint8Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -65,6 +69,7 @@ export class ProjectilePool {
     this.hold = new Float32Array(capacity);
     this.hitCd = new Float32Array(capacity);
     this.procCoef = new Float32Array(capacity);
+    this.inherit = new Uint8Array(capacity);
   }
 
   spawn(
@@ -80,6 +85,7 @@ export class ProjectilePool {
     profile = 0,
     bounces = 0,
     procCoef = 1,
+    inherit = 1,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -103,6 +109,7 @@ export class ProjectilePool {
     this.hold[i] = 0;
     this.hitCd[i] = 0;
     this.procCoef[i] = procCoef;
+    this.inherit[i] = inherit;
     return i;
   }
 
@@ -129,6 +136,7 @@ export class ProjectilePool {
       this.hold[i] = this.hold[last]!;
       this.hitCd[i] = this.hitCd[last]!;
       this.procCoef[i] = this.procCoef[last]!;
+      this.inherit[i] = this.inherit[last]!;
     }
   }
 }

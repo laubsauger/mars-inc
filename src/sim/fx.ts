@@ -13,7 +13,8 @@ export type FxKind =
   | 'teleport'
   | 'levelup'
   | 'bounty'
-  | 'ember'; // visual-only status flecks (burn) — NEVER plays a sound
+  | 'ember' // visual-only status flecks (burn) — NEVER plays a sound
+  | 'corpseblast'; // overkill-corpse detonation — TOXIC-GREEN so it reads ⊥ gold explosions
 
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family

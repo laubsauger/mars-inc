@@ -32,6 +32,8 @@ const CAP = FX_CAP + PROJ_CAP;
 
 const GOLD = COL.kineticGold;
 const WARM = COL.sunHigh;
+// Dim warm for explosive blasts — keeps the floor glow from flashing to white.
+const BLAST_WARM = new Color(0.4, 0.2, 0.08);
 
 export class FloorReflectionView {
   private mesh: InstancedMesh;
@@ -55,7 +57,10 @@ export class FloorReflectionView {
       blending: AdditiveBlending,
       transparent: true,
       depthWrite: false,
-      depthTest: true, // entities in front occlude their own glint → reads grounded
+      // depthTest OFF: a flat floor glint must never be culled by a gate plate /
+      // prop under the angled camera (the recurring "renders below the plate" bug).
+      // Trades the subtle grounded-occlusion for always-visible — the right call.
+      depthTest: false,
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, CAP);
@@ -74,7 +79,9 @@ export class FloorReflectionView {
     for (const e of events) {
       if (e.kind === 'impact') {
         const blast = e.variant === ImpactProfile.Blast;
-        this.flash(e.x, e.z, blast ? 1.6 : 0.7, blast ? 4.2 : 1.8, blast ? 0.34 : 0.16, WARM);
+        // Blast floor-glow kept dim + small so explosive builds don't wash out.
+        if (blast) this.flash(e.x, e.z, 0.7, 2.2, 0.22, BLAST_WARM);
+        else this.flash(e.x, e.z, 0.7, 1.8, 0.16, WARM);
       } else if (e.kind === 'death') {
         this.flash(e.x, e.z, 1.2, 3.0, 0.3, WARM);
       } else if (e.kind === 'muzzle') {

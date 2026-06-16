@@ -6,25 +6,64 @@ import { PERMANENT_UPGRADES } from '../../content/permanent/index';
 import { defaultMods } from './mods';
 import { BuildEffects } from './effects';
 
-describe('build-seeding permanents (T35+)', () => {
-  it('Live Wire seeds a Shock-on-hit trigger into the build engine', () => {
+describe('Glory-Tree permanents (T35 reweave — amplify, gate rules; no build-seeding)', () => {
+  it('Accelerant AMPLIFIES status damage (rewards a DoT build, does not seed one)', () => {
+    const mods = defaultMods();
     const effects = new BuildEffects();
-    applyPermanents(createPlayer(), { 'live-wire': 1 }, defaultMods(), effects);
-    expect(effects.has('hit')).toBe(true);
+    applyPermanents(createPlayer(), { accelerant: 2 }, mods, effects);
+    expect(mods.statusDamageMult).toBeCloseTo(1.6); // 1 + 0.3×2
+    expect(effects.has('hit')).toBe(false); // it amplifies — it does NOT apply a status on hit
   });
 
-  it('Hair-Trigger Coils firms recoil + enables recoil→sprint recharge', () => {
+  it('Hollow Points amplifies crit damage', () => {
+    const mods = defaultMods();
+    applyPermanents(createPlayer(), { 'hollow-points': 2 }, mods, new BuildEffects());
+    expect(mods.critDamageMult).toBeCloseTo(1.8); // 1 + 0.4×2
+  });
+
+  it('Wider Contracts is a RULE change — +1 draft option', () => {
+    const p = createPlayer();
+    applyPermanents(p, { 'wider-contracts': 1 }, defaultMods(), new BuildEffects());
+    expect(p.draftSize).toBe(4);
+  });
+
+  it('Second Wind grants a revive charge (cheat death once)', () => {
+    const p = createPlayer();
+    applyPermanents(p, { 'second-wind': 1 }, defaultMods(), new BuildEffects());
+    expect(p.reviveCharges).toBe(1);
+  });
+
+  it('Drone Overclock amplifies COMMAND drone damage', () => {
+    const p = createPlayer();
+    applyPermanents(p, { 'drone-overclock': 2 }, defaultMods(), new BuildEffects());
+    expect(p.droneDamageMult).toBeCloseTo(1.7); // 1 + 0.35×2
+  });
+
+  it('Glass Protocol is an INFAMY rule-break: more damage, halved health', () => {
     const p = createPlayer();
     const mods = defaultMods();
-    applyPermanents(p, { 'hair-trigger': 1 }, mods, new BuildEffects());
-    expect(mods.recoilMult).toBeGreaterThan(1);
-    expect(p.recoilSprintRecharge).toBe(true);
+    const base = p.maxHealth;
+    applyPermanents(p, { 'glass-protocol': 1 }, mods, new BuildEffects());
+    expect(mods.damageMult).toBeCloseTo(1.6); // +0.6
+    expect(p.maxHealth).toBe(Math.round(base * 0.5));
   });
 
-  it('Hunter Protocol starts the run with drones', () => {
+  it('Sponsorship Deal raises the Glory multiplier (economy node)', () => {
+    const p = createPlayer();
+    applyPermanents(p, { 'sponsorship-deal': 3 }, defaultMods(), new BuildEffects());
+    expect(p.gloryMult).toBeCloseTo(1.36); // 1 + 0.12×3
+  });
+
+  it('Hunter Protocol starts the run with drones (now COMMAND branch)', () => {
     const p = createPlayer();
     applyPermanents(p, { 'hunter-protocol': 2 }, defaultMods(), new BuildEffects());
     expect(p.droneCount).toBe(2);
+  });
+
+  it('no permanent seeds an on-hit status any more (the seeders were cut)', () => {
+    for (const id of ['frostbrand', 'hemorrhage-writ', 'caustic-coating', 'live-wire']) {
+      expect(PERMANENT_UPGRADES.find((u) => u.id === id)).toBeUndefined();
+    }
   });
 
   it('seeds the mod layer as a BASE value that in-run draft picks stack on top of', () => {

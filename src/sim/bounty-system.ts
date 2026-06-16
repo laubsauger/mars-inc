@@ -10,9 +10,9 @@ import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
 import { clampPoint, arenaContains } from './arena';
 
-export const MAX_BOUNTIES = 3; // concurrent cap — beacons, not clutter
-const FIRST_AT = 10; // first relic after this many seconds
-const INTERVAL = 15; // seconds between relic spawns
+export const MAX_BOUNTIES = 2; // concurrent cap — beacons, not clutter
+const FIRST_AT = 24; // first relic after this many seconds
+const INTERVAL = 38; // seconds between relic spawns (a real detour, not a constant stream)
 const MIN_SPAWN_DIST = 9; // must land at least this far from the player (go get it)
 const PICKUP_RADIUS = 1.7;
 /** Seconds a relic lingers before it decays (generous — plenty of time to fetch). */

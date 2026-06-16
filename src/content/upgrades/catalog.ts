@@ -10,19 +10,6 @@ import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   // ── Common ────────────────────────────────────────────────────────────────
   {
-    id: 'lubricated-action',
-    name: 'Lubricated Action',
-    description: '+10% fire rate.',
-    tags: ['fire-rate'],
-    rarity: 'common',
-    maxLevel: 5,
-    baseWeight: 10,
-    synergyWeight: 2,
-    apply: ({ mods }) => {
-      mods.fireRateMult += 0.1;
-    },
-  },
-  {
     id: 'sharpshooter',
     name: 'Sharpshooter Clause',
     description: '+4% crit chance.',
@@ -169,9 +156,11 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     baseWeight: 6,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      // First pick gives a couple of bounces; later levels add reach + bounces.
+      // First pick gives a couple of bounces; later levels add reach + bounces,
+      // and pump the retained damage up from its weak base toward full strength.
       mods.ricochet = mods.ricochet === 0 ? 2 : mods.ricochet + 1;
       mods.ricochetRange += 1.5;
+      mods.ricochetRetain = Math.min(0.9, mods.ricochetRetain + 0.16);
     },
   },
   {
@@ -188,19 +177,6 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       mods.fireRateMult = Math.max(0.3, mods.fireRateMult - 0.12);
     },
   },
-  {
-    id: 'quicksilver',
-    name: 'Quicksilver Clause',
-    description: '+12% move speed.',
-    tags: ['movement'],
-    rarity: 'uncommon',
-    maxLevel: 3,
-    baseWeight: 6,
-    synergyWeight: 2,
-    apply: ({ player }) => {
-      player.stats.moveSpeed *= 1.12;
-    },
-  },
 
   // ── Rare ──────────────────────────────────────────────────────────────────
   {
@@ -214,6 +190,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     apply: ({ mods }) => {
       mods.blastRadius += 1.5;
+      mods.blastDamageMult = Math.min(1.1, mods.blastDamageMult + 0.22); // splash bites harder
     },
   },
   {
@@ -357,20 +334,6 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       mods.damageMult += 0.5;
       mods.fireRateMult += 0.25;
       mods.spreadArc += 0.25;
-    },
-  },
-  {
-    id: 'phase-driver',
-    name: 'Phase Driver',
-    description: 'EXPERIMENTAL: shots pierce +3 and hit harder.',
-    tags: ['pierce', 'damage'],
-    rarity: 'prototype',
-    maxLevel: 1,
-    baseWeight: 2,
-    synergyWeight: 2,
-    apply: ({ mods }) => {
-      mods.pierce += 3;
-      mods.damageMult += 0.15;
     },
   },
   {

@@ -74,7 +74,8 @@ export class AudioBus {
     if (now - (this.lastAt[kind] ?? -1) < minGap) return;
 
     if (kind === 'muzzle') this.muzzleSfx(now);
-    else if (kind === 'impact' || kind === 'teleport') this.impactSfx(now);
+    else if (kind === 'impact' || kind === 'teleport' || kind === 'corpseblast')
+      this.impactSfx(now);
     else if (kind === 'levelup' || kind === 'bounty') this.levelUpSfx(now);
     else this.deathSfx(now);
     this.lastAt[kind] = now;
