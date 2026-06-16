@@ -352,6 +352,29 @@ function InspectPanel() {
   );
 }
 
+/** Slightly opaque dim behind the countdown so the arena reads as "not live yet".
+ *  Fades out the instant the run goes live (countdown hits 0). */
+function CountdownBackdrop() {
+  const countdown = useUiStore((s) => s.hud.countdown);
+  const active = countdown > 0;
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (active) {
+      setShow(true);
+      return;
+    }
+    const t = setTimeout(() => setShow(false), 700); // let the fade finish, then unmount
+    return () => clearTimeout(t);
+  }, [active]);
+  if (!show) return null;
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 bg-pit/55 backdrop-blur-[2px] transition-opacity duration-700 ease-out"
+      style={{ opacity: active ? 1 : 0 }}
+    />
+  );
+}
+
 function Countdown() {
   const countdown = useUiStore((s) => s.hud.countdown);
   if (countdown <= 0) return null;
@@ -395,6 +418,7 @@ const CONTROL_ROWS: [string, string][] = [
 
 function ControlsHint() {
   const screen = useUiStore((s) => s.screen);
+  const startCombat = useUiStore((s) => s.startCombat);
   const [seen, setSeen] = useState(() => {
     try {
       return localStorage.getItem('mars:controls-seen') === '1';
@@ -402,20 +426,9 @@ function ControlsHint() {
       return false;
     }
   });
-  // Auto-dismiss after a while so it never lingers in the way.
-  useEffect(() => {
-    if (seen || screen !== 'arena') return;
-    const t = setTimeout(() => {
-      setSeen(true);
-      try {
-        localStorage.setItem('mars:controls-seen', '1');
-      } catch {
-        /* ignore */
-      }
-    }, 14000);
-    return () => clearTimeout(t);
-  }, [seen, screen]);
   if (seen || screen !== 'arena') return null;
+  // This briefing is a START GATE — the sim is held (world.started=false) until the
+  // player clicks "Got it". No auto-dismiss: nothing should begin behind it.
   const dismiss = () => {
     setSeen(true);
     try {
@@ -423,6 +436,7 @@ function ControlsHint() {
     } catch {
       /* ignore */
     }
+    startCombat(); // begin the countdown + spawns now
   };
   return (
     <div className="pointer-events-auto absolute left-1/2 top-[28%] w-80 -translate-x-1/2 border-2 border-gold/70 bg-pit/92 p-4 font-mono shadow-[0_18px_60px_rgba(0,0,0,0.72),inset_0_0_0_1px_rgba(240,200,121,0.12)]">
@@ -465,6 +479,7 @@ export function Hud() {
       <InspectPanel />
       <BossBar />
       <Announce />
+      <CountdownBackdrop />
       <Countdown />
       <ControlsHint />
       <ResetView />

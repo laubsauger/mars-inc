@@ -248,6 +248,9 @@ export interface UiStore {
   toMenu: () => void;
   /** Bridge to sim — enter the pit from the menu (start a fresh run). */
   enterPit: () => void;
+  /** Bridge to sim — actually begin combat (countdown + spawns). Deferred until the
+   *  player dismisses the field-briefing so nothing runs behind the instructions. */
+  startCombat: () => void;
   /** Bridge to render — reset the orbit/zoom camera to the framed default. */
   resetView: () => void;
   /** Bridge to sim — toggle pause (used by the pause-menu Resume button). */
@@ -282,6 +285,7 @@ export interface UiStore {
   setRestartRun: (fn: () => void) => void;
   setToMenu: (fn: () => void) => void;
   setEnterPit: (fn: () => void) => void;
+  setStartCombat: (fn: () => void) => void;
   setResetView: (fn: () => void) => void;
   setTogglePause: (fn: () => void) => void;
   setBuyPermanent: (fn: (id: string) => void) => void;
@@ -370,6 +374,7 @@ export const useUiStore = create<UiStore>((set) => ({
   restartRun: () => {},
   toMenu: () => {},
   enterPit: () => {},
+  startCombat: () => {},
   resetView: () => {},
   togglePause: () => {},
   buyPermanent: () => {},
@@ -399,6 +404,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setRestartRun: (restartRun) => set({ restartRun }),
   setToMenu: (toMenu) => set({ toMenu }),
   setEnterPit: (enterPit) => set({ enterPit }),
+  setStartCombat: (startCombat) => set({ startCombat }),
   setResetView: (resetView) => set({ resetView }),
   setTogglePause: (togglePause) => set({ togglePause }),
   setBuyPermanent: (buyPermanent) => set({ buyPermanent }),
@@ -432,6 +438,7 @@ export const uiActions = {
   setRestartRun: (fn: () => void) => useUiStore.getState().setRestartRun(fn),
   setToMenu: (fn: () => void) => useUiStore.getState().setToMenu(fn),
   setEnterPit: (fn: () => void) => useUiStore.getState().setEnterPit(fn),
+  setStartCombat: (fn: () => void) => useUiStore.getState().setStartCombat(fn),
   setResetView: (fn: () => void) => useUiStore.getState().setResetView(fn),
   setTogglePause: (fn: () => void) => useUiStore.getState().setTogglePause(fn),
   setBuyPermanent: (fn: (id: string) => void) => useUiStore.getState().setBuyPermanent(fn),

@@ -272,29 +272,6 @@ export function SettingsControls() {
   const set = useUiStore((st) => st.applySetting);
   return (
     <div className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
-      <SettingRow label="ARENA">
-        <span className="flex gap-1.5">
-          {(
-            [
-              ['cold-vault', 'Cold Vault', '#32d7ff'],
-              ['rust-crown', 'Rust Crown', '#f0c879'],
-            ] as const
-          ).map(([id, label, color]) => (
-            <button
-              key={id}
-              onClick={() => set({ arenaId: id })}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-bold tracking-wide transition focus:outline-none ${
-                s.arenaId === id
-                  ? 'bg-pit/70 text-bone'
-                  : 'border-rust/60 bg-pit/40 text-bone/55 hover:text-bone'
-              }`}
-              style={s.arenaId === id ? { borderColor: color, color } : undefined}
-            >
-              {label}
-            </button>
-          ))}
-        </span>
-      </SettingRow>
       <SettingRow label="MASTER VOLUME">
         <Slider value={s.masterVolume} onChange={(v) => set({ masterVolume: v })} />
       </SettingRow>

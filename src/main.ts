@@ -402,15 +402,35 @@ async function boot(parent: HTMLElement): Promise<void> {
   });
 
   // Enter the pit from the menu → start a fresh run (applies owned permanents).
-  uiActions.setEnterPit(() => {
+  // First-run field briefing (Hud ControlsHint) doubles as a START GATE: nothing
+  // runs behind the instructions. We reset the world (fresh arena + player at
+  // spawn) but leave `started` false until the player dismisses it; the driver only
+  // steps the sim while `started`, so the countdown + spawns hold. Once they've
+  // seen the briefing it never shows again, so we begin combat immediately.
+  const BRIEFING_KEY = 'mars:controls-seen';
+  const briefingPending = (): boolean => {
+    try {
+      return localStorage.getItem(BRIEFING_KEY) !== '1';
+    } catch {
+      return false;
+    }
+  };
+  const armRun = (): void => {
     world.setPermanents(save.current.permanentUpgrades);
-    world.start();
+    world.reset(); // fresh arena + player at spawn; `started` stays false
     discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
     audio.stopMusic(); // menu theme off in the pit
     endShown = false;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
+    world.started = !briefingPending(); // hold until "Got it" when the briefing shows
+  };
+  // The briefing's "Got it" button calls this to actually begin combat.
+  uiActions.setStartCombat(() => {
+    world.started = true;
   });
+
+  uiActions.setEnterPit(() => armRun());
 
   // Return to the menu from game-over → idle the sim, refresh records.
   uiActions.setToMenu(() => {
@@ -424,15 +444,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   });
 
   // Bridge restart from the game-over screen → start a fresh run in place (V15).
-  uiActions.setRestartRun(() => {
-    world.setPermanents(save.current.permanentUpgrades); // apply any purchases
-    world.start();
-    discoverWeapon(world.weaponSystem.primaryId);
-    audio.stopMusic();
-    endShown = false;
-    uiActions.setResult(null);
-    uiActions.setScreen('arena');
-  });
+  uiActions.setRestartRun(() => armRun());
 
   // Apply the current saved settings to the live systems (audio / FX / shake /
   // UI scale). Called on boot and after every settings change (T36).
