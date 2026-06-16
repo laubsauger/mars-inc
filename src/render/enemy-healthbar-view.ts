@@ -96,7 +96,8 @@ export class EnemyHealthbarView {
     let n = 0;
     for (let i = 0; i < pool.count; i++) {
       if (pool.state[i] !== EnemyState.Active) continue; // skip telegraphing spawns
-      const maxHp = VARIANT_MAXHP[pool.variant[i]!] ?? 1;
+      // Per-instance max (difficulty-scaled, T44); fall back to the variant base.
+      const maxHp = pool.maxHp[i]! > 0 ? pool.maxHp[i]! : (VARIANT_MAXHP[pool.variant[i]!] ?? 1);
       const frac = Math.max(0, Math.min(1, pool.health[i]! / maxHp));
       const radius = pool.radius[i]!;
       const w = Math.max(1.0, radius * 1.8);

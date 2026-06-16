@@ -1,7 +1,62 @@
 import { describe, it, expect } from 'vitest';
-import { WaveDirector, budgetAt, computeAdaptation, NEUTRAL_ADAPT } from './wave-director';
-import { EnemyPool } from '../enemies';
+import {
+  WaveDirector,
+  budgetAt,
+  computeAdaptation,
+  difficultyScale,
+  NEUTRAL_ADAPT,
+} from './wave-director';
+import { EnemyPool, RUST_MITE, PHASE_STALKER, SpawnKind } from '../enemies';
 import { Rng } from '../../core/rng';
+import { FxQueue } from '../fx';
+import { ARENA_RADIUS } from '../constants';
+
+describe('Phase Stalker teleporter (T33+)', () => {
+  it('materializes at interior points (not gates) after the unlock time, with FX', () => {
+    const d = new WaveDirector();
+    const pool = new EnemyPool();
+    const rng = new Rng(3);
+    const fx = new FxQueue();
+    // Step ~30s of run time starting past the teleport unlock (60s).
+    for (let t = 0; t < 30; t += 1 / 60) {
+      d.step(pool, rng, 65 + t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
+    }
+    let teleporters = 0;
+    for (let i = 0; i < pool.count; i++) {
+      if (pool.variant[i] === PHASE_STALKER.variant) {
+        teleporters++;
+        expect(pool.spawnKind[i]).toBe(SpawnKind.Teleport);
+        const r = Math.hypot(pool.posX[i]!, pool.posZ[i]!);
+        expect(r).toBeLessThan(ARENA_RADIUS); // interior, not the gate ring
+      }
+    }
+    expect(teleporters).toBeGreaterThan(0);
+    expect(fx.events.some((e) => e.kind === 'teleport')).toBe(true);
+  });
+
+  it('does not teleport before the unlock time', () => {
+    const d = new WaveDirector();
+    const pool = new EnemyPool();
+    const fx = new FxQueue();
+    for (let t = 0; t < 40; t += 1 / 60) d.step(pool, new Rng(1), t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
+    expect(fx.events.some((e) => e.kind === 'teleport')).toBe(false);
+  });
+});
+
+describe('difficultyScale (T44 run-phase escalation)', () => {
+  it('grows with time AND steps up per boss kill', () => {
+    expect(difficultyScale(0, 0)).toBe(1);
+    expect(difficultyScale(120, 0)).toBeGreaterThan(difficultyScale(30, 0));
+    expect(difficultyScale(60, 1)).toBeGreaterThan(difficultyScale(60, 0) + 0.5);
+  });
+
+  it('applies the HP scale to spawned fodder (per-instance maxHp)', () => {
+    const pool = new EnemyPool();
+    pool.spawn(RUST_MITE, 0, 0, 0, 0, 2); // 2× scale
+    expect(pool.health[0]).toBe(RUST_MITE.maxHealth * 2);
+    expect(pool.maxHp[0]).toBe(RUST_MITE.maxHealth * 2);
+  });
+});
 
 describe('computeAdaptation (T21/V12 bounded, composition not raw stats)', () => {
   it('neutral build → ~neutral adaptation', () => {

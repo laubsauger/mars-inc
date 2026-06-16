@@ -85,6 +85,18 @@ describe('steerEnemy (T11 seek + separation)', () => {
     expect(v.x).toBeGreaterThan(0);
     expect(Math.hypot(v.x, v.z)).toBeCloseTo(5, 5);
   });
+
+  it('inside the ring, separation cannot push an enemy INTO the player (no penetration)', () => {
+    // Player at origin; enemy at (1,0), inside stopDist=2. A neighbor sits on the
+    // enemy's OUTER side (1.6,0) — without the ring constraint, separation would
+    // shove the enemy toward -x, i.e. straight onto the player. The clamp must
+    // strip that inward component so motion is tangential/outward only.
+    const nx = new Float32Array([1.6]);
+    const nz = new Float32Array([0]);
+    const v = steerEnemy(1, 0, { x: 0, z: 0 }, 5, 5, nx, nz, 1, 0.5, DEFAULT_STEER, 2);
+    // Inward here is the -x direction (toward the player at origin).
+    expect(v.x).toBeGreaterThanOrEqual(-1e-6);
+  });
 });
 
 describe('splitOnDeath (T33 splitter blob)', () => {

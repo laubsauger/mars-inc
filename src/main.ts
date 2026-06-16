@@ -31,19 +31,63 @@ import { budgetAt } from './sim/director/wave-director';
 import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
-import type { PermanentView } from './ui/store';
+import type { PermanentView, InspectView } from './ui/store';
 import { ARENA_RADIUS } from './sim/constants';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
 import { World } from './sim/world';
-import { EnemyState, ENEMY_DISPLAY_NAME, BOSS_GATEKEEPER } from './sim/enemies';
+import { EnemyState, ENEMY_DISPLAY_NAME, ENEMY_BY_VARIANT, BOSS_GATEKEEPER } from './sim/enemies';
 import { DevOverlay, type OverlayMetrics } from './dev/overlay';
 import { mountUi } from './ui/ui-root';
 import { uiActions } from './ui/store';
 
 const app = document.getElementById('app');
 if (!app) throw new Error('#app missing');
+
+/** Mini character sheet for the enemy nearest the ground cursor (hover inspect).
+ *  Render-only (V2): reads sim state, never mutates it. null when nothing hovered. */
+function computeInspect(world: World): InspectView | null {
+  const aim = world.player.aim;
+  if (!aim.has) return null;
+  const en = world.enemies;
+  let best = -1;
+  let bestD2 = Infinity;
+  for (let i = 0; i < en.count; i++) {
+    if (en.state[i] !== EnemyState.Active) continue;
+    const dx = en.posX[i]! - aim.x;
+    const dz = en.posZ[i]! - aim.z;
+    const reach = en.radius[i]! + 1.0;
+    const d2 = dx * dx + dz * dz;
+    if (d2 <= reach * reach && d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
+  }
+  if (best < 0) return null;
+  const v = en.variant[best]!;
+  const def = ENEMY_BY_VARIANT[v];
+  const statuses: string[] = [];
+  if (en.burnTime[best]! > 0) statuses.push('Burn');
+  if (en.chillTime[best]! > 0) statuses.push('Chill');
+  if (en.shockTime[best]! > 0) statuses.push('Shock');
+  if (en.corrodeTime[best]! > 0) statuses.push('Corrode');
+  if (en.bleedTime[best]! > 0) statuses.push('Bleed');
+  if (en.markTime[best]! > 0) statuses.push('Marked');
+  const atk = def?.attack;
+  return {
+    name: ENEMY_DISPLAY_NAME[v] ?? 'Hostile',
+    variant: v,
+    hp: Math.max(0, Math.ceil(en.health[best]!)),
+    maxHp: Math.ceil(en.maxHp[best]! || def?.maxHealth || 1),
+    contactDamage: Math.round(en.contactDmg[best]!),
+    speed: Math.round((def?.speed ?? en.speed[best]!) * 10) / 10,
+    isBoss: v === BOSS_GATEKEEPER.variant,
+    splitter: !!def?.splitInto,
+    ranged: atk ? { kind: atk.kind, damage: atk.damage, range: atk.range } : null,
+    statuses,
+  };
+}
 
 /** Fade out + remove the inline boot splash (index.html) once the app is live. */
 function hideBootSplash(): void {
@@ -498,6 +542,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         shieldMax: world.player.shieldMax,
       });
       uiActions.setBoss(world.boss.snapshot());
+      uiActions.setInspect(computeInspect(world));
 
       // Refresh the character sheet when pause opens (the pause menu shows it).
       if (world.paused && !wasPaused) uiActions.setSheet(world.characterSheet());
@@ -657,7 +702,31 @@ async function boot(parent: HTMLElement): Promise<void> {
     world,
     effects,
     save,
+    scene,
     refreshMeta: pushMeta,
+    // TEMP perf-diagnostic hook: stack a heavy build + crowd, read the dev
+    // overlay under load. Remove after profiling.
+    stress(enemies = 1200, multishot = 12, houndRatio = 0.3): void {
+      world.countdown = 0;
+      world.player.maxHealth = 1e9;
+      world.player.health = 1e9;
+      const m = world.mods;
+      m.projectileCount = multishot;
+      m.fireRateMult = 4;
+      m.spreadArc = 1.2;
+      m.chainCount = 4;
+      m.chainRange = 6;
+      m.pierce = 3;
+      m.blastRadius = 2;
+      m.knockback = 3;
+      for (let i = 0; i < enemies; i++) {
+        const ang = (i / enemies) * Math.PI * 2 * 7.3;
+        const rad = 4 + (i % 50) * 0.55;
+        const type = i % 100 < houndRatio * 100 ? ENEMY_BY_VARIANT[1]! : ENEMY_BY_VARIANT[0]!;
+        const idx = world.enemies.spawn(type, Math.cos(ang) * rad, Math.sin(ang) * rad, 0, i);
+        if (idx >= 0) world.enemies.state[idx] = EnemyState.Active;
+      }
+    },
   };
 }
 

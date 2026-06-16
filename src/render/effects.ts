@@ -232,6 +232,14 @@ export class Effects {
             color: COL.sunHigh,
           });
           break;
+        case 'teleport':
+          // Materialize: two phase rings COLLAPSE inward (big → small) + a bright
+          // bloom + inward sparks → reads as "blinking into" the arena.
+          this.impact.spawn({ x: e.x, z: e.z, s0: 4.6, s1: 0.6, life: 0.5, spin: -4, color: COL.eliteMagenta });
+          this.impact.spawn({ x: e.x, z: e.z, s0: 3.2, s1: 0.4, life: 0.42, spin: 3, color: COL.shieldCyan });
+          this.muzzle.spawn({ x: e.x, z: e.z, s0: 0.2, s1: 2.4, life: 0.32, spin: 6, color: COL.eliteMagenta });
+          this.dust.spawn({ x: e.x, z: e.z, s0: 2.8, s1: 0.4, life: 0.42, spin: 5, color: COL.shieldCyan });
+          break;
       }
     }
   }

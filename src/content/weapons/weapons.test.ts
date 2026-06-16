@@ -28,6 +28,14 @@ describe('weapon catalog', () => {
     expect(weaponById('phobos-driver')?.displayName).toBe('Phobos Driver');
     expect(weaponById('nope')).toBeUndefined();
   });
+
+  it('recoil is a real per-weapon trade-off (rapid/heavy kick hard, precise barely)', () => {
+    const recoil = (id: string) => weaponById(id)!.recoil;
+    // Minigun + the heavy hitters shove you; the energy repeater stays planted.
+    expect(recoil('rust-devil-minigun')).toBeGreaterThan(recoil('arc-repeater') * 5);
+    expect(recoil('liability-shotgun')).toBeGreaterThan(recoil('contractual-sidearm'));
+    expect(recoil('arc-repeater')).toBeLessThan(recoil('contractual-sidearm'));
+  });
 });
 
 function fireOnce(def: typeof liabilityShotgun): number {

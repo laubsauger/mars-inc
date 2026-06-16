@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUiStore, type MenuView } from '../store';
 import { SocialFooter } from '../SocialFooter';
+import { WEAPONS } from '../../content/weapons/index';
 
 const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run' };
 
@@ -710,6 +711,82 @@ function ComingSoon({ title, blurb }: { title: string; blurb: string }) {
   );
 }
 
+const WEAPON_FAMILY_COLOR: Record<string, string> = {
+  sidearm: '#d8b46a',
+  rotary: '#c46a2b',
+  explosive: '#ff3b30',
+  energy: '#32d7ff',
+  orbital: '#ffd23f',
+  drone: '#83f04f',
+};
+
+function recoilLabel(r: number): string {
+  return r <= 4 ? 'Low' : r <= 12 ? 'Medium' : r <= 20 ? 'High' : 'Brutal';
+}
+
+/** Derive a one-line identity from the weapon's stats (no per-id hardcoding). */
+function weaponTradeoff(w: (typeof WEAPONS)[number]): string {
+  if ((w.pellets ?? 1) > 1) return 'Point-blank scatter — devastating up close, useless at range.';
+  if (w.explosiveRadius) return 'AoE on impact — huge punch, slow fire, brutal recoil.';
+  if (w.cooldown < 0.1) return 'Bullet hose — its recoil shoves you off your aim.';
+  if ((w.projectile.pierce ?? 0) >= 2)
+    return 'Punches through lined-up crowds; soft single-target.';
+  if (w.range >= 28) return 'Long-range sniper — keeps the whole arena in threat.';
+  return 'Reliable all-rounder with low recoil.';
+}
+
+function ArsenalPanel() {
+  return (
+    <Panel title="ARSENAL">
+      <div className="mb-3 text-xs text-bone/60">
+        Every weapon trades power for a cost — no single gun wins. Weapons drop in-run; permanent
+        unlocks &amp; loadout selection are coming with the boss-gated weapon families.
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {WEAPONS.map((w) => {
+          const color = WEAPON_FAMILY_COLOR[w.family] ?? '#bbb';
+          const dps = ((w.damage.base * (w.pellets ?? 1)) / w.cooldown).toFixed(0);
+          const rate = (1 / w.cooldown).toFixed(1);
+          return (
+            <div
+              key={w.id}
+              className="relative overflow-hidden rounded-sm border border-rust/70 bg-umber/80 p-3 shadow-[inset_0_0_0_1px_rgba(7,5,4,0.7)]"
+            >
+              <div className="absolute inset-x-0 top-0 h-1" style={{ background: color }} />
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-sm font-black text-bone">{w.displayName}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-widest" style={{ color }}>
+                  {w.family} · T{w.tier}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-[11px] text-bone/75">
+                <Stat label="DPS~" value={dps} />
+                <Stat label="Rate/s" value={rate} />
+                <Stat label="Range" value={`${w.range}`} />
+                <Stat label="Dmg" value={`${w.damage.base}${w.pellets ? `×${w.pellets}` : ''}`} />
+                <Stat label="Recoil" value={recoilLabel(w.recoil)} />
+                <Stat label="Pierce" value={`${w.projectile.pierce ?? 0}`} />
+              </div>
+              <div className="mt-2 border-t border-rust/40 pt-1.5 text-[11px] leading-4 text-bone/60">
+                {weaponTradeoff(w)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex justify-between">
+      <span className="text-dust">{label}</span>
+      <span className="tabular-nums text-bone/85">{value}</span>
+    </span>
+  );
+}
+
 function CreditsPanel() {
   return (
     <Panel title="CREDITS">
@@ -774,12 +851,11 @@ function Root() {
           </button>
         </div>
       </Frame>
-      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
     </MenuShell>
   );
 }
 
-export function MainMenu() {
+function ActiveMenu() {
   const view = useUiStore((s) => s.menuView);
   switch (view) {
     case 'warrior':
@@ -791,7 +867,7 @@ export function MainMenu() {
     case 'credits':
       return <CreditsPanel />;
     case 'arsenal':
-      return <ComingSoon title="ARSENAL" blurb="Browse and preview weapons before a run." />;
+      return <ArsenalPanel />;
     case 'glory':
       return <GloryTree />;
     case 'challenges':
@@ -799,4 +875,14 @@ export function MainMenu() {
     case 'root':
       return <Root />;
   }
+}
+
+export function MainMenu() {
+  // Socials pinned to the viewport on EVERY menu view (not just the root screen).
+  return (
+    <>
+      <ActiveMenu />
+      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
+    </>
+  );
 }

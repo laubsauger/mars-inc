@@ -15,12 +15,18 @@ import {
   AUDIT_BRUTE,
   FROSTBITE_AUDITOR,
   LIABILITY_BLOB,
+  PHASE_STALKER,
+  SpawnKind,
   type EnemyType,
 } from '../enemies';
 import type { Rng } from '../../core/rng';
+import type { FxQueue } from '../fx';
 import { ARENA_RADIUS, GATE_COUNT } from '../constants';
 
 const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
+const TELE_TELEGRAPH = 1.0; // teleport materialize tell before the stalker is live (V9)
+const TELE_AT = 60; // seconds → Phase Stalkers start blinking in
+const TELE_PERIOD = 14; // base seconds between teleport waves (shrinks late)
 const CHEAPEST = RUST_MITE.threat;
 const HARD_CAP = 1200; // absolute ceiling regardless of curve (≤ pool capacity, V8)
 const BOSS_AT = 90; // seconds → Gatekeeper milestone spawn (T33/T29)
@@ -165,13 +171,20 @@ export class WaveDirector {
     return pool.spawn(type, x, z, TELEGRAPH, this.phase++) >= 0;
   }
 
+  /** Spawn-time HP scale for fodder this step (run-phase escalation, T44). */
+  private hpScale = 1;
+  private teleTimer = TELE_PERIOD; // countdown to the next teleport wave (T33+)
+
   step(
     pool: EnemyPool,
     rng: Rng,
     elapsed: number,
     dt: number,
     adapt: Adaptation = NEUTRAL_ADAPT,
+    hpScale = 1,
+    fx?: FxQueue,
   ): void {
+    this.hpScale = hpScale;
     const b = budgetAt(elapsed);
     const pace = clamp(adapt.pace, PACE_MIN, PACE_MAX); // re-clamp: director owns bounds (V12)
     const houndBias = clamp(adapt.houndBias, 0, BIAS_MAX);
@@ -193,6 +206,17 @@ export class WaveDirector {
     if (this.waveTimer <= 0) {
       this.waveTimer = waveGap(elapsed);
       this.spawnWave(pool, rng, elapsed, houndBias, cap);
+    }
+
+    // Phase Stalkers: a separate cadence that IGNORES the gates and materializes
+    // at interior points — so the player can't just watch the perimeter (V9 tell).
+    if (elapsed >= TELE_AT) {
+      this.teleTimer -= dt;
+      if (this.teleTimer <= 0) {
+        this.teleTimer = Math.max(6, TELE_PERIOD - (elapsed - TELE_AT) * 0.04);
+        const n = elapsed > 130 ? 2 : 1;
+        for (let k = 0; k < n; k++) this.spawnTeleporter(pool, rng, cap, fx);
+      }
     }
 
     // Clamp so a long breather can't accumulate an unbounded burst (V8 bounded).
@@ -273,8 +297,31 @@ export class WaveDirector {
     const r = ARENA_RADIUS + 2.5 - rng.range(0, 1.5);
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
-    return pool.spawn(type, x, z, TELEGRAPH, this.phase++) >= 0;
+    return pool.spawn(type, x, z, TELEGRAPH, this.phase++, this.hpScale) >= 0;
   }
+
+  /** Materialize a Phase Stalker at a random INTERIOR point (not a gate). The
+   *  telegraph window + the render-side materialize FX make it dodgeable (V9). */
+  private spawnTeleporter(pool: EnemyPool, rng: Rng, cap: number, fx?: FxQueue): void {
+    if (pool.count >= cap) return;
+    const angle = rng.range(0, Math.PI * 2);
+    const r = ARENA_RADIUS * rng.range(0.3, 0.82); // interior ring, off the player's edge kite
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    if (pool.spawn(PHASE_STALKER, x, z, TELE_TELEGRAPH, this.phase++, this.hpScale, SpawnKind.Teleport) >= 0) {
+      fx?.push('teleport', x, z);
+    }
+  }
+}
+
+/**
+ * Run-phase difficulty scale (T44): a global multiplier on FODDER health so the
+ * roster keeps pace with the player's growing damage — the curve ramps with time
+ * AND steps up per boss kill (bosses are the progression hinge, §G). Bounded
+ * growth, deterministic (pure function of run state). Boss HP is NOT scaled.
+ */
+export function difficultyScale(elapsed: number, bossKills: number): number {
+  return 1 + elapsed * 0.014 + bossKills * 0.7;
 }
 
 /** Seconds between waves — long at the open, shrinking to a floor. */

@@ -11,6 +11,13 @@ export const enum EnemyState {
   Active = 1,
 }
 
+/** How an enemy entered the arena — drives the spawn visual (T33+). Gate units
+ *  walk in through a portal; teleport units MATERIALIZE at an interior point. */
+export const enum SpawnKind {
+  Gate = 0,
+  Teleport = 1,
+}
+
 /**
  * Ranged-attack profile (T33). Absent = melee/contact only (default). The enemy
  * attack system reads this per enemy via its variant. Extensible by `kind` so
@@ -86,6 +93,8 @@ export class EnemyPool {
   readonly sepWeight: Float32Array;
   readonly variant: Uint8Array;
   readonly state: Uint8Array;
+  /** SpawnKind: 0 = gate walk-in, 1 = teleport materialize (drives spawn FX). */
+  readonly spawnKind: Uint8Array;
   readonly stateTimer: Float32Array;
   /** Per-enemy steering phase so updates stagger across ticks (low-freq). */
   readonly steerPhase: Uint8Array;
@@ -129,6 +138,7 @@ export class EnemyPool {
     this.sepWeight = new Float32Array(capacity);
     this.variant = new Uint8Array(capacity);
     this.state = new Uint8Array(capacity);
+    this.spawnKind = new Uint8Array(capacity);
     this.stateTimer = new Float32Array(capacity);
     this.steerPhase = new Uint8Array(capacity);
     this.attackCd = new Float32Array(capacity);
@@ -159,6 +169,7 @@ export class EnemyPool {
     telegraph: number,
     phase: number,
     hpScale = 1,
+    spawnKind: number = SpawnKind.Gate,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -175,6 +186,7 @@ export class EnemyPool {
     this.sepWeight[i] = type.separationWeight;
     this.variant[i] = type.variant;
     this.state[i] = EnemyState.Telegraph;
+    this.spawnKind[i] = spawnKind;
     this.stateTimer[i] = telegraph;
     this.steerPhase[i] = phase & 0xff;
     this.attackCd[i] = 0;
@@ -215,6 +227,7 @@ export class EnemyPool {
       this.sepWeight[i] = this.sepWeight[last]!;
       this.variant[i] = this.variant[last]!;
       this.state[i] = this.state[last]!;
+      this.spawnKind[i] = this.spawnKind[last]!;
       this.stateTimer[i] = this.stateTimer[last]!;
       this.steerPhase[i] = this.steerPhase[last]!;
       this.attackCd[i] = this.attackCd[last]!;
@@ -426,6 +439,22 @@ export const BLOBLING: EnemyType = {
   threat: 2,
 };
 
+// Phase Stalker — teleport ambusher (T33+). Ignores the gates entirely: it
+// MATERIALIZES at an interior point near the player after a brief telegraph
+// (V9 — dodgeable), then rushes in fast. The threat is positional — it can
+// appear behind your kite line, so you can't just watch the gates.
+export const PHASE_STALKER: EnemyType = {
+  id: 'phase-stalker',
+  radius: 0.55,
+  maxHealth: 24,
+  speed: 6.2, // blinks in, then sprints — pressure unit
+  separationWeight: 0.9,
+  variant: 11,
+  gore: 'blood',
+  threat: 9,
+  contactDamage: 12,
+};
+
 /** Display names by variant — for HUD intros / readouts (T33). */
 export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Rust Mite',
@@ -439,6 +468,7 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Frostbite Auditor',
   'Liability Blob',
   'Blobling',
+  'Phase Stalker',
 ];
 
 // Frostbite Auditor — cryo lobber (T33). Lobs a slow-fusing FROST writ that
@@ -481,6 +511,7 @@ export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
   FROSTBITE_AUDITOR,
   LIABILITY_BLOB,
   BLOBLING,
+  PHASE_STALKER,
 ];
 
 /**
@@ -572,6 +603,21 @@ export function steerEnemy(
 
   let dx = sx * seekScale + ax * sepWeight * weights.separation;
   let dz = sz * seekScale + az * sepWeight * weights.separation;
+
+  // Hard ring constraint: once at/inside the stop ring, forbid any INWARD radial
+  // motion. Seek is already zeroed, but a dense crowd's separation pushes inner
+  // enemies toward the player (their neighbors are all on the outer side) —
+  // which would drive them onto the centre. Project out the toward-player
+  // component so they can only slide tangentially or get pushed back OUT. This
+  // is what actually kills the centre-pile and the jiggle (no in/out bounce).
+  if (stopDist > 0 && sl <= stopDist && sl > 1e-6) {
+    const inward = dx * sx + dz * sz; // +ve = moving toward the player
+    if (inward > 0) {
+      dx -= inward * sx;
+      dz -= inward * sz;
+    }
+  }
+
   const dl = Math.hypot(dx, dz);
   if (dl > 1e-6) {
     dx = (dx / dl) * speed;

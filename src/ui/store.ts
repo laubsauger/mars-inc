@@ -77,6 +77,21 @@ export interface HudState {
   shieldMax: number; // 0 = no shield drafted yet
 }
 
+/** Hovered-enemy inspect panel (mini character sheet). Computed render-side from
+ *  the enemy nearest the ground cursor; null when nothing is hovered. */
+export interface InspectView {
+  name: string;
+  variant: number; // drives the silhouette colour chip
+  hp: number;
+  maxHp: number;
+  contactDamage: number;
+  speed: number;
+  isBoss: boolean;
+  splitter: boolean;
+  ranged: { kind: string; damage: number; range: number } | null;
+  statuses: string[]; // active status labels (Burn/Chill/Shock/…)
+}
+
 /** Transient combat announcement (T33): boss warning / new-enemy intro. The
  *  `id` bumps per event so the HUD can re-trigger + auto-dismiss. */
 export interface AnnounceState {
@@ -175,6 +190,7 @@ export interface UiStore {
   hud: HudState;
   boss: BossView;
   announce: AnnounceState | null;
+  inspect: InspectView | null;
   draft: DraftState;
   bossReward: BossRewardState;
   labels: FloatingLabel[];
@@ -211,6 +227,7 @@ export interface UiStore {
   setHud: (h: HudState) => void;
   setBoss: (b: BossView) => void;
   setAnnounce: (a: AnnounceState) => void;
+  setInspect: (v: InspectView | null) => void;
   setDraft: (d: DraftState) => void;
   setResult: (r: RunResultView | null) => void;
   setMeta: (m: MetaState) => void;
@@ -283,6 +300,7 @@ export const useUiStore = create<UiStore>((set) => ({
   hud: INITIAL_HUD,
   boss: { active: false, hp01: 0, phase: 0, phases: 3, name: '' },
   announce: null,
+  inspect: null,
   draft: INITIAL_DRAFT,
   bossReward: { open: false, id: 0, options: [] },
   labels: [],
@@ -308,6 +326,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setHud: (hud) => set({ hud }),
   setBoss: (boss) => set({ boss }),
   setAnnounce: (announce) => set({ announce }),
+  setInspect: (inspect) => set({ inspect }),
   setDraft: (draft) => set({ draft }),
   setResult: (result) => set({ result }),
   setMeta: (meta) => set({ meta }),
@@ -337,6 +356,7 @@ export const uiActions = {
   setHud: (h: HudState) => useUiStore.getState().setHud(h),
   setBoss: (b: BossView) => useUiStore.getState().setBoss(b),
   setAnnounce: (a: AnnounceState) => useUiStore.getState().setAnnounce(a),
+  setInspect: (v: InspectView | null) => useUiStore.getState().setInspect(v),
   setDraft: (d: DraftState) => useUiStore.getState().setDraft(d),
   setBossReward: (b: BossRewardState) => useUiStore.getState().setBossReward(b),
   setLabels: (l: FloatingLabel[]) => useUiStore.getState().setLabels(l),

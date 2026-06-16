@@ -112,9 +112,9 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     droneCount: 0,
     novaInterval: 0,
     novaTimer: 0,
-    novaRadius: 6,
+    novaRadius: 3.4, // T44 nerf: was 6 — far too wide on the first level
     novaForce: 16,
-    novaDamage: 8,
+    novaDamage: 6, // T44 nerf: was 8
     novaPull: false,
     dashShockForce: 0,
     dashShockRadius: 5,
@@ -158,9 +158,9 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.droneCount = 0;
   p.novaInterval = 0;
   p.novaTimer = 0;
-  p.novaRadius = 6;
+  p.novaRadius = 3.4;
   p.novaForce = 16;
-  p.novaDamage = 8;
+  p.novaDamage = 6;
   p.novaPull = false;
   p.dashShockForce = 0;
   p.dashShockRadius = 5;

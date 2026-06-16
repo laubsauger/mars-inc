@@ -92,10 +92,11 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
         player.novaInterval = 4.5; // first level enables it
         player.novaTimer = 1.5; // fire soon after taking it
       } else {
-        player.novaInterval = Math.max(1.8, player.novaInterval - 0.6);
-        player.novaRadius += 1;
+        // Slower growth so it ramps over the run instead of dominating early.
+        player.novaInterval = Math.max(2.2, player.novaInterval - 0.5);
+        player.novaRadius += 0.6;
         player.novaForce += 4;
-        player.novaDamage += 6;
+        player.novaDamage += 4;
       }
     },
   },
@@ -287,8 +288,10 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     baseWeight: 2,
     synergyWeight: 2,
     apply: ({ effects }) => {
+      // T44 nerf: was 6m / 40 dmg / 20% — chain-cleared whole crowds. Still a
+      // strong capstone payoff, no longer an arena wipe.
       effects.on('kill', (c) => {
-        if (c.rng.next() < 0.2) c.dealArea(c.x, c.z, 6, 40);
+        if (c.rng.next() < 0.15) c.dealArea(c.x, c.z, 4, 24);
       });
     },
   },

@@ -11,7 +11,7 @@ import { WeaponDropSystem } from './weapon-drops';
 import { HealthDropSystem } from './health-drops';
 import { availableEvolution } from '../content/weapons/evolutions';
 import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
-import { WaveDirector, computeAdaptation } from './director/wave-director';
+import { WaveDirector, computeAdaptation, difficultyScale } from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
 import { radialPush } from './combat/knockback';
@@ -209,7 +209,15 @@ export class World {
     // Fixed system order (§14.3): player → director → enemy AI/contact → weapons → triggers → XP.
     stepPlayer(this.player, this.input, dt);
     // Adapt composition/pace to the build (bounded, V12) — never per-enemy stats.
-    this.director.step(this.enemies, this.rng, this.elapsed, dt, computeAdaptation(this.mods));
+    this.director.step(
+      this.enemies,
+      this.rng,
+      this.elapsed,
+      dt,
+      computeAdaptation(this.mods),
+      difficultyScale(this.elapsed, this.stats.bossKills),
+      this.fx,
+    );
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
     // Companion drones hunt + fire into the shared projectile pool (V3 pipeline).
     // After the enemy system so the spatial hash is current; before the weapon

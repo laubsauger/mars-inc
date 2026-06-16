@@ -27,9 +27,11 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { EnemyPool } from '../sim/enemies';
-import { MAX_ENEMIES } from '../sim/enemies';
+import { MAX_ENEMIES, EnemyState, SpawnKind } from '../sim/enemies';
 import { COL } from './art/palette';
 import { toonMaterial } from './art/toon';
+
+const TELE_TELEGRAPH = 1.0; // must match the director's teleport telegraph window
 
 // Color blocking, not line noise (art doc pillar 1). Per-variant base tint; the
 // silhouette carries the identity, colour reinforces it.
@@ -45,6 +47,7 @@ const VARIANT_COLORS = [
   COL.shieldCyan, // 8 Frostbite Auditor (cryo)
   COL.toxicGreen, // 9 Liability Blob (splitter ooze)
   COL.toxicGreen, // 10 Blobling
+  COL.eliteMagenta, // 11 Phase Stalker (teleport ambusher)
 ];
 
 // Silhouette families.
@@ -73,6 +76,7 @@ const VARIANT_SHAPE: number[] = [
   Shape.Tube, // 8 frost auditor
   Shape.Ooze, // 9 blob
   Shape.Ooze, // 10 blobling
+  Shape.Runner, // 11 phase stalker (fast chaser silhouette)
 ];
 // Shapes whose silhouette has a clear front → rotate to face movement direction.
 const SHAPE_FACES = [true, true, true, true, true, false, false, false];
@@ -216,13 +220,32 @@ export class EnemyView {
         const vz = pool.velZ[i]!;
         if (vx * vx + vz * vz > 1e-4) yaw = Math.atan2(vx, vz);
       }
+      // Teleport materialize (T33+): the stalker scales IN from a spark during its
+      // telegraph and glows phase-violet → white, so it reads as blinking into the
+      // arena rather than walking from a gate.
+      let mat = 0; // 0 = fully materialized
+      if (
+        pool.spawnKind[i] === SpawnKind.Teleport &&
+        pool.state[i] === EnemyState.Telegraph
+      ) {
+        mat = Math.min(1, pool.stateTimer[i]! / TELE_TELEGRAPH); // 1 (just arrived) → 0 (live)
+      }
+      const scaleMul = 0.3 + 0.7 * (1 - mat);
       this.dummy.position.set(x, 0, z);
       this.dummy.rotation.set(0, yaw, 0);
-      this.dummy.scale.setScalar(r / 0.5);
+      this.dummy.scale.setScalar((r / 0.5) * scaleMul);
       this.dummy.updateMatrix();
       mesh.setMatrixAt(idx, this.dummy.matrix);
 
       this.writeColor(pool, i);
+      if (mat > 0) {
+        // Blend toward a bright phase-white while materializing.
+        this.tmp.setRGB(
+          this.tmp.r * (1 - mat) + 1.0 * mat,
+          this.tmp.g * (1 - mat) + 0.6 * mat,
+          this.tmp.b * (1 - mat) + 1.0 * mat,
+        );
+      }
       mesh.setColorAt(idx, this.tmp);
     }
 
