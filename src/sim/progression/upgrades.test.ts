@@ -4,6 +4,7 @@ import {
   rarityWeight,
   applyUpgrade,
   available,
+  ownedTags,
   taken,
   type UpgradeDefinition,
   type UpgradeLevels,
@@ -145,5 +146,105 @@ describe('applyUpgrade (T18 effects + level tracking)', () => {
     applyUpgrade(ms, { player, mods, effects: new BuildEffects() }, levels);
     expect(mods.projectileCount).toBe(3); // 1 + 2
     expect(available(UPGRADES, levels).find((u) => u.id === 'split-shipment')).toBeDefined();
+  });
+});
+
+// ── T51: build-aware card pool (V27/V29) ────────────────────────────────────
+describe('build-aware card pool (T51)', () => {
+  // Synthetic mini-catalog so the gates are exercised in isolation of content.
+  const noop = () => {};
+  const REG: UpgradeDefinition[] = [
+    {
+      id: 'primer-burn',
+      name: 'Primer Burn',
+      description: 'grants heat',
+      tags: ['status'],
+      grantsTags: ['heat'],
+      rarity: 'common',
+      maxLevel: 3,
+      baseWeight: 10,
+      synergyWeight: 2,
+      role: 'primer',
+      riskTier: 0,
+      apply: noop,
+    },
+    {
+      id: 'primer-shock',
+      name: 'Primer Shock',
+      description: 'grants shock',
+      tags: ['status'],
+      grantsTags: ['shock'],
+      rarity: 'common',
+      maxLevel: 3,
+      baseWeight: 10,
+      synergyWeight: 2,
+      apply: noop,
+    },
+    {
+      id: 'plasma-bloom',
+      name: 'Plasma Bloom',
+      description: 'needs heat + shock',
+      tags: ['converter'],
+      rarity: 'rare',
+      maxLevel: 1,
+      baseWeight: 5,
+      synergyWeight: 4,
+      requiresAllTags: ['heat', 'shock'],
+      role: 'catastrophe',
+      riskTier: 3,
+      weightRules: [{ whenTags: ['heat', 'shock'], all: true, multiplier: 4 }],
+      apply: noop,
+    },
+    {
+      id: 'boss-cannon',
+      name: 'Gatekeeper Cannon',
+      description: 'boss-gated',
+      tags: ['weapon'],
+      rarity: 'legendary',
+      maxLevel: 1,
+      baseWeight: 6,
+      synergyWeight: 1,
+      bossGate: 'gatekeeper',
+      apply: noop,
+    },
+  ];
+
+  it('ownedTags unions tags and grantsTags from taken cards', () => {
+    const owned = ownedTags(REG, { 'primer-burn': 2 });
+    expect(owned.get('heat')).toBe(2); // from grantsTags ×2 levels
+    expect(owned.get('status')).toBe(2); // from tags
+    expect(owned.has('shock')).toBe(false);
+  });
+
+  it('requiresAllTags hides a converter until BOTH primers are owned', () => {
+    expect(available(REG, {}).some((u) => u.id === 'plasma-bloom')).toBe(false);
+    expect(available(REG, { 'primer-burn': 1 }).some((u) => u.id === 'plasma-bloom')).toBe(false);
+    const both = available(REG, { 'primer-burn': 1, 'primer-shock': 1 });
+    expect(both.some((u) => u.id === 'plasma-bloom')).toBe(true);
+  });
+
+  it('boss-gated card stays out until its gate key is unlocked', () => {
+    expect(available(REG, {}).some((u) => u.id === 'boss-cannon')).toBe(false);
+    const unlocked = available(REG, {}, undefined, new Set(['gatekeeper']));
+    expect(unlocked.some((u) => u.id === 'boss-cannon')).toBe(true);
+  });
+
+  it('owning the required tags weights the converter up (build-aware odds)', () => {
+    // With both primers owned, Plasma Bloom is unlocked and heavily weighted, so a
+    // small draft reliably surfaces it; the synthetic pool has nothing else rare.
+    const levels: UpgradeLevels = { 'primer-burn': 2, 'primer-shock': 2 };
+    let seen = 0;
+    for (let s = 0; s < 20; s++) {
+      const ids = rollDraft(REG, levels, new Rng(s), { count: 2, level: 6 }).map((d) => d.id);
+      if (ids.includes('plasma-bloom')) seen++;
+    }
+    expect(seen).toBeGreaterThan(10); // appears often once the build supports it
+  });
+
+  it('plain cards (no new fields) behave exactly as before', () => {
+    // Real catalog has no gated cards → availability count unchanged by gates arg.
+    const a = available(UPGRADES, {}).length;
+    const b = available(UPGRADES, {}, undefined, new Set(['anything'])).length;
+    expect(a).toBe(b);
   });
 });

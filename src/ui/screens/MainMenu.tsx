@@ -233,6 +233,9 @@ export function SettingsControls() {
       <SettingRow label="TOON / INK SHADING">
         <Toggle on={s.toonShading} onChange={(v) => set({ toonShading: v })} />
       </SettingRow>
+      <SettingRow label="AMBIENT OCCLUSION">
+        <Toggle on={s.ambientOcclusion} onChange={(v) => set({ ambientOcclusion: v })} />
+      </SettingRow>
       <SettingRow label="REDUCE FLASH">
         <Toggle on={s.reduceFlash} onChange={(v) => set({ reduceFlash: v })} />
       </SettingRow>
@@ -771,7 +774,7 @@ function Root() {
           </button>
         </div>
       </Frame>
-      <SocialFooter className="mt-2 mb-2 short:mt-0" />
+      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
     </MenuShell>
   );
 }

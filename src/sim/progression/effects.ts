@@ -18,6 +18,7 @@ import type { SpatialHash } from '../spatial-hash';
 import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
 import type { StatusType, StatusOpts } from '../combat/status';
+import type { ReactionId } from '../combat/reactions';
 
 // ---- Conditionals ---------------------------------------------------------
 
@@ -55,7 +56,8 @@ export type TriggerEvent =
   | 'shot'
   | 'lowHp'
   | 'sprint'
-  | 'waveClear';
+  | 'waveClear'
+  | 'reaction'; // a status reaction fired (T53 cross-upgrade hook)
 
 export interface TriggerCtx {
   x: number;
@@ -87,9 +89,21 @@ export type TriggerHandler = (ctx: TriggerCtx) => void;
 export class BuildEffects {
   private conditionals: ConditionalModifier[] = [];
   private triggers = new Map<TriggerEvent, TriggerHandler[]>();
+  /** Status reactions unlocked this run (T53). Off until an upgrade enables one. */
+  private reactions = new Set<ReactionId>();
 
   addConditional(mod: ConditionalModifier): void {
     this.conditionals.push(mod);
+  }
+
+  /** Enable a status reaction for this run (T53/T54 upgrade cards). */
+  enableReaction(id: ReactionId): void {
+    this.reactions.add(id);
+  }
+
+  /** The set of reactions currently active (read by the world's status step). */
+  get enabledReactions(): ReadonlySet<ReactionId> {
+    return this.reactions;
   }
 
   on(event: TriggerEvent, handler: TriggerHandler): void {
@@ -123,5 +137,6 @@ export class BuildEffects {
   reset(): void {
     this.conditionals.length = 0;
     this.triggers.clear();
+    this.reactions.clear();
   }
 }

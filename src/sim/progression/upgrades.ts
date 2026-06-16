@@ -10,6 +10,21 @@ import type { Rng } from '../../core/rng';
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'corrupted' | 'prototype';
 
+/** 0 safe … 3 run-defining catastrophe (drives risk weighting + UI tint, T51). */
+export type RiskTier = 0 | 1 | 2 | 3;
+
+/** Where a card sits in a build machine (§T51-68 spine). */
+export type BuildRole = 'primer' | 'engine' | 'converter' | 'liability' | 'catastrophe';
+
+/** Build-aware appearance odds: multiply weight when the player owns the listed
+ *  build-identity tags (own = any taken upgrade lists it in tags|grantsTags). */
+export interface UpgradeWeightRule {
+  whenTags: readonly string[];
+  /** true → require ALL listed tags owned; default/false → ANY. */
+  all?: boolean;
+  multiplier: number;
+}
+
 export interface UpgradeContext {
   player: Player;
   mods: RunMods;
@@ -37,6 +52,30 @@ export interface UpgradeDefinition {
   prerequisites?: readonly Requirement[];
   /** If ANY is satisfied, this is excluded (mutually-exclusive builds). */
   exclusions?: readonly Requirement[];
+
+  // ── Build-machine model (T51, §V27/V29). All optional — a plain stat card
+  //    omits them and behaves exactly as before. ──────────────────────────────
+  /** Build-identity tags this card CONTRIBUTES once taken (vs `tags` = its own
+   *  category). Downstream cards gate/weight on owning these. */
+  grantsTags?: readonly string[];
+  /** Tag gates — "own a tag" = any taken upgrade lists it in tags|grantsTags. */
+  requiresAllTags?: readonly string[];
+  requiresAnyTags?: readonly string[];
+  excludesTags?: readonly string[];
+  /** Behavioral metadata for reactions/converters (stored; not a draft gate). */
+  requiredStatusEffects?: readonly string[];
+  consumesStatusEffects?: readonly string[];
+  /** Unlock keys: card stays OUT of the pool until the key is unlocked (boss kill
+   *  / skill-tree node). Enforced via the `gates` set passed to available(). */
+  bossGate?: string;
+  treeGate?: string;
+  /** 0 safe … 3 catastrophe. */
+  riskTier?: RiskTier;
+  /** Primer/engine/converter/liability/catastrophe role in its build family. */
+  role?: BuildRole;
+  /** Build-aware odds adjustments (own-tag conditioned multipliers). */
+  weightRules?: readonly UpgradeWeightRule[];
+
   apply: (ctx: UpgradeContext) => void;
 }
 
@@ -51,17 +90,47 @@ function reqMet(levels: UpgradeLevels, r: Requirement): boolean {
   return taken(levels, r.id) >= (r.minLevel ?? 1);
 }
 
-/** Selectable = under maxLevel, prerequisites met, not excluded, not banished. */
+/** Build-identity tags currently OWNED → stack count (tags ∪ grantsTags across
+ *  taken upgrades). The substrate for tag gates + build-aware weighting (T51). */
+export function ownedTags(
+  registry: readonly UpgradeDefinition[],
+  levels: UpgradeLevels,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const u of registry) {
+    const lvl = taken(levels, u.id);
+    if (lvl === 0) continue;
+    for (const t of u.tags) counts.set(t, (counts.get(t) ?? 0) + lvl);
+    if (u.grantsTags) for (const t of u.grantsTags) counts.set(t, (counts.get(t) ?? 0) + lvl);
+  }
+  return counts;
+}
+
+/**
+ * Selectable = under maxLevel, prerequisites met, not excluded, not banished,
+ * tag gates satisfied, and any boss/tree unlock key present in `gates` (T51,
+ * V29). `gates` holds unlocked boss/skill-tree keys; a gated card stays OUT
+ * until its key is unlocked. Pass `owned` to avoid recomputing it per call.
+ */
 export function available(
   registry: readonly UpgradeDefinition[],
   levels: UpgradeLevels,
   banished?: ReadonlySet<string>,
+  gates?: ReadonlySet<string>,
+  owned: Map<string, number> = ownedTags(registry, levels),
 ): UpgradeDefinition[] {
   return registry.filter((u) => {
     if (banished?.has(u.id)) return false;
     if (taken(levels, u.id) >= u.maxLevel) return false;
     if (u.prerequisites && !u.prerequisites.every((r) => reqMet(levels, r))) return false;
     if (u.exclusions && u.exclusions.some((r) => reqMet(levels, r))) return false;
+    // Unlock gates: locked until the boss/tree key is present.
+    if (u.bossGate && !gates?.has(u.bossGate)) return false;
+    if (u.treeGate && !gates?.has(u.treeGate)) return false;
+    // Tag gates against the owned build identity.
+    if (u.requiresAllTags && !u.requiresAllTags.every((t) => owned.has(t))) return false;
+    if (u.requiresAnyTags && !u.requiresAnyTags.some((t) => owned.has(t))) return false;
+    if (u.excludesTags && u.excludesTags.some((t) => owned.has(t))) return false;
     return true;
   });
 }
@@ -96,22 +165,13 @@ export interface DraftParams {
   level?: number;
   luck?: number;
   banished?: ReadonlySet<string>;
+  /** Unlocked boss/skill-tree keys (gate boss/tree-locked cards into the pool). */
+  gates?: ReadonlySet<string>;
 }
 
-/** Count how many owned upgrades carry a given tag (for synergy weighting). */
-function tagCounts(
-  registry: readonly UpgradeDefinition[],
-  levels: UpgradeLevels,
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const u of registry) {
-    const lvl = taken(levels, u.id);
-    if (lvl === 0) continue;
-    for (const t of u.tags) counts.set(t, (counts.get(t) ?? 0) + lvl);
-  }
-  return counts;
-}
-
+/** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
+ *  leans on, so a card you've set up appears more) + per-rule multipliers, all
+ *  scaled by rarity×level×luck. `counts` = ownedTags (tags ∪ grantsTags). */
 function weightOf(
   u: UpgradeDefinition,
   counts: Map<string, number>,
@@ -120,7 +180,18 @@ function weightOf(
 ): number {
   let synergy = 0;
   for (const t of u.tags) synergy += counts.get(t) ?? 0;
-  return (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck);
+  if (u.requiresAnyTags) for (const t of u.requiresAnyTags) synergy += counts.get(t) ?? 0;
+  if (u.requiresAllTags) for (const t of u.requiresAllTags) synergy += counts.get(t) ?? 0;
+  let w = (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck);
+  if (u.weightRules) {
+    for (const rule of u.weightRules) {
+      const hit = rule.all
+        ? rule.whenTags.every((t) => counts.has(t))
+        : rule.whenTags.some((t) => counts.has(t));
+      if (hit) w *= rule.multiplier;
+    }
+  }
+  return w;
 }
 
 /**
@@ -138,8 +209,8 @@ export function rollDraft(
   const count = params.count ?? 3;
   const level = params.level ?? 1;
   const luck = params.luck ?? 0;
-  const pool = available(registry, levels, params.banished);
-  const counts = tagCounts(registry, levels);
+  const counts = ownedTags(registry, levels);
+  const pool = available(registry, levels, params.banished, params.gates, counts);
   const picks: UpgradeDefinition[] = [];
 
   while (picks.length < count && pool.length > 0) {

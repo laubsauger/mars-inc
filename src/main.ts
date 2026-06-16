@@ -8,10 +8,13 @@ import { createControls } from './render/controls';
 import { ArenaView } from './render/arena';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
+import { StatusMarkerView } from './render/status-marker-view';
+import { GroundShadowView } from './render/ground-shadow-view';
 import { EnemyHealthbarView } from './render/enemy-healthbar-view';
 import { ProjectileView } from './render/projectile-view';
 import { EnemyProjectileView } from './render/enemy-projectile-view';
 import { HazardView } from './render/hazard-view';
+import { ThrowMarkerView } from './render/throw-marker-view';
 import { WeaponDropView } from './render/weapon-drop-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
@@ -41,11 +44,20 @@ import { uiActions } from './ui/store';
 const app = document.getElementById('app');
 if (!app) throw new Error('#app missing');
 
+/** Fade out + remove the inline boot splash (index.html) once the app is live. */
+function hideBootSplash(): void {
+  const s = document.getElementById('boot-splash');
+  if (!s) return;
+  s.classList.add('hidden');
+  setTimeout(() => s.remove(), 500);
+}
+
 async function boot(parent: HTMLElement): Promise<void> {
   mountUi(parent);
 
   if (!isWebGpuSupported()) {
     uiActions.setScreen('unsupported');
+    hideBootSplash();
     return;
   }
 
@@ -63,6 +75,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     console.error('WebGPU init failed', err);
     canvas.remove();
     uiActions.setScreen('unsupported');
+    hideBootSplash();
     return;
   }
 
@@ -82,10 +95,13 @@ async function boot(parent: HTMLElement): Promise<void> {
   const world = new World(seed, save.current.permanentUpgrades);
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene);
+  const statusMarkers = new StatusMarkerView(scene);
+  const groundShadowView = new GroundShadowView(scene);
   const enemyHealthbars = new EnemyHealthbarView(scene);
   const projectileView = new ProjectileView(scene);
   const enemyProjectileView = new EnemyProjectileView(scene);
   const hazardView = new HazardView(scene);
+  const throwMarkerView = new ThrowMarkerView(scene);
   const weaponDropView = new WeaponDropView(scene);
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
@@ -99,7 +115,12 @@ async function boot(parent: HTMLElement): Promise<void> {
   const shake = new CameraShake();
   // Optional orbit/zoom (right-drag + wheel) with a reset; shake rides on top.
   const arenaControls = createControls(camera, canvas, window.innerWidth / window.innerHeight);
-  const post = createPostProcessing(renderer, scene, camera); // bloom on emissives
+  const post = createPostProcessing(
+    renderer,
+    scene,
+    camera,
+    save.current.settings.ambientOcclusion,
+  ); // bloom (+ optional GTAO)
   let lastShakeX = 0;
   let lastShakeZ = 0;
   const audio = new AudioBus();
@@ -132,6 +153,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       pauseOnFocusLoss: save.current.settings.pauseOnFocusLoss,
       enemyHealthbars: save.current.settings.enemyHealthbars,
       toonShading: save.current.settings.toonShading,
+      ambientOcclusion: save.current.settings.ambientOcclusion,
       colorblind: save.current.accessibility.colorblindPalette,
     });
   };
@@ -252,6 +274,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     enemyHealthbars.enabled = s.enemyHealthbars;
     enemyView.setToon(s.toonShading);
     playerView.setToon(s.toonShading);
+    post.setAO(s.ambientOcclusion);
     pauseOnFocusLoss = s.pauseOnFocusLoss;
     // UI scale via root font-size (Tailwind rem-based UI scales with it).
     document.documentElement.style.fontSize = `${16 * s.uiScale}px`;
@@ -388,11 +411,14 @@ async function boot(parent: HTMLElement): Promise<void> {
       arena.update(world.enemies, fxDt); // animate gate doors as enemies enter
       playerView.update(fxDt); // decay the hurt flash
       playerView.sync(world.player, alpha, camera);
+      groundShadowView.sync(world.enemies, alpha); // contact shadows (grounding)
       enemyView.sync(world.enemies, alpha);
+      statusMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
       hazardView.sync(world.enemyAttacks.hazards);
+      throwMarkerView.sync(world.enemyAttacks.projectiles);
       weaponDropView.sync(world.weaponDrops.pool);
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
@@ -445,7 +471,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       }
 
       const r0 = performance.now();
-      void post.renderAsync(); // bloom post-stack (scene+camera bound in the pass)
+      post.render(); // bloom post-stack (scene+camera bound in the pass)
       renderMs = performance.now() - r0;
 
       // Push HUD slice to the store (selectors re-render only changed widgets).
@@ -552,13 +578,19 @@ async function boot(parent: HTMLElement): Promise<void> {
           level: world.player.level,
           rerollsLeft: world.rerollsLeft,
           banishesLeft: world.banishesLeft,
-          options: world.draft.map((d) => ({
-            id: d.id,
-            name: d.name,
-            description: d.description,
-            rarity: d.rarity,
-            tags: d.tags,
-          })),
+          options: world.draft.map((d) => {
+            const info = world.upgradeInfo(d);
+            return {
+              id: d.id,
+              name: d.name,
+              description: d.description,
+              rarity: d.rarity,
+              tags: d.tags,
+              level: info.level,
+              maxLevel: info.maxLevel,
+              changes: info.changes,
+            };
+          }),
         });
       } else if (!world.leveling && draftShownFor !== -1) {
         draftShownFor = -1;
@@ -606,6 +638,9 @@ async function boot(parent: HTMLElement): Promise<void> {
     },
   });
   loop.start();
+  // First frame is rendering — drop the boot splash on the next frame so the
+  // arena/menu has actually painted before the splash fades.
+  requestAnimationFrame(() => hideBootSplash());
 
   document.addEventListener('visibilitychange', () => {
     // Auto-pause on focus loss is opt-out via settings (T36).

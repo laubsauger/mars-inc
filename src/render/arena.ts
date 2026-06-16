@@ -8,7 +8,6 @@
 // readability (gameplay reads over the muted floor; gold trim only as accent).
 
 import {
-  AdditiveBlending,
   AmbientLight,
   BackSide,
   BoxGeometry,
@@ -19,7 +18,6 @@ import {
   DirectionalLight,
   Group,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   PointLight,
@@ -34,7 +32,6 @@ import { COL, OUTLINE as OUTLINE_W } from './art/palette';
 const FLOOR = COL.umberShadow;
 const FLOOR_PANEL = COL.oldRust;
 const FLOOR_LINE = COL.warmLine;
-const EMBLEM = COL.brass;
 const TRIM = COL.kineticGold;
 const OUTLINE = COL.nearBlack;
 const STEEL_DARK = new Color('#23262c');
@@ -134,24 +131,22 @@ export class ArenaView {
   }
 
   private buildEmblem(): void {
-    // Centre mark = a soft formless floor GLOW only — no ring/pip geometry (those
-    // read as a lamp shade + bulb fixture from the top-down angle). Keeps a gentle
-    // warm pool of light at the arena centre without a hard "fixture" silhouette,
-    // and stays faint so it never washes out the player standing on it.
-    const glow = new Mesh(
-      new CircleGeometry(ARENA_RADIUS * 0.14, 48),
-      new MeshBasicMaterial({
-        color: EMBLEM,
-        transparent: true,
-        opacity: 0.07,
-        blending: AdditiveBlending,
-        depthWrite: false,
-        toneMapped: false,
+    // Centre mark = a thin inner RING on the floor (a "centre circle"). Smooth +
+    // low emissive so it reads as a flat marking, never a fixture.
+    const ring = new Mesh(
+      new RingGeometry(ARENA_RADIUS * 0.13, ARENA_RADIUS * 0.143, 96),
+      new MeshStandardMaterial({
+        color: FLOOR_LINE,
+        emissive: COL.brass,
+        emissiveIntensity: 0.12,
+        roughness: 0.8,
+        metalness: 0.1,
       }),
     );
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.02;
-    this.group.add(glow);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.025;
+    ring.receiveShadow = true;
+    this.group.add(ring);
   }
 
   private buildWallAndCrowd(): void {

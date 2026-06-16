@@ -20,6 +20,7 @@ import {
   equip,
 } from './weapon';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
+import { corrodeAmp } from './status';
 import { applyAreaDamage } from './aoe';
 import { knockbackFrom } from './knockback';
 import type { RunMods } from '../progression/mods';
@@ -231,12 +232,13 @@ export class WeaponSystem {
           const ez = pr.posZ[i]! - enemies.posZ[e]!;
           if (ex * ex + ez * ez > rr * rr) continue;
 
-          // Centralized damage pipeline (V3).
+          // Centralized damage pipeline (V3). Corroded targets take more (armor
+          // shred, T52) — folded into the multiplier so it stays pipeline-routed.
           const packet = makePacket({
             weaponId: 'projectile',
             baseDamage: pr.dmgBase[i]!,
             additive: pr.dmgAdd[i]!,
-            multiplier: pr.dmgMult[i]!,
+            multiplier: pr.dmgMult[i]! * corrodeAmp(enemies, e),
             critChance: pr.critChance[i]!,
             critMultiplier: pr.critMult[i]!,
           });

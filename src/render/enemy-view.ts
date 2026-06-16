@@ -34,8 +34,8 @@ import { toonMaterial } from './art/toon';
 // Color blocking, not line noise (art doc pillar 1). Per-variant base tint; the
 // silhouette carries the identity, colour reinforces it.
 const VARIANT_COLORS = [
-  COL.oxidizedIron, // 0 Rust Mite
-  COL.oldRust, // 1 Debt Hound
+  new Color(0x6f8a7d), // Rust Mite — cool insect grey-green (was muddy brown) // 0 Rust Mite
+  new Color(0x9c4326), // Debt Hound — rust-red, distinct from the mite // 1 Debt Hound
   COL.eliteMagenta, // 2 Gatekeeper (boss)
   COL.toxicGreen, // 3 Severance Lobber
   COL.brass, // 4 Repossession Marshal
@@ -254,6 +254,22 @@ export class EnemyView {
       cr = cr * 0.4 + (0.32 + shimmer * 0.5) * 0.6;
       cg = cg * 0.4 + (0.8 + shimmer * 0.2) * 0.6;
       cb = cb * 0.4 + 1.0 * 0.6;
+    } else if (pool.shockTime[i]! > 0) {
+      // Shocked: electric violet-white that crackles fast (T52).
+      const arc = Math.sin(this.phase * 22 + i * 3.1) * 0.5 + 0.5;
+      cr = cr * 0.4 + (0.7 + arc * 0.3) * 0.6;
+      cg = cg * 0.4 + (0.5 + arc * 0.5) * 0.6;
+      cb = cb * 0.4 + 1.0 * 0.6;
+    } else if (pool.corrodeTime[i]! > 0) {
+      // Corroded: sickly acid-green, dulled (eaten armor).
+      cr = cr * 0.45 + 0.35 * 0.55;
+      cg = cg * 0.45 + 0.7 * 0.55;
+      cb = cb * 0.45 + 0.12 * 0.55;
+    } else if (pool.bleedTime[i]! > 0) {
+      // Bleeding: deepened blood red.
+      cr = cr * 0.5 + 0.7 * 0.5;
+      cg = cg * 0.5 + 0.04 * 0.5;
+      cb = cb * 0.5 + 0.06 * 0.5;
     }
     const hf = pool.hitFlash[i]!;
     if (hf > 0) {

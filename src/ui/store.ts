@@ -36,6 +36,7 @@ export interface SettingsView {
   pauseOnFocusLoss: boolean;
   enemyHealthbars: boolean;
   toonShading: boolean;
+  ambientOcclusion: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -99,6 +100,11 @@ export interface DraftOption {
   description: string;
   rarity: string;
   tags: readonly string[];
+  /** Levels already owned (0 = new card); maxLevel for "n/max" + MAX state. */
+  level: number;
+  maxLevel: number;
+  /** Numeric build changes this pick makes (empty = effect-only → show desc). */
+  changes: { label: string; from: string; to: string }[];
 }
 
 export interface DraftState {
@@ -267,6 +273,7 @@ const INITIAL_SETTINGS: SettingsView = {
   pauseOnFocusLoss: true,
   enemyHealthbars: false,
   toonShading: false,
+  ambientOcclusion: false,
   colorblind: 'off',
 };
 

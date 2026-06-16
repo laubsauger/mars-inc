@@ -10,18 +10,36 @@ import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
 import { makePacket, computeOutgoing, applyMitigation } from './damage';
 
-export type StatusType = 'burn' | 'chill' | 'mark';
+export type StatusType = 'burn' | 'chill' | 'mark' | 'shock' | 'corrode' | 'bleed';
+
+/** Per-status stack ceilings (bounded, V5 — ⊥ infinite accumulation). */
+const MAX_STACKS: Record<'shock' | 'corrode' | 'bleed', number> = {
+  shock: 6,
+  corrode: 10,
+  bleed: 12,
+};
+/** Corrosion armor-shred: each stack amplifies incoming damage by this (proxy
+ *  until enemy armor exists). Read via `corrodeAmp`. */
+const CORRODE_PER_STACK = 0.06;
 
 export interface StatusOpts {
   /** Application chance 0..1 (rolled by caller or here). */
   chance?: number;
   duration: number;
-  /** Burn damage-per-second. */
+  /** Burn / bleed damage-per-second (bleed is per-stack). */
   dps?: number;
   /** Chill movement multiplier (e.g. 0.6 = 40% slow). */
   slowMult?: number;
   /** Mark status-damage amplifier (e.g. 1.5 = +50%). */
   amplify?: number;
+  /** Stacks added for stacking statuses (shock/corrode/bleed). Default 1. */
+  stacks?: number;
+}
+
+/** Incoming-damage multiplier from corrosion on enemy `i` (1 = none). Read by the
+ *  weapon system so corroded targets take more (armor-shred, V3-routed). */
+export function corrodeAmp(pool: EnemyPool, i: number): number {
+  return 1 + pool.corrodeStacks[i]! * CORRODE_PER_STACK;
 }
 
 /**
@@ -49,6 +67,22 @@ export function applyStatus(
     case 'mark':
       pool.markTime[i] = Math.max(pool.markTime[i]!, opts.duration);
       pool.markMult[i] = Math.max(pool.markMult[i]!, opts.amplify ?? 1.5);
+      return true;
+    case 'shock':
+      pool.shockTime[i] = Math.max(pool.shockTime[i]!, opts.duration);
+      pool.shockStacks[i] = Math.min(MAX_STACKS.shock, pool.shockStacks[i]! + (opts.stacks ?? 1));
+      return true;
+    case 'corrode':
+      pool.corrodeTime[i] = Math.max(pool.corrodeTime[i]!, opts.duration);
+      pool.corrodeStacks[i] = Math.min(
+        MAX_STACKS.corrode,
+        pool.corrodeStacks[i]! + (opts.stacks ?? 1),
+      );
+      return true;
+    case 'bleed':
+      pool.bleedTime[i] = Math.max(pool.bleedTime[i]!, opts.duration);
+      pool.bleedStacks[i] = Math.min(MAX_STACKS.bleed, pool.bleedStacks[i]! + (opts.stacks ?? 1));
+      pool.bleedDps[i] = Math.max(pool.bleedDps[i]!, opts.dps ?? 0);
       return true;
   }
 }
@@ -103,6 +137,44 @@ export function tickStatus(pool: EnemyPool, rng: Rng, dt: number, fx: FxQueue): 
         pool.burnDps[i] = 0;
       } else if (rng.next() < 0.25) {
         fx.push('impact', pool.posX[i]!, pool.posZ[i]!); // occasional ember tick
+      }
+    }
+
+    // Bleed: stacking DoT (dps × stacks), mark-amplified, routed through V3.
+    if (pool.bleedTime[i]! > 0 && pool.bleedDps[i]! > 0 && pool.bleedStacks[i]! > 0) {
+      pool.bleedTime[i]! -= dt;
+      const packet = makePacket({
+        weaponId: 'bleed',
+        baseDamage: pool.bleedDps[i]! * pool.bleedStacks[i]! * dt * amp,
+        damageType: 'kinetic',
+      });
+      const out = computeOutgoing(packet, rng);
+      const mit = applyMitigation(out.amount, 0, 0);
+      const removed = Math.min(mit.toHealth, pool.health[i]!);
+      pool.health[i]! -= mit.toHealth;
+      dealt += removed;
+      fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+      if (pool.bleedTime[i]! <= 0) {
+        pool.bleedTime[i] = 0;
+        pool.bleedStacks[i] = 0;
+        pool.bleedDps[i] = 0;
+      }
+    }
+
+    // Shock + corrode: passive markers (primers for reactions T53). Count down,
+    // clear stacks on expiry. No standalone damage — corrode's amp is read on-hit.
+    if (pool.shockTime[i]! > 0) {
+      pool.shockTime[i]! -= dt;
+      if (pool.shockTime[i]! <= 0) {
+        pool.shockTime[i] = 0;
+        pool.shockStacks[i] = 0;
+      }
+    }
+    if (pool.corrodeTime[i]! > 0) {
+      pool.corrodeTime[i]! -= dt;
+      if (pool.corrodeTime[i]! <= 0) {
+        pool.corrodeTime[i] = 0;
+        pool.corrodeStacks[i] = 0;
       }
     }
   }

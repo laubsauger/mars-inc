@@ -97,6 +97,16 @@ export class EnemyPool {
   readonly chillMult: Float32Array; // movement multiplier (1 = none, <1 = slowed)
   readonly markTime: Float32Array; // mark remaining (s)
   readonly markMult: Float32Array; // status-damage amplifier (1 = none, >1 = amplified)
+  // Stacking statuses (T52): count + duration. Shock = chain/reaction primer (no
+  // standalone effect; consumed by reactions T53). Corrode = armor-shred proxy
+  // (amplifies incoming damage). Bleed = stacking DoT.
+  readonly shockTime: Float32Array;
+  readonly shockStacks: Float32Array;
+  readonly corrodeTime: Float32Array;
+  readonly corrodeStacks: Float32Array;
+  readonly bleedTime: Float32Array;
+  readonly bleedStacks: Float32Array;
+  readonly bleedDps: Float32Array; // per-stack bleed damage/second
   readonly hitFlash: Float32Array; // cosmetic: 1 on hit, decays → red shimmer (view)
   readonly kbX: Float32Array; // knockback velocity (decays); added on top of steering
   readonly kbZ: Float32Array;
@@ -124,6 +134,13 @@ export class EnemyPool {
     this.chillMult = new Float32Array(capacity);
     this.markTime = new Float32Array(capacity);
     this.markMult = new Float32Array(capacity);
+    this.shockTime = new Float32Array(capacity);
+    this.shockStacks = new Float32Array(capacity);
+    this.corrodeTime = new Float32Array(capacity);
+    this.corrodeStacks = new Float32Array(capacity);
+    this.bleedTime = new Float32Array(capacity);
+    this.bleedStacks = new Float32Array(capacity);
+    this.bleedDps = new Float32Array(capacity);
     this.hitFlash = new Float32Array(capacity);
     this.kbX = new Float32Array(capacity);
     this.kbZ = new Float32Array(capacity);
@@ -156,6 +173,13 @@ export class EnemyPool {
     this.chillMult[i] = 1;
     this.markTime[i] = 0;
     this.markMult[i] = 1;
+    this.shockTime[i] = 0;
+    this.shockStacks[i] = 0;
+    this.corrodeTime[i] = 0;
+    this.corrodeStacks[i] = 0;
+    this.bleedTime[i] = 0;
+    this.bleedStacks[i] = 0;
+    this.bleedDps[i] = 0;
     this.hitFlash[i] = 0;
     this.kbX[i] = 0;
     this.kbZ[i] = 0;
@@ -188,6 +212,13 @@ export class EnemyPool {
       this.chillMult[i] = this.chillMult[last]!;
       this.markTime[i] = this.markTime[last]!;
       this.markMult[i] = this.markMult[last]!;
+      this.shockTime[i] = this.shockTime[last]!;
+      this.shockStacks[i] = this.shockStacks[last]!;
+      this.corrodeTime[i] = this.corrodeTime[last]!;
+      this.corrodeStacks[i] = this.corrodeStacks[last]!;
+      this.bleedTime[i] = this.bleedTime[last]!;
+      this.bleedStacks[i] = this.bleedStacks[last]!;
+      this.bleedDps[i] = this.bleedDps[last]!;
       this.hitFlash[i] = this.hitFlash[last]!;
       this.kbX[i] = this.kbX[last]!;
       this.kbZ[i] = this.kbZ[last]!;
@@ -213,9 +244,9 @@ export class EnemyPool {
 // In-world naming per docs/art-direction.md humor rules.
 export const RUST_MITE: EnemyType = {
   id: 'rust-mite',
-  radius: 0.5,
+  radius: 0.65,
   maxHealth: 6,
-  speed: 3.0, // tier-1 fodder: a slow shamble, clear kiting headroom early (player base 8)
+  speed: 2.4, // tier-1 fodder: a slow shamble, clear kiting headroom early (player base 8)
   separationWeight: 1.0,
   variant: 0,
   threat: 1,
@@ -223,9 +254,9 @@ export const RUST_MITE: EnemyType = {
 
 export const DEBT_HOUND: EnemyType = {
   id: 'debt-hound',
-  radius: 0.7,
+  radius: 0.82,
   maxHealth: 14,
-  speed: 5.2, // the fast mover: real pressure (~0.65× player) but leaves kiting room
+  speed: 4.6, // the fast mover: real pressure (~0.65× player) but leaves kiting room
   separationWeight: 1.2,
   variant: 1,
   threat: 4,

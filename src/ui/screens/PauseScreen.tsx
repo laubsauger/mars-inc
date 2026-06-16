@@ -68,7 +68,7 @@ export function PauseScreen() {
           <div className="mt-4 text-xs text-bone/50">Esc to resume</div>
         </>
       )}
-      <SocialFooter className="mt-8 short:mt-2" />
+      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
     </div>
   );
 }

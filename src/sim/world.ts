@@ -24,19 +24,24 @@ import { type PermanentLevels, applyPermanents } from './progression/permanents'
 import { BuildEffects, type ConditionalResult, type TriggerCtx } from './progression/effects';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
+import { resolveReactions } from './combat/reactions';
 import { type RunStats, type RunResult, newRunStats, resetRunStats, computeResult } from './run';
 import {
   type UpgradeDefinition,
   type UpgradeLevels,
   rollDraft,
   applyUpgrade,
+  taken,
 } from './progression/upgrades';
+import { previewUpgrade, type UpgradeChange } from './progression/preview';
 import { UPGRADES } from '../content/upgrades/index';
 import { ADVANCED_UPGRADES } from '../content/upgrades/advanced';
+import { REACTION_UPGRADES } from '../content/upgrades/reactions';
 import type { InputSnapshot } from '../core/input';
 
-/** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38). */
-const DRAFT_POOL: UpgradeDefinition[] = [...UPGRADES, ...ADVANCED_UPGRADES];
+/** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
+ *  status-reaction primers/converters (T54). */
+const DRAFT_POOL: UpgradeDefinition[] = [...UPGRADES, ...ADVANCED_UPGRADES, ...REACTION_UPGRADES];
 
 /** Rich post-game summary (T23) — what the run actually became. */
 export interface RunSummary {
@@ -281,6 +286,9 @@ export class World {
     const triggerDmg = this.fireKillTriggers();
     // Status step (§5.4): burn DoT, chill/mark decay (T39).
     const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx);
+    // Status reactions (T53): primed status pairs consume + burst (V28). Off
+    // until an upgrade enables one, so this is free in the base game.
+    const reactionDmg = this.resolveReactions();
     this.enemies.decayHitFlash(dt); // cosmetic hit-flash fade (T40, view tints it)
     emitShards(this.shards, this.weaponSystem.kills);
     // Weapon crates drop from kills; collecting one swaps the primary weapon (T33).
@@ -309,6 +317,7 @@ export class World {
       triggerDmg +
       this.hitTriggerDamage +
       statusDmg +
+      reactionDmg +
       this.novaDamageThisStep;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
@@ -377,6 +386,53 @@ export class World {
     };
     this.effects.fire('hit', ctx);
     if (crit) this.effects.fire('crit', ctx);
+  }
+
+  /** Resolve status reactions for this step (T53). Off-cost when no reaction is
+   *  enabled. Fires a `reaction` trigger per reaction so cross-upgrades (Feedback
+   *  Loop etc, T54) can hook them. Returns reaction-dealt damage for run stats. */
+  private resolveReactions(): number {
+    const enabled = this.effects.enabledReactions;
+    if (enabled.size === 0) return 0;
+    const fireTrigger = this.effects.has('reaction');
+    const res = resolveReactions(
+      this.enemies,
+      this.enemySystem.hash,
+      this.rng,
+      this.fx,
+      enabled,
+      fireTrigger
+        ? (_r, x, z, dealt) => {
+            this.effects.fire('reaction', {
+              x,
+              z,
+              player: this.player,
+              enemies: this.enemies,
+              hash: this.enemySystem.hash,
+              rng: this.rng,
+              fx: this.fx,
+              variant: 0,
+              magnitude: dealt,
+              targetIndex: -1,
+              dealArea: (ax, az, radius, amount) => {
+                const d = applyAreaDamage(
+                  this.enemies,
+                  this.enemySystem.hash,
+                  ax,
+                  az,
+                  radius,
+                  { amount },
+                  this.rng,
+                );
+                this.hitTriggerDamage += d;
+                return d;
+              },
+              applyStatus: (index, type, opts) => applyStatus(this.enemies, index, type, opts),
+            });
+          }
+        : undefined,
+    );
+    return res.dealt;
   }
 
   /** Fire on-kill / on-overkill triggers for this step's kills (T38). Returns
@@ -489,6 +545,20 @@ export class World {
       banished: exclude,
     });
     return [...kept, ...fresh];
+  }
+
+  /** Per-option draft detail for the UI (T51): owned level, max level, and the
+   *  numeric changes this pick would make to the live build. */
+  upgradeInfo(def: UpgradeDefinition): {
+    level: number;
+    maxLevel: number;
+    changes: UpgradeChange[];
+  } {
+    return {
+      level: taken(this.upgradeLevels, def.id),
+      maxLevel: def.maxLevel,
+      changes: previewUpgrade(def, this.mods, this.player),
+    };
   }
 
   private openDraft(): void {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyStatus, tickStatus } from './status';
+import { applyStatus, tickStatus, corrodeAmp } from './status';
 import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
 import { FxQueue } from '../fx';
 import { Rng } from '../../core/rng';
@@ -85,5 +85,64 @@ describe('tickStatus (T39, V3 burn DoT + decay)', () => {
     applyStatus(a, activeEnemy(a), 'burn', { duration: 1, dps: 4 });
     applyStatus(b, activeEnemy(b), 'burn', { duration: 1, dps: 4 });
     expect(tickStatus(a, new Rng(7), 1 / 60, fx)).toBe(tickStatus(b, new Rng(7), 1 / 60, fx));
+  });
+});
+
+// ── T52: Shock / Corrode / Bleed substrate (V5 stacks bounded, V3 routed) ────
+describe('stacking statuses (T52)', () => {
+  it('shock accumulates stacks, refreshes duration, capped', () => {
+    const pool = new EnemyPool();
+    const i = activeEnemy(pool);
+    applyStatus(pool, i, 'shock', { duration: 2, stacks: 2 });
+    applyStatus(pool, i, 'shock', { duration: 3, stacks: 3 });
+    expect(pool.shockStacks[i]).toBe(5);
+    expect(pool.shockTime[i]).toBe(3);
+    for (let k = 0; k < 10; k++) applyStatus(pool, i, 'shock', { duration: 1, stacks: 5 });
+    expect(pool.shockStacks[i]).toBe(6); // MAX_STACKS.shock
+  });
+
+  it('corrode amplifies incoming damage per stack', () => {
+    const pool = new EnemyPool();
+    const i = activeEnemy(pool);
+    expect(corrodeAmp(pool, i)).toBe(1); // none
+    applyStatus(pool, i, 'corrode', { duration: 3, stacks: 5 });
+    expect(corrodeAmp(pool, i)).toBeCloseTo(1.3, 5); // 1 + 5×0.06
+  });
+
+  it('bleed is a stacking DoT through the pipeline; more stacks → more damage', () => {
+    const fx = new FxQueue();
+    const lo = new EnemyPool();
+    const hi = new EnemyPool();
+    const a = activeEnemy(lo);
+    const b = activeEnemy(hi);
+    applyStatus(lo, a, 'bleed', { duration: 5, dps: 2, stacks: 1 });
+    applyStatus(hi, b, 'bleed', { duration: 5, dps: 2, stacks: 4 });
+    const dLo = tickStatus(lo, new Rng(1), 0.5, fx);
+    const dHi = tickStatus(hi, new Rng(1), 0.5, fx);
+    expect(dLo).toBeGreaterThan(0);
+    expect(dHi).toBeCloseTo(dLo * 4, 4); // damage scales with stack count
+  });
+
+  it('bleed clears stacks + dps on expiry', () => {
+    const fx = new FxQueue();
+    const pool = new EnemyPool();
+    const i = activeEnemy(pool);
+    applyStatus(pool, i, 'bleed', { duration: 0.05, dps: 3, stacks: 3 });
+    tickStatus(pool, new Rng(1), 0.1, fx); // past duration
+    expect(pool.bleedTime[i]).toBe(0);
+    expect(pool.bleedStacks[i]).toBe(0);
+    expect(pool.bleedDps[i]).toBe(0);
+  });
+
+  it('shock + corrode markers count down and clear stacks (no standalone damage)', () => {
+    const fx = new FxQueue();
+    const pool = new EnemyPool();
+    const i = activeEnemy(pool);
+    applyStatus(pool, i, 'shock', { duration: 0.05, stacks: 3 });
+    applyStatus(pool, i, 'corrode', { duration: 0.05, stacks: 3 });
+    const dealt = tickStatus(pool, new Rng(1), 0.1, fx);
+    expect(dealt).toBe(0); // primers don't deal damage themselves
+    expect(pool.shockStacks[i]).toBe(0);
+    expect(pool.corrodeStacks[i]).toBe(0);
   });
 });

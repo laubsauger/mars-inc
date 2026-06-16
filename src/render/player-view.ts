@@ -14,6 +14,7 @@ import {
   Object3D,
   PlaneGeometry,
   RingGeometry,
+  SphereGeometry,
   SpotLight,
   type Camera,
   type Scene,
@@ -30,8 +31,8 @@ const BODY = COL.brass;
 const ACCENT = COL.kineticGold;
 const OUTLINE = COL.nearBlack;
 
-const PLATE_W = 1.5; // health-plate width (world units)
-const PLATE_H = 0.2;
+const PLATE_W = 1.9; // health-plate width (world units)
+const PLATE_H = 0.26;
 const FILL_W = PLATE_W - 0.12;
 
 export class PlayerView {
@@ -47,6 +48,8 @@ export class PlayerView {
   private healthFill: Mesh;
   private healthFillMat: MeshBasicMaterial;
   private platePhase = 0; // drives the low-health pulse
+  private shield!: Mesh;
+  private shieldMat!: MeshBasicMaterial;
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -110,8 +113,24 @@ export class PlayerView {
     this.healthPlate = this.buildHealthPlate();
     this.healthFill = this.healthPlate.getObjectByName('fill') as Mesh;
     this.healthFillMat = this.healthFill.material as MeshBasicMaterial;
-    this.healthPlate.position.set(0, radius + 2.0, 0); // float above the head
+    this.healthPlate.position.set(0, radius + 2.9, 0); // float clear above the head
     this.group.add(this.healthPlate);
+
+    // Shield bubble (T52 readability): a cyan shell that appears only while a
+    // shield charge is up and vanishes the instant it breaks; brightness tracks
+    // remaining charges so you read how much shielding is left.
+    this.shieldMat = new MeshBasicMaterial({
+      color: COL.shieldCyan,
+      transparent: true,
+      opacity: 0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.shield = new Mesh(new SphereGeometry(radius + 1.0, 18, 12), this.shieldMat);
+    this.shield.position.y = radius + 0.7;
+    this.shield.visible = false;
+    this.group.add(this.shield);
 
     scene.add(this.group);
   }
@@ -186,6 +205,23 @@ export class PlayerView {
     // Billboard the plate to the camera (group itself is unrotated, so the
     // camera's world quaternion is the right local orientation).
     this.healthPlate.quaternion.copy(camera.quaternion);
+    this.syncShield(player);
+  }
+
+  /** Shield bubble: visible only with a charge up; opacity + a soft pulse track
+   *  the charge fraction so depletion reads clearly (gone = no shield). */
+  private syncShield(player: Player): void {
+    const max = player.shieldMax;
+    const charges = player.shieldCharges;
+    if (max <= 0 || charges <= 0) {
+      if (this.shield.visible) this.shield.visible = false;
+      return;
+    }
+    this.shield.visible = true;
+    const frac = charges / max;
+    const pulse = 0.5 + 0.5 * Math.sin(this.platePhase * 6);
+    this.shieldMat.opacity = 0.12 + 0.16 * frac + 0.05 * pulse;
+    this.shield.rotation.y = this.platePhase * 0.4;
   }
 
   private syncHealthPlate(player: Player): void {

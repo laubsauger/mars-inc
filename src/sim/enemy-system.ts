@@ -44,8 +44,13 @@ export class EnemySystem {
         const d = Math.hypot(p.posX[i]!, p.posZ[i]!);
         if (d > 1e-3) {
           const inSpeed = p.speed[i]!;
-          p.posX[i]! -= (p.posX[i]! / d) * inSpeed * dt;
-          p.posZ[i]! -= (p.posZ[i]! / d) * inSpeed * dt;
+          // Set the velocity (not just position) to the inward march direction so
+          // the render view orients the mesh FORWARD — it walks out of the gate
+          // facing the arena, then steering takes over smoothly (no snap-turn).
+          p.velX[i] = (-p.posX[i]! / d) * inSpeed;
+          p.velZ[i] = (-p.posZ[i]! / d) * inSpeed;
+          p.posX[i]! += p.velX[i]! * dt;
+          p.posZ[i]! += p.velZ[i]! * dt;
         }
         p.stateTimer[i]! -= dt;
         if (p.stateTimer[i]! <= 0) p.state[i] = EnemyState.Active;

@@ -1,33 +1,53 @@
-// Post-processing stack (WebGPU PostProcessing + TSL nodes). Bloom on the
-// emissive highlights (gate trim/portal glow, projectiles, gold accents, FX)
-// gives the scene its AAA "bang" without per-object work. Render goes through
-// `post.renderAsync()` instead of `renderer.renderAsync(scene, camera)`.
+// Post-processing stack (WebGPU RenderPipeline + TSL nodes). Bloom on the
+// emissive highlights gives the scene its "bang"; optional GTAO (ground-truth
+// ambient occlusion) adds contact darkening in crevices/contacts for instant
+// depth. AO is a settings toggle — swapping `outputNode` means the AO graph is
+// only evaluated when it's actually on (no perf cost when off). Render goes
+// through `post.render()` instead of `renderer.renderAsync(scene, camera)`.
 
-import { PostProcessing, type WebGPURenderer } from 'three/webgpu';
-import { pass } from 'three/tsl';
+import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
+import { pass, mrt, output, normalView, vec3, vec4 } from 'three/tsl';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
+import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import type { Scene, PerspectiveCamera } from 'three';
 
 export interface PostStack {
-  renderAsync(): Promise<void>;
+  render(): void;
+  setAO(on: boolean): void;
 }
 
 export function createPostProcessing(
   renderer: WebGPURenderer,
   scene: Scene,
   camera: PerspectiveCamera,
+  aoEnabled = false,
 ): PostStack {
-  const post = new PostProcessing(renderer);
+  const post = new RenderPipeline(renderer);
+
+  // Scene pass outputs colour + view-space normal (MRT) so GTAO can read normals.
   const scenePass = pass(scene, camera);
-  const color = scenePass.getTextureNode();
-  // (input, strength, radius, threshold) — threshold keeps the mid-tones clean
-  // so only genuinely bright emissives blow out into glow.
-  // Calmer global bloom so the lit-gold arena rings/trim don't blow out; the
-  // projectile + pickup materials are pushed brighter (below) to keep THEIR
-  // glow intact under the lower strength.
-  const bloomPass = bloom(color, 0.85, 0.6, 0.16);
-  post.outputNode = color.add(bloomPass);
-  return {
-    renderAsync: () => post.renderAsync() as unknown as Promise<void>,
+  scenePass.setMRT(mrt({ output, normal: normalView }));
+  const color = scenePass.getTextureNode('output');
+  const normal = scenePass.getTextureNode('normal');
+  const depth = scenePass.getTextureNode('depth');
+
+  // Higher threshold so lit MODELS don't bloom into a washed haze — only bright
+  // emissives blow out. Lower strength keeps it tasteful. (input, strength, radius, threshold)
+  const bloomPass = bloom(color, 0.6, 0.6, 0.32);
+
+  const noAO = color.add(bloomPass);
+  // GTAO darkens contacts. Use ONLY the AO red channel broadcast to RGB (alpha 1)
+  // — multiplying by the raw AO vec4 zeroes G/B and tints everything red.
+  const aoPass = ao(depth, normal, camera);
+  const aoFactor = vec4(vec3(aoPass.getTextureNode().r), 1);
+  const withAO = color.mul(aoFactor).add(bloomPass);
+
+  const apply = (on: boolean): void => {
+    post.outputNode = on ? withAO : noAO;
+    post.needsUpdate = true;
   };
+  apply(aoEnabled);
+
+  // renderer.init() is awaited at creation, so the sync render() path is valid.
+  return { render: () => void post.render(), setAO: apply };
 }

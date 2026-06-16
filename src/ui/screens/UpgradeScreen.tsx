@@ -149,10 +149,38 @@ export function UpgradeScreen() {
                 onClick={() => choose(i)}
                 className="my-3 flex flex-1 flex-col gap-3 border-y border-rust/45 py-4 text-left focus:outline-none"
               >
-                <div className="text-xl font-black leading-tight text-bone group-hover/card:text-sun">
-                  {o.name}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-xl font-black leading-tight text-bone group-hover/card:text-sun">
+                    {o.name}
+                  </div>
+                  {o.level > 0 ? (
+                    <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-sm border border-gold/70 bg-gold/12 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold">
+                      Lv {o.level}→{o.level + 1}
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 shrink-0 rounded-sm border border-cyan/55 bg-cyan/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan">
+                      New
+                    </span>
+                  )}
                 </div>
-                <div className="min-h-16 text-sm leading-5 text-bone/76">{o.description}</div>
+                <div className="text-sm leading-5 text-bone/76">{o.description}</div>
+                {o.changes.length > 0 && (
+                  <div className="flex flex-col gap-0.5 rounded-sm border border-rust/40 bg-pit/55 px-2 py-1.5">
+                    {o.changes.map((c) => (
+                      <div
+                        key={c.label}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="uppercase tracking-wide text-bone/55">{c.label}</span>
+                        <span className="font-black tabular-nums text-bone/85">
+                          <span className="mr-1 text-bone/40">{c.from}</span>
+                          <span className="mr-1 text-sun">→</span>
+                          {c.to}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-auto flex flex-wrap gap-1">
                   {o.tags.map((t) => (
                     <span

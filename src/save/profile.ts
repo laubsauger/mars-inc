@@ -13,6 +13,7 @@ export interface SettingsData {
   uiScale: number; // 0.8..1.4
   pauseOnFocusLoss: boolean;
   enemyHealthbars: boolean; // show HP bars over enemies (T36 opt-in)
+  ambientOcclusion: boolean; // GTAO post-process (T37 opt-in)
   toonShading: boolean; // banded toon/ink look on characters (T37 opt-in)
 }
 
@@ -90,6 +91,7 @@ export function defaultSettings(): SettingsData {
     uiScale: 1,
     pauseOnFocusLoss: true,
     enemyHealthbars: false,
+    ambientOcclusion: false,
     toonShading: false,
   };
 }
