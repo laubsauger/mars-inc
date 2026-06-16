@@ -204,14 +204,19 @@ export class WeaponSystem {
       // velocity — otherwise a held WASD input lerps the kick away the same step
       // and recoil is invisible while moving. recoilVel decays on its own in
       // stepPlayer and is added to position on top of movement (still V10-capped).
+      // More PROJECTILES = more recoil — each extra round/pellet adds to the kick
+      // (and lifts the per-call cap with it), so multishot/spread builds turn recoil
+      // into a real backward THRUST. This makes weapon knockback a core mobility/CC
+      // mechanic that a whole upgrade path (recoil family) leans into.
+      const shotRecoil = 1 + (shots - 1) * 0.25;
       player.recoilVel = applyRecoil(
         player.recoilVel,
         -aim.x,
         -aim.z,
-        w.def.recoil * mods.recoilMult * RECOIL_SCALE, // punched up so kick really moves you
+        w.def.recoil * mods.recoilMult * RECOIL_SCALE * shotRecoil,
         player.stats.recoilResistance,
         dt,
-        RECOIL_CAP,
+        RECOIL_CAP * shotRecoil,
       );
       player.recoilTimer = 0.25; // "recoil is moving the player" window (T55)
       this.firedThisStep = true;
