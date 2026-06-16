@@ -319,11 +319,37 @@ export function SettingsControls() {
 }
 
 function SettingsPanel() {
+  const resetProgress = useUiStore((s) => s.resetProgress);
+  const [confirmWipe, setConfirmWipe] = useState(false);
   return (
     <Panel title="SETTINGS">
       <SettingsControls />
       <div className="mt-3 text-xs text-bone/40">
         Key rebinding, controller, and colorblind palettes land in a later pass.
+      </div>
+
+      {/* Danger zone — wipes the entire save (Glory, unlocks, records, settings). */}
+      <div className="mt-4 rounded-md border border-bleed/50 bg-pit/50 px-6 py-4">
+        <div className="text-sm font-bold tracking-wide text-bleed">RESET PROGRESS</div>
+        <p className="mt-1 text-xs leading-relaxed text-bone/55">
+          Permanently erases ALL saved data — Martian Glory, the Glory Tree, unlocks, records, run
+          history, and settings. This cannot be undone. The page reloads into a fresh save.
+        </p>
+        <button
+          onClick={() => {
+            if (confirmWipe) resetProgress();
+            else setConfirmWipe(true);
+          }}
+          onBlur={() => setConfirmWipe(false)}
+          title="Erase all saved progress and start over"
+          className={`mt-3 rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none ${
+            confirmWipe
+              ? 'border-bleed bg-bleed/25 text-bleed'
+              : 'border-bleed/70 bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
+          }`}
+        >
+          {confirmWipe ? 'CONFIRM · ERASE EVERYTHING' : 'RESET ALL PROGRESS'}
+        </button>
       </div>
     </Panel>
   );
@@ -630,7 +656,7 @@ function GloryTree() {
   return (
     <div className="pointer-events-auto absolute inset-0 flex flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_42%,rgba(50,215,255,0.08),transparent_36%),radial-gradient(circle_at_78%_30%,rgba(255,210,63,0.08),transparent_34%),radial-gradient(circle_at_22%_36%,rgba(131,240,79,0.07),transparent_32%),linear-gradient(#070504,#070504)] font-mono">
       {/* Slim top bar — title, legend, glory pill, back. No logo, minimal height. */}
-      <header className="flex shrink-0 items-center gap-4 border-b border-rust/60 bg-pit/70 px-5 py-2">
+      <header className="flex shrink-0 items-center gap-4 border-b border-rust/60 bg-pit/70 py-2 pl-5 pr-16">
         <div className="shrink-0">
           <div className="text-[10px] uppercase tracking-widest text-dust">Mars Inc terminal</div>
           <div className="text-lg font-black leading-none text-bone">GLORY TREE</div>

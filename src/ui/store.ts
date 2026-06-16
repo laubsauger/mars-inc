@@ -259,6 +259,8 @@ export interface UiStore {
   buyPermanent: (id: string) => void;
   /** Bridge to save — refund ALL spent Glory and clear the Glory Tree (respec). */
   resetPermanents: () => void;
+  /** Bridge to save — wipe ALL persisted progress and reload to a fresh profile. */
+  resetProgress: () => void;
   /** Bridge to save — change settings/accessibility (persists + applies live). */
   applySetting: (patch: Partial<SettingsView>) => void;
   setScreen: (s: Screen) => void;
@@ -290,6 +292,7 @@ export interface UiStore {
   setTogglePause: (fn: () => void) => void;
   setBuyPermanent: (fn: (id: string) => void) => void;
   setResetPermanents: (fn: () => void) => void;
+  setResetProgress: (fn: () => void) => void;
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) => void;
 }
 
@@ -379,6 +382,7 @@ export const useUiStore = create<UiStore>((set) => ({
   togglePause: () => {},
   buyPermanent: () => {},
   resetPermanents: () => {},
+  resetProgress: () => {},
   applySetting: () => {},
   setScreen: (screen) => set({ screen }),
   setMenuView: (menuView) => set({ menuView }),
@@ -409,6 +413,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setTogglePause: (togglePause) => set({ togglePause }),
   setBuyPermanent: (buyPermanent) => set({ buyPermanent }),
   setResetPermanents: (resetPermanents) => set({ resetPermanents }),
+  setResetProgress: (resetProgress) => set({ resetProgress }),
   setApplySetting: (applySetting) => set({ applySetting }),
 }));
 
@@ -443,6 +448,7 @@ export const uiActions = {
   setTogglePause: (fn: () => void) => useUiStore.getState().setTogglePause(fn),
   setBuyPermanent: (fn: (id: string) => void) => useUiStore.getState().setBuyPermanent(fn),
   setResetPermanents: (fn: () => void) => useUiStore.getState().setResetPermanents(fn),
+  setResetProgress: (fn: () => void) => useUiStore.getState().setResetProgress(fn),
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) =>
     useUiStore.getState().setApplySetting(fn),
 };

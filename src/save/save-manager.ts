@@ -17,6 +17,7 @@ import {
   idbPut,
   idbBackup,
   idbQuarantine,
+  idbClear,
   setBootPointer,
   hasBootPointer,
 } from './storage';
@@ -80,6 +81,23 @@ export class SaveManager {
   updateAccessibility(patch: Partial<AccessibilityData>): void {
     this.profile.accessibility = { ...this.profile.accessibility, ...patch };
     this.scheduleSave();
+  }
+
+  /**
+   * Hard reset: wipe ALL persisted progress (profile + backups + quarantine +
+   * boot pointer) and replace the in-memory profile with a fresh default.
+   * Cancels any pending debounced flush so the wiped profile can't be rewritten.
+   * Caller is expected to reload the app afterward for a clean rebuild.
+   */
+  async reset(): Promise<boolean> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const ok = await idbClear();
+    this.profile = createDefaultProfile();
+    this.loaded = true;
+    return ok;
   }
 
   /** Apply an arbitrary mutation to the profile then persist (currencies, records…). */

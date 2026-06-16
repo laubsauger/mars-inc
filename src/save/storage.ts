@@ -103,6 +103,26 @@ export async function idbQuarantine(raw: unknown): Promise<void> {
   }
 }
 
+/**
+ * Wipe ALL persisted progress: deletes the whole IndexedDB (profile + every
+ * backup + quarantine) and clears the boot pointer. Used by the Settings →
+ * Reset Progress action. Best-effort like the rest (V14): a blocked/failed
+ * delete resolves `false`, never throws.
+ */
+export async function idbClear(): Promise<boolean> {
+  setBootPointer(false);
+  try {
+    return await new Promise<boolean>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+      req.onblocked = () => resolve(false); // open connection elsewhere — caller reloads
+    });
+  } catch {
+    return false;
+  }
+}
+
 export function setBootPointer(present: boolean): void {
   try {
     if (present) localStorage.setItem(BOOT_POINTER, '1');

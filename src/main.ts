@@ -401,6 +401,21 @@ async function boot(parent: HTMLElement): Promise<void> {
     pushMeta();
   });
 
+  // Wipe ALL persisted progress (profile + backups + quarantine + boot pointer +
+  // the one-time briefing flag), then hard-reload so every system rebuilds from a
+  // fresh default. Reload also closes the open IndexedDB connections so the
+  // deleteDatabase that was queued behind them completes cleanly.
+  uiActions.setResetProgress(() => {
+    void save.reset().then(() => {
+      try {
+        localStorage.removeItem('mars:controls-seen');
+      } catch {
+        /* storage blocked — fresh profile already wiped */
+      }
+      location.reload();
+    });
+  });
+
   // Enter the pit from the menu → start a fresh run (applies owned permanents).
   // First-run field briefing (Hud ControlsHint) doubles as a START GATE: nothing
   // runs behind the instructions. We reset the world (fresh arena + player at
