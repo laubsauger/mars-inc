@@ -18,6 +18,8 @@ export interface SettingsData {
   ambientOcclusion: boolean; // GTAO post-process (T37 opt-in)
   toonShading: boolean; // banded toon/ink look on characters (T37 opt-in)
   arenaId: ArenaId; // which pit to play (circle Rust Crown / rect Cold Vault)
+  difficulty: number; // global difficulty tier index (0 = Standard); unlocked after Act-2 boss
+
   showCountdown: boolean; // pre-combat 3s countdown (default off — saves dev time)
   cameraControls: boolean; // opt-in orbit/zoom camera (default off — players nudged it by accident)
   showGrenadeRange: boolean; // grenade max-range cross marker on the aim line (default on)
@@ -125,6 +127,7 @@ export function defaultSettings(): SettingsData {
     ambientOcclusion: false,
     toonShading: false,
     arenaId: 'cold-vault',
+    difficulty: 0,
     showCountdown: false,
     cameraControls: false,
     showGrenadeRange: true,

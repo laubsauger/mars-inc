@@ -220,7 +220,7 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'marksmans-eye',
     name: "Marksman's Eye",
-    description: '+7% crit chance per level while the nearest enemy is kept at distance.',
+    description: '+7% crit chance per level while the nearest enemy is beyond 9m.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 180,

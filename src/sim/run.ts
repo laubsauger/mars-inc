@@ -64,8 +64,11 @@ export function gloryFor(result: RunResult, gloryMult = 1): number {
   // runs pay exponentially, snowballing the Glory Tree. `level^1.4` keeps early
   // payouts intact (~L10 unchanged) but tapers the late tail hard. Kills weight cut
   // too: late runs rack thousands of kills, so a fat per-kill rate ballooned income.
+  // Kills weight kept low: it scales with the arena's paceMult (Act 2 floods enemies),
+  // so a fat per-kill rate double-counted difficulty on top of gloryMult. Depth (level)
+  // is the main signal; kills/duration are a modest survival bonus.
   const base =
-    result.durationSec * 0.2 + result.kills * 0.12 + Math.pow(result.level, 1.4) * 2.4 + win;
+    result.durationSec * 0.2 + result.kills * 0.06 + Math.pow(result.level, 1.4) * 2.4 + win;
   // Harder Acts pay more (T-Act): the growth outlet for Glory-Tree investment.
   return Math.floor(base * gloryMult);
 }

@@ -61,8 +61,10 @@ describe('tickStatus (T39, V3 burn DoT + decay)', () => {
     applyStatus(plain, a, 'burn', { duration: 1, dps: 4 });
     applyStatus(marked, b, 'burn', { duration: 1, dps: 4 });
     applyStatus(marked, b, 'mark', { duration: 1, amplify: 2 });
-    const dPlain = tickStatus(plain, new Rng(1), 1 / 60, fx);
-    const dMark = tickStatus(marked, new Rng(1), 1 / 60, fx);
+    // DoT lands in chunks (~0.5s ticks) now — probe one full tick so the amp shows
+    // (a single 1/60 step floors both to the min-1 integer and hides it).
+    const dPlain = tickStatus(plain, new Rng(1), 0.5, fx);
+    const dMark = tickStatus(marked, new Rng(1), 0.5, fx);
     expect(dMark).toBeGreaterThan(dPlain);
   });
 

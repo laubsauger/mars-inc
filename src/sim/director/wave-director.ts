@@ -24,7 +24,7 @@ import {
 import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
 import { GATE_COUNT } from '../constants';
-import { gateOuterPoint, interiorPoint, activeArena } from '../arena';
+import { gateOuterPoint, interiorPoint, activeArena, activeDifficulty } from '../arena';
 
 const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
 const TELE_TELEGRAPH = 1.0; // teleport materialize tell before the stalker is live (V9)
@@ -164,29 +164,34 @@ export class WaveDirector {
     this.bossWaveTimer = 0;
   }
 
-  private pickType(rng: Rng, elapsed: number, houndBias: number): EnemyType {
+  private pickType(rng: Rng, elapsed: number, houndBias: number, act: number): EnemyType {
+    // ACT 2 is a different FLOW, not Act 1 at higher HP: its roster cadence is shoved
+    // ~70s forward (the mid-game composition lands from the OPEN — brutes, ranged,
+    // splitters immediately) and specials are a bigger slice. So the Crown FEELS like
+    // a different fight (heavy, mixed, deadly comp) while the difficulty TIER owns the
+    // raw stat scaling. `eff` only shifts the MIX thresholds, never real run time.
+    const eff = act >= 2 ? elapsed + 70 : elapsed;
     // Specials (elites + RANGED) are a small, slowly-growing SLICE of the swarm —
     // they spice the fodder, never replace it. ONE gate decides "special or
-    // fodder" so their combined rate stays bounded (the old per-type rolls summed
-    // up to a shooter-dominated mid-game). A second roll picks an unlocked type;
-    // ranged classes unlock late + rare so the early game stays fair (V12 bounded).
-    const specialChance = Math.min(0.3, Math.max(0, elapsed - 35) * 0.0035);
+    // fodder" so their combined rate stays bounded. A second roll picks an unlocked
+    // type; ranged classes unlock late + rare so Act 1's early game stays fair.
+    const specialChance = Math.min(act >= 2 ? 0.45 : 0.3, Math.max(0, eff - 35) * 0.0035);
     if (rng.next() < specialChance) {
       const r = rng.next();
       // Melee Brute first; ranged classes ramp in much later and stay a minority.
-      if (elapsed > 40 && r < 0.18) return LIABILITY_BLOB; // splitter (AoE check)
-      if (elapsed > 50 && r < 0.3) return SEVERANCE_LOBBER; // lobbed AoE
-      if (elapsed > 70 && r < 0.4) return RIOT_SHOTGUNNER; // close burst
-      if (elapsed > 80 && r < 0.48) return FROSTBITE_AUDITOR; // cryo
-      if (elapsed > 90 && r < 0.56) return REPO_MARSHAL; // gun
-      if (elapsed > 110 && r < 0.62) return FORECLOSURE_MORTAR; // artillery
-      if (elapsed > 65 && r < 0.67) return LANCE_SENTINEL; // laser turret — sprinkled in early so you learn it, stays rare
-      if (elapsed > 120 && r < 0.72) return GARGANTUAN; // devourer — kill it before it snowballs
+      if (eff > 40 && r < 0.18) return LIABILITY_BLOB; // splitter (AoE check)
+      if (eff > 50 && r < 0.3) return SEVERANCE_LOBBER; // lobbed AoE
+      if (eff > 70 && r < 0.4) return RIOT_SHOTGUNNER; // close burst
+      if (eff > 80 && r < 0.48) return FROSTBITE_AUDITOR; // cryo
+      if (eff > 90 && r < 0.56) return REPO_MARSHAL; // gun
+      if (eff > 110 && r < 0.62) return FORECLOSURE_MORTAR; // artillery
+      if (eff > 65 && r < 0.67) return LANCE_SENTINEL; // laser turret — sprinkled in early so you learn it, stays rare
+      if (eff > 120 && r < 0.72) return GARGANTUAN; // devourer — kill it before it snowballs
       return AUDIT_BRUTE; // the bulk of specials are the melee wall
     }
     // Fodder: Rust Mites + a growing minority of Debt Hounds.
-    if (elapsed > 25) {
-      const p = Math.min(0.4, (elapsed - 25) * 0.006 + houndBias);
+    if (eff > 25) {
+      const p = Math.min(0.4, (eff - 25) * 0.006 + houndBias);
       if (rng.next() < p) return DEBT_HOUND;
     }
     return RUST_MITE;
@@ -240,7 +245,7 @@ export class WaveDirector {
     const houndBias = clamp(adapt.houndBias, 0, BIAS_MAX);
     // Act pace multiplier — higher Acts accrue threat faster AND raise the concurrent
     // cap, so the Crown fields more enemies, sooner (still V8-bounded by pool cap).
-    const actPace = activeArena().paceMult;
+    const actPace = activeArena().paceMult * activeDifficulty().paceMult;
     this.bank += b.threatPoints * pace * actPace * dt;
 
     // Sawtooth thins the crowd at each power step (capMul), so the cap tracks player
@@ -258,7 +263,10 @@ export class WaveDirector {
       } else {
         this.bossWaveTimer -= dt;
         if (this.bossWaveTimer <= 0) {
-          const scale = (1 + this.bossesSpawned * 0.6) * activeArena().difficultyMult;
+          const scale =
+            (1 + this.bossesSpawned * 0.6) *
+            activeArena().difficultyMult *
+            activeDifficulty().hpMult;
           if (this.spawnAtGate(pool, rng, BOSS_GATEKEEPER, scale)) {
             this.bossesSpawned++;
             this.boss = true;
@@ -309,7 +317,7 @@ export class WaveDirector {
     for (let k = 0; k < perGate; k++) {
       for (const gate of gates) {
         if (pool.count >= cap || this.bank < CHEAPEST) return;
-        const rolled = this.pickType(rng, elapsed, houndBias);
+        const rolled = this.pickType(rng, elapsed, houndBias, activeArena().act);
         const type = this.bank >= rolled.threat ? rolled : RUST_MITE;
         if (this.bank < type.threat) return;
         if (!this.spawnCluster(pool, rng, gate, type)) return; // pool full

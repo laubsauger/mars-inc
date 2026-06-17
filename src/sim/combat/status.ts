@@ -119,7 +119,13 @@ export function tickStatus(
   dt: number,
   fx: FxQueue,
   statusMult = 1, // global DoT amplifier (T35 Glory Tree); 1 = unmodified
+  dotDt = dt, // time accrued for the DAMAGE tick (0 between ticks); durations use dt
 ): number {
+  // DoT damage fires in chunks (~2/s, World gates dotDt) so each burn/bleed number is
+  // one readable INTEGER, never 60 sub-1 ticks/s the damage layer floors to a spam of
+  // "1"s. Durations still tick every step (dt). dotChunk rounds with a floor of 1 so an
+  // active DoT always shows real, whole damage per tick — no fractions anywhere.
+  const dotChunk = (dps: number): number => (dps > 0 ? Math.max(1, Math.round(dps * dotDt)) : 0);
   let dealt = 0;
   for (let i = 0; i < pool.count; i++) {
     if (pool.state[i] !== EnemyState.Active) continue;
@@ -144,45 +150,52 @@ export function tickStatus(
       }
     }
 
-    // Burn: damage over time, amplified by mark, routed through the pipeline.
+    // Burn: damage over time, amplified by mark, routed through the pipeline. Duration
+    // counts down every step; DAMAGE lands in integer chunks on tick steps (dotDt > 0).
     if (pool.burnTime[i]! > 0 && pool.burnDps[i]! > 0) {
       pool.burnTime[i]! -= dt;
-      const packet = makePacket({
-        weaponId: 'burn',
-        baseDamage: pool.burnDps[i]! * dt * amp * statusMult,
-        damageType: 'thermal',
-      });
-      const out = computeOutgoing(packet, rng);
-      const mit = applyMitigation(out.amount, 0, 0);
-      const removed = Math.min(mit.toHealth, pool.health[i]!);
-      pool.health[i]! -= mit.toHealth;
-      dealt += removed;
-      // Burn ticks float a number too (aggregation tallies the small ticks).
-      fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+      if (dotDt > 0) {
+        const packet = makePacket({
+          weaponId: 'burn',
+          baseDamage: dotChunk(pool.burnDps[i]! * amp * statusMult),
+          damageType: 'thermal',
+        });
+        const out = computeOutgoing(packet, rng);
+        const mit = applyMitigation(out.amount, 0, 0);
+        const amt = Math.max(1, Math.round(mit.toHealth)); // whole damage, never a fraction
+        const removed = Math.min(amt, pool.health[i]!);
+        pool.health[i]! -= removed;
+        dealt += removed;
+        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+        if (pool.burnTime[i]! > 0 && rng.next() < 0.5) {
+          // Visual-only ember fleck — 'ember' never triggers a sound.
+          fx.push('ember', pool.posX[i]!, pool.posZ[i]!);
+        }
+      }
       if (pool.burnTime[i]! <= 0) {
         pool.burnTime[i] = 0;
         pool.burnDps[i] = 0;
-      } else if (rng.next() < 0.25) {
-        // Visual-only ember fleck — 'ember' never triggers a sound (the per-tick
-        // 'impact' sfx on burning crowds was an awful per-frame fire drone).
-        fx.push('ember', pool.posX[i]!, pool.posZ[i]!);
       }
     }
 
-    // Bleed: stacking DoT (dps × stacks), mark-amplified, routed through V3.
+    // Bleed: stacking DoT (dps × stacks), mark-amplified, routed through V3. Same
+    // chunked-tick cadence as burn (integer numbers, ~2/s).
     if (pool.bleedTime[i]! > 0 && pool.bleedDps[i]! > 0 && pool.bleedStacks[i]! > 0) {
       pool.bleedTime[i]! -= dt;
-      const packet = makePacket({
-        weaponId: 'bleed',
-        baseDamage: pool.bleedDps[i]! * pool.bleedStacks[i]! * dt * amp * statusMult,
-        damageType: 'kinetic',
-      });
-      const out = computeOutgoing(packet, rng);
-      const mit = applyMitigation(out.amount, 0, 0);
-      const removed = Math.min(mit.toHealth, pool.health[i]!);
-      pool.health[i]! -= mit.toHealth;
-      dealt += removed;
-      fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+      if (dotDt > 0) {
+        const packet = makePacket({
+          weaponId: 'bleed',
+          baseDamage: dotChunk(pool.bleedDps[i]! * pool.bleedStacks[i]! * amp * statusMult),
+          damageType: 'kinetic',
+        });
+        const out = computeOutgoing(packet, rng);
+        const mit = applyMitigation(out.amount, 0, 0);
+        const amt = Math.max(1, Math.round(mit.toHealth));
+        const removed = Math.min(amt, pool.health[i]!);
+        pool.health[i]! -= removed;
+        dealt += removed;
+        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+      }
       if (pool.bleedTime[i]! <= 0) {
         pool.bleedTime[i] = 0;
         pool.bleedStacks[i] = 0;

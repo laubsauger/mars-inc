@@ -115,7 +115,8 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'toxic-bloom',
     name: 'Toxic Bloom',
-    description: 'KEYSTONE: every kill bursts a toxic cloud, damaging the pack around the corpse.',
+    description:
+      'KEYSTONE: every kill bursts a toxic cloud — 9 damage to enemies within 3.5m of the corpse.',
     branch: 'biology',
     rarity: 'legendary',
     cost: 400,

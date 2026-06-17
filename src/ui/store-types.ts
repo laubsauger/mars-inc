@@ -34,6 +34,8 @@ export interface ProfileView {
   byCombo: RecordRow[];
   /** True once the player has ever slain the Gatekeeper — gates Act 2 (T-Act). */
   bossDefeated: boolean;
+  /** True once the Act-2 boss has fallen — unlocks the global difficulty selector. */
+  difficultyUnlocked: boolean;
   /** Weapon ids DISCOVERED (started with or picked up in a run); the Arsenal shows
    *  ??? for the rest until found (discovery progression). */
   discoveredWeapons: string[];
@@ -53,6 +55,7 @@ export interface SettingsView {
   toonShading: boolean;
   ambientOcclusion: boolean;
   arenaId: 'cold-vault' | 'rust-crown';
+  difficulty: number; // global difficulty tier index (0 = Standard)
   showCountdown: boolean;
   cameraControls: boolean;
   showGrenadeRange: boolean;

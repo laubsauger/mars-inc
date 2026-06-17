@@ -30,7 +30,7 @@ export const XP_RESOURCE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'magnetar-array',
     name: 'Magnetar Array',
-    description: 'Nearby XP shards orbit you and shock enemies.',
+    description: 'XP shards within 5.5m orbit you and shock enemies within 1m of each shard.',
     tags: ['xp', 'economy', 'xp-econ', 'energy'],
     grantsTags: ['xp-econ'],
     requiresAnyTags: ['xp-econ'],

@@ -299,12 +299,17 @@ export class ArenaView {
     g.add(tunFloor);
 
     // Side pillars flanking the gap (inner face at ±gateHalf), sitting in the wall.
+    // Each gets an emissive arena-accent stripe down its INNER vertical edge so the
+    // opening reads as a framed doorway (matches the Act-1 gate-seam treatment).
     for (const sx of [-1, 1]) {
       const pillar = new Mesh(new BoxGeometry(1.2, wallH, 1.6), steel);
       pillar.position.set(sx * (gateHalf + 0.6), wallH / 2, 0.4);
       pillar.castShadow = true;
       this.outlineProp(pillar);
       g.add(pillar);
+      const edge = new Mesh(new BoxGeometry(0.18, wallH - 0.3, 0.22), glowMat);
+      edge.position.set(sx * gateHalf, wallH / 2, -0.32); // inner edge, arena-facing
+      g.add(edge);
     }
 
     // Lintel: INTERSECTS the pillars (overlapping solids, no shared face) so its
@@ -685,6 +690,22 @@ export class ArenaView {
         chev.position.set(0, cy, 0.55);
         d.add(chev);
       }
+      // Emissive arena-accent stripe down the door's INNER (seam) edge — the key
+      // open/closed read: CLOSED, the two stripes meet at the centre as one bright
+      // bar; as the doors retract into the pillars the bars split + shrink away, so
+      // the gate visibly "opens". Slightly proud of the door (depth 1.06 vs 1) so it
+      // reads as a lit edge from any camera angle.
+      const seam = new Mesh(
+        new BoxGeometry(0.2, GATE_HEIGHT - 0.2, 1.06),
+        new MeshStandardMaterial({
+          color: this.accent,
+          emissive: this.accent,
+          emissiveIntensity: 1.2,
+          roughness: 0.4,
+        }),
+      );
+      seam.position.set((-sideSign * doorW) / 2, 0, 0); // inner edge (toward gate centre)
+      d.add(seam);
       outlineHull(d, OUTLINE_W.prop);
       pivot.add(d);
       this.group.add(pivot);

@@ -53,24 +53,22 @@ export function GameOverScreen() {
   const won = result.won;
 
   return (
-    // Scroll on the OUTER box; an inner min-h-full column does the centering. With
-    // plain `justify-center` on a scroll container, content taller than the viewport
-    // (a long abilities list) clips at the TOP and can't scroll up — this pattern
-    // centers when it fits and scrolls from the top when it overflows.
-    <div className="pointer-events-auto absolute inset-0 overflow-y-auto bg-pit/90 font-mono">
-      <div className="flex min-h-full flex-col items-center justify-center gap-0 py-6">
-        {/* Verdict */}
+    // Viewport-locked column: verdict + spoils header and the action footer are
+    // PINNED (shrink-0); only the middle body scrolls when it's taller than the
+    // space left. Restart/Menu can never be pushed off-screen (the old single
+    // scroll box buried them below the fold on short viewports / long builds).
+    <div className="pointer-events-auto absolute inset-0 flex flex-col bg-pit/90 font-mono">
+      {/* Header — verdict + spoils, always visible */}
+      <div className="flex shrink-0 flex-col items-center px-4 pb-3 pt-5">
         <div className={`text-xs tracking-[0.45em] ${won ? 'text-gold' : 'text-ember'}`}>
           {won ? 'GATEKEEPER SLAIN' : 'YOU DIED'}
         </div>
         <div
-          className={`mb-4 text-4xl font-black tracking-widest ${won ? 'text-gold drop-shadow-[0_0_18px_rgba(255,210,63,0.5)]' : 'text-bone'}`}
+          className={`mb-3 text-4xl font-black tracking-widest ${won ? 'text-gold drop-shadow-[0_0_18px_rgba(255,210,63,0.5)]' : 'text-bone'}`}
         >
           {won ? 'VICTORY' : 'RUN OVER'}
         </div>
-
-        {/* Spoils — what you banked, up front */}
-        <div className="mb-5 flex items-stretch gap-3">
+        <div className="flex items-stretch gap-3">
           <div className="flex flex-col items-center justify-center rounded-md border-2 border-gold bg-gold/10 px-6 py-2">
             <span className="text-[10px] uppercase tracking-widest text-gold/80">Glory earned</span>
             <span className="text-3xl font-black text-gold tabular-nums">
@@ -86,9 +84,11 @@ export function GameOverScreen() {
             <span className="text-3xl font-black text-cyan tabular-nums">Lv {result.level}</span>
           </div>
         </div>
+      </div>
 
-        {/* Body: numbers + kills + the reusable build sheet */}
-        <div className="flex w-[64rem] max-w-[94vw] flex-col gap-3">
+      {/* Body — the ONLY scroller; flex-1 + min-h-0 so it absorbs the overflow */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4">
+        <div className="mx-auto flex w-[64rem] max-w-[94vw] flex-col gap-3 py-1">
           <div className="grid grid-cols-3 gap-3">
             <Panel title="SURVIVAL">
               <Stat label="Time" value={fmtTime(result.durationSec)} />
@@ -114,8 +114,11 @@ export function GameOverScreen() {
           </div>
           {sheet && <RunSheet sheet={sheet} compact />}
         </div>
+      </div>
 
-        <div className="mt-6 flex gap-4">
+      {/* Footer — actions, always visible */}
+      <div className="flex shrink-0 flex-col items-center gap-2 border-t border-rust/20 px-4 pb-4 pt-3">
+        <div className="flex gap-4">
           <button
             onClick={restart}
             className="rounded-md border-2 border-gold bg-ember/20 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:bg-ember/30 focus:outline-none"
@@ -129,7 +132,7 @@ export function GameOverScreen() {
             MENU
           </button>
         </div>
-        <div className="mt-3 text-xs text-bone/50">
+        <div className="text-xs text-bone/50">
           Enter to restart · Esc for menu · spend Glory in the Glory Tree
         </div>
       </div>

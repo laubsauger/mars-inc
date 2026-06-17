@@ -83,7 +83,8 @@ export const MOBILITY_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'repulsor-core',
     name: 'Repulsor Core',
-    description: 'Start with a pulsing repulsor nova that knocks back and damages around you.',
+    description:
+      'Start with a pulsing repulsor nova — 5 damage + knockback to enemies within 4.2m.',
     branch: 'mobility',
     rarity: 'rare',
     cost: 180,

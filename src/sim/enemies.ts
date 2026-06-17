@@ -78,6 +78,10 @@ export interface EnemyType {
    *  ambushes, breaking up the homogeneous everyone-chases swarm. Absent/0 = always
    *  aggressive (the default fodder behaviour). */
   aggroRange?: number;
+  /** Preferred standoff distance (world units) for a RANGED unit: it holds/trails
+   *  the player at this range instead of closing to melee, so it keeps repositioning
+   *  as you move rather than parking on top of you. Absent/0 = melee hold ring. */
+  standoff?: number;
   /** Threat cost the wave director spends to field one (§8.3). */
   threat: number;
   /** Damage-absorb charges (T-beam): each blocks ONE incoming damage instance
@@ -149,6 +153,9 @@ export class EnemyPool {
   readonly elite: Uint8Array;
   /** Promotion decided this spawn? (so elite/baseline-shield rolls happen once). */
   readonly evaluated: Uint8Array;
+  /** Seconds of velocity-ease left after going Active — blends the straight gate
+   *  march into steering so the walk-in handoff doesn't snap (T-roam/entry). */
+  readonly entryEase: Float32Array;
 
   constructor(capacity: number = MAX_ENEMIES) {
     this.capacity = capacity;
@@ -190,6 +197,7 @@ export class EnemyPool {
     this.shield = new Uint8Array(capacity);
     this.elite = new Uint8Array(capacity);
     this.evaluated = new Uint8Array(capacity);
+    this.entryEase = new Float32Array(capacity);
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
@@ -220,7 +228,10 @@ export class EnemyPool {
     this.spawnKind[i] = spawnKind;
     this.stateTimer[i] = telegraph;
     this.steerPhase[i] = phase & 0xff;
-    this.attackCd[i] = 0;
+    // First-shot delay for the beam turret (sentinel): hold fire ~0.7 cooldown after
+    // spawning so it walks out of the gate + repositions before its first laser,
+    // instead of charging the instant it appears.
+    this.attackCd[i] = type.attack?.kind === 'beam' ? type.attack.cooldown * 0.7 : 0;
     // Contact damage also scales with difficulty (dampened ~sqrt of HP scale) so
     // late-game / Act-2 hosts actually THREATEN, not just soak hits (T44/T-Act).
     this.contactDmg[i] =
@@ -245,6 +256,7 @@ export class EnemyPool {
     this.shield[i] = type.shield ?? 0;
     this.elite[i] = 0;
     this.evaluated[i] = 0;
+    this.entryEase[i] = 0;
     return i;
   }
 
@@ -301,6 +313,7 @@ export class EnemyPool {
       this.shield[i] = this.shield[last]!;
       this.elite[i] = this.elite[last]!;
       this.evaluated[i] = this.evaluated[last]!;
+      this.entryEase[i] = this.entryEase[last]!;
     }
   }
 
@@ -565,15 +578,16 @@ export const LANCE_SENTINEL: EnemyType = {
   id: 'lance-sentinel',
   radius: 0.85,
   maxHealth: 140, // hefty — a real obstacle, not fodder
-  speed: 1.0, // very slow; it's a creeping turret
+  speed: 1.4, // slow creeping turret, but mobile enough to reposition between shots
   separationWeight: 0.7,
   variant: 12,
   gore: 'blood',
   threat: 26, // expensive → the director fields it rarely, never in groups
   shield: 1, // absorbs the first instance of damage
+  standoff: 9, // holds ~9u off the player + trails them — never parks point-blank
   attack: {
     kind: 'beam',
-    range: 32, // long reach — it snipes across the arena
+    range: 20, // detection/fire range — must close in somewhat, can't snipe the whole pit
     cooldown: 4.5,
     charge: 1.3, // generous telegraph: lock + thicken, you dodge off the line
     width: 0.7, // beam half-width that catches the player

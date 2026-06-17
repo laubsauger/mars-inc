@@ -49,10 +49,16 @@ export const RUST_CROWN: ArenaDef = {
   shape: { kind: 'circle', radius: 35 },
   accent: '#f0c879', // warm sun highlight
   act: 2,
-  tagline: 'Brutal hosts, denser + faster waves — the Crown pays in Glory.',
-  difficultyMult: 3.5, // hosts have 3.5× the HP (and hit ~2.4× harder via contact scaling)
-  paceMult: 1.85, // ~85% more enemies, ramping faster
-  gloryMult: 2.3,
+  tagline: 'A heavier fight from the first bell — brutes, gunners + splitters from the open.',
+  // Act 2 is a different FLOW, not Act 1 × force-multiplier: its roster cadence is
+  // shoved forward (the mid-game composition lands immediately — see pickType) and it
+  // carries a MODEST base bump. The big stat ladder now lives in the global difficulty
+  // selector, so Act 1 stays relevant and Act 2 doesn't obsolete it at 3.5× HP.
+  difficultyMult: 1.3, // modest base — difficulty TIERS provide the climb
+  paceMult: 1.25, // a touch denser; the composition shift is the real pressure
+  // Act 2 pays MORE, but modestly — its pace already floods kills (the kills term in
+  // gloryFor rewards that). A fat mult on top double-dipped (a long FAIL paid ~3500).
+  gloryMult: 1.3,
 };
 
 /** Selectable arenas (settings). */
@@ -66,6 +72,32 @@ export function setActiveArena(id: ArenaId): void {
 }
 export function activeArena(): ArenaDef {
   return active;
+}
+
+// ── Global DIFFICULTY ladder (T-Act). Decoupled from the arena: a tier multiplies
+//    enemy HP / pace / Glory on TOP of the arena's own base, applying to EVERY arena.
+//    Unlocked after the first Act-2 boss kill, so Act 1 stays relevant (replay it on
+//    Brutal) and progression is a clear ladder, not "the old arena is now useless".
+export interface DifficultyTier {
+  readonly id: string;
+  readonly name: string;
+  readonly hpMult: number;
+  readonly paceMult: number;
+  readonly gloryMult: number;
+}
+export const DIFFICULTIES: readonly DifficultyTier[] = [
+  { id: 'standard', name: 'Standard', hpMult: 1, paceMult: 1, gloryMult: 1 },
+  { id: 'veteran', name: 'Veteran', hpMult: 1.5, paceMult: 1.2, gloryMult: 1.4 },
+  { id: 'brutal', name: 'Brutal', hpMult: 2.2, paceMult: 1.45, gloryMult: 1.9 },
+  { id: 'nightmare', name: 'Nightmare', hpMult: 3.2, paceMult: 1.7, gloryMult: 2.6 },
+];
+
+let activeDiff = 0;
+export function setActiveDifficulty(tier: number): void {
+  activeDiff = tier < 0 ? 0 : tier >= DIFFICULTIES.length ? DIFFICULTIES.length - 1 : tier;
+}
+export function activeDifficulty(): DifficultyTier {
+  return DIFFICULTIES[activeDiff]!;
 }
 
 /** Half-extents on x,z (a circle is square-bounded by its radius). */

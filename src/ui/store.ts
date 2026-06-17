@@ -166,6 +166,7 @@ const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
 const INITIAL_PROFILE: ProfileView = {
   bestTimeSec: 0,
   bossDefeated: false,
+  difficultyUnlocked: false,
   discoveredWeapons: [],
   bestLevel: 0,
   mostKills: 0,
@@ -185,6 +186,7 @@ const INITIAL_SETTINGS: SettingsView = {
   toonShading: false,
   ambientOcclusion: false,
   arenaId: 'cold-vault',
+  difficulty: 0,
   showCountdown: false,
   cameraControls: false,
   showGrenadeRange: true,

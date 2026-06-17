@@ -55,7 +55,7 @@ import { gloryFor } from './sim/run';
 import { PERMANENT_UPGRADES, permanentById, levelCost } from './content/permanent/index';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
-import { setActiveArena, ARENAS } from './sim/arena';
+import { setActiveArena, ARENAS, setActiveDifficulty, activeDifficulty } from './sim/arena';
 import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
@@ -175,6 +175,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   // Select the arena BEFORE building camera/arena/world — they read the active
   // arena's shape for framing, boundary, and spawns.
   setActiveArena(save.current.settings.arenaId);
+  setActiveDifficulty(save.current.settings.difficulty ?? 0);
 
   const scene = new Scene();
   // Warm haze for rim depth only — kept FAINT so it doesn't grey out the whole
@@ -506,6 +507,8 @@ async function boot(parent: HTMLElement): Promise<void> {
       frameArena(camera, window.innerWidth / window.innerHeight);
       arenaControls.reset();
     }
+    // Difficulty tier is a pure scalar — apply live, no geometry rebuild.
+    if (patch.difficulty !== undefined) setActiveDifficulty(patch.difficulty);
   });
 
   window.addEventListener('resize', () => {
@@ -784,13 +787,23 @@ async function boot(parent: HTMLElement): Promise<void> {
           ? 0
           : gloryFor(
               r,
-              ARENAS[save.current.settings.arenaId].gloryMult * world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
+              ARENAS[save.current.settings.arenaId].gloryMult *
+                activeDifficulty().gloryMult * // global difficulty tier (T-Act)
+                world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
             );
         if (!world.cheated) {
           save.mutate((p) => {
             p.currencies.martianGlory += lastGlory;
             // Slaying the Gatekeeper (or winning the run) permanently unlocks Act 2.
             if (world.stats.bossKills > 0 || r.won) p.unlocks['boss-beaten'] = true;
+            // Beating the Act-2 boss unlocks the global DIFFICULTY selector (T-Act) —
+            // harder tiers for EVERY arena, so Act 1 stays relevant + progression reads.
+            if (
+              ARENAS[save.current.settings.arenaId].act >= 2 &&
+              (world.stats.bossKills > 0 || r.won)
+            ) {
+              p.unlocks['difficulty-unlocked'] = true;
+            }
             // Update the global best AND the per-arena / per-character buckets so
             // Records can break down "best run" by where + who (T65).
             const bump = (rec: RecordData): void => {

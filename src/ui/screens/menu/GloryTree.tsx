@@ -38,23 +38,23 @@ const TREE_PARENT: Record<string, TreeNodeId> = {};
 const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch }> = [];
 
 {
-  const n = BRANCH_ORDER.length;
   // The canvas is 1140×920 (x-units ~1.24× wider than y on screen), so COMPRESS x to
   // keep the radial star round instead of flattening the diagonal spokes.
   const XS = 0.81;
-  const SECTOR = ((2 * Math.PI) / n) * 0.86; // angular width each branch owns (gap between)
-  const R0 = 15; // depth-0 node distance from the hub
-  const RSTEP = 12; // radial gap per tree depth
-  BRANCH_ORDER.forEach((branch, bi) => {
-    const center = -Math.PI / 2 + (bi * 2 * Math.PI) / n; // spoke direction
+  const R0 = 11; // depth-0 node distance from the hub (tight — inner rings hug the core)
+  // Radius grows NEARLY linearly with a gentle curve: even ring spacing (no dead gaps
+  // on sparse chains) with just a touch more room outward. Outer crowding is handled by
+  // the ANGULAR allocation (each branch's arc is sized by its node count), not by
+  // blowing rings far apart — that aired out the chains and detached the tips.
+  const radiusAt = (depth: number, lenMul: number) =>
+    (R0 + 9 * depth + 0.5 * depth * depth) * lenMul;
+
+  // ── Pass 1: build each branch's ordered node list (legendaries spliced mid-outer
+  //    as internal milestones), so we can size each branch's angular arc by its count. ──
+  const built = BRANCH_ORDER.map((branch, bi) => {
     const all = PERMANENT_UPGRADES.filter((u) => u.branch === branch)
       .slice()
       .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1));
-    // Don't let the legendaries pile up at the deepest tips (pure cost order does
-    // that). Cheap commons stay near the hub; splice legendaries into mid-outer
-    // positions so they become INTERNAL milestones — you path THROUGH a keystone to
-    // reach the nodes beyond it, and they sit spread along each branch, not all out
-    // at the rim.
     const legs = all.filter((u) => u.rarity === 'legendary');
     const nodes = all.filter((u) => u.rarity !== 'legendary');
     legs.forEach((lg, i) => {
@@ -62,11 +62,26 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
       const pos = Math.min(nodes.length, Math.max(2, Math.round(nodes.length * frac)));
       nodes.splice(pos, 0, lg);
     });
+    // ORGANIC length: branches aren't all the same reach. A deterministic per-branch
+    // factor (0.86…1.18) stretches some spokes longer, foreshortens others — the star
+    // looks grown, not stamped. Keyed to branch index so it's stable across renders.
+    const lenMul = 0.86 + ((bi * 7 + 3) % 5) * 0.08;
+    return { branch, nodes, lenMul };
+  }).filter((b) => b.nodes.length > 0);
+
+  // ── Pass 2: allocate each branch an angular ARC proportional to its node count
+  //    (bushy branches get more room → no rim crowding; sparse branches stay narrow),
+  //    laid sequentially around the circle with a gap between spokes. ──
+  const GAP = 0.3; // fraction of each arc reserved as empty gutter — keeps spokes in lanes
+  const totalNodes = built.reduce((s, b) => s + b.nodes.length, 0);
+  let cur = -Math.PI / 2; // start at the top
+  built.forEach(({ branch, nodes, lenMul }) => {
+    const arc = (2 * Math.PI * nodes.length) / totalNodes;
+    const center = cur + arc / 2;
+    const sector = arc * (1 - GAP);
+    cur += arc;
+
     const count = nodes.length;
-    if (count === 0) return;
-    // Cost-ordered BINARY tree (heap layout): node k's children are 2k+1 / 2k+2, so a
-    // branch FORKS into sub-branches as it grows. Lay it out tidily — each subtree
-    // gets an angular wedge sized by its leaf count, so siblings never overlap.
     const kids = (k: number) => [2 * k + 1, 2 * k + 2].filter((c) => c < count);
     const leaves: number[] = new Array(count).fill(0);
     const countLeaves = (k: number): number => {
@@ -81,7 +96,7 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
     const place = (k: number, a0: number, a1: number, depth: number) => {
       if (depth > maxDepth) maxDepth = depth;
       const a = (a0 + a1) / 2; // node sits at the centre of its wedge
-      const radius = R0 + depth * RSTEP;
+      const radius = radiusAt(depth, lenMul);
       TREE_NODES[nodes[k]!.id] = {
         x: 50 + Math.cos(a) * radius * XS,
         y: 50 + Math.sin(a) * radius,
@@ -94,15 +109,15 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
       const ch = kids(k);
       if (ch.length === 0) return;
       const total = ch.reduce((s, c) => s + leaves[c]!, 0);
-      let cur = a0;
+      let a0c = a0;
       for (const c of ch) {
         const span = (a1 - a0) * (leaves[c]! / total);
-        place(c, cur, cur + span, depth + 1);
-        cur += span;
+        place(c, a0c, a0c + span, depth + 1);
+        a0c += span;
       }
     };
-    place(0, center - SECTOR / 2, center + SECTOR / 2, 0);
-    const midR = R0 + (maxDepth * RSTEP) / 2;
+    place(0, center - sector / 2, center + sector / 2, 0);
+    const midR = radiusAt(maxDepth, lenMul) / 2;
     TREE_ORBITS.push({
       x: 50 + Math.cos(center) * midR * XS,
       y: 50 + Math.sin(center) * midR,
@@ -122,7 +137,7 @@ function branchPath(from: { x: number; y: number }, to: { x: number; y: number }
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.hypot(dx, dy) || 1;
-  const bow = Math.min(7, len * 0.16);
+  const bow = Math.min(3, len * 0.08); // gentle sway — a heavy bow detached tips from the line
   const mx = (from.x + to.x) / 2 + (-dy / len) * bow;
   const my = (from.y + to.y) / 2 + (dx / len) * bow;
   return `M ${from.x} ${from.y} Q ${mx} ${my}, ${to.x} ${to.y}`;

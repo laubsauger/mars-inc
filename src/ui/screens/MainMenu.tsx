@@ -6,7 +6,7 @@
 import { useRef } from 'react';
 import { useUiStore, type MenuView } from '../store';
 import { SocialFooter } from '../SocialFooter';
-import { ARENAS, type ArenaId } from '../../sim/arena';
+import { ARENAS, type ArenaId, DIFFICULTIES } from '../../sim/arena';
 import { Frame, MenuShell, Panel } from './menu/shared';
 import { GloryTree } from './menu/GloryTree';
 import { WarriorPanel } from './menu/WarriorPanel';
@@ -116,6 +116,48 @@ function ActSelector() {
   );
 }
 
+// Global DIFFICULTY selector (T-Act) — appears only after the Act-2 boss falls. The
+// chosen tier scales enemy HP / pace / Glory on EVERY arena, so Act 1 stays a live
+// challenge and progression is a clear ladder.
+function DifficultySelector() {
+  const difficulty = useUiStore((s) => s.settings.difficulty);
+  const set = useUiStore((s) => s.applySetting);
+  const unlocked = useUiStore((s) => s.profile.difficultyUnlocked);
+  if (!unlocked) return null;
+  return (
+    <div className="mb-3">
+      <div className="mb-1.5 px-1 text-[11px] uppercase tracking-widest text-dust">Difficulty</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {DIFFICULTIES.map((d, i) => {
+          const selected = (difficulty ?? 0) === i;
+          return (
+            <button
+              key={d.id}
+              onClick={() => set({ difficulty: i })}
+              className={`rounded-sm border-2 px-2 py-2 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.7)] transition focus:outline-none ${
+                selected
+                  ? 'border-gold bg-umber/85'
+                  : 'border-rust/55 bg-pit/45 hover:border-bone/40'
+              }`}
+              title={`Enemy HP ×${d.hpMult} · pace ×${d.paceMult} · Glory ×${d.gloryMult}`}
+            >
+              <div className="text-[12px] font-black uppercase tracking-wider text-bone">
+                {d.name}
+              </div>
+              <div className="mt-0.5 text-[10px] leading-tight text-bone/55">
+                HP ×{d.hpMult}
+                {d.gloryMult > 1 ? (
+                  <span className="text-gold"> · +{Math.round((d.gloryMult - 1) * 100)}% ◆</span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Root() {
   const setMenuView = useUiStore((s) => s.setMenuView);
   const enterPit = useUiStore((s) => s.enterPit);
@@ -141,6 +183,7 @@ function Root() {
         </button>
 
         <ActSelector />
+        <DifficultySelector />
 
         <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {ITEMS.map((it) => (

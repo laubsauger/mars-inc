@@ -2,7 +2,14 @@
 // enemies at a staggered low frequency (§8.2), advances telegraph→active,
 // integrates motion, and applies contact damage to the player.
 
-import { EnemyPool, EnemyState, steerEnemy, DEFAULT_STEER } from './enemies';
+import {
+  EnemyPool,
+  EnemyState,
+  SpawnKind,
+  steerEnemy,
+  DEFAULT_STEER,
+  ENEMY_BY_VARIANT,
+} from './enemies';
 import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
 import { knockbackVelocity } from './movement';
@@ -11,6 +18,7 @@ import { clampPoint, interiorPoint, arenaContains } from './arena';
 
 const ACTIVATE_MARGIN = 1.4; // activate this far OUTSIDE the wall (in the gate) so the
 // march→steer turn is hidden in the tunnel, not a jerk over the visible threshold
+const ENTRY_EASE = 0.5; // s to lerp the straight gate march into steering (no snap)
 const ROAM_PERIOD = 280; // ticks (~4.7s) a roamer commits to one wander destination
 /** Cheap deterministic 0..1 hash (no Math.random in sim, V16). */
 function hash01(x: number): number {
@@ -73,15 +81,19 @@ export class EnemySystem {
           p.posX[i]! += p.velX[i]! * dt;
           p.posZ[i]! += p.velZ[i]! * dt;
         }
-        // Go LIVE as it reaches the gate threshold (was a fixed timer that left it
-        // intangible for a second+ after it had clearly walked in). Activate a touch
+        // GATE walk-ins go LIVE as they reach the threshold (was a fixed timer that
+        // left them intangible a second+ after they'd walked in). Activate a touch
         // BEFORE the wall line (ACTIVATE_MARGIN, still in the gate tunnel) so the
-        // march→steer velocity re-orient happens back in the gate, not as a visible
-        // jerk over the step. The timer is a safety floor so anything that never
-        // enters still activates.
+        // march→steer re-orient is hidden in the gate, not a jerk over the step.
+        // Interior (teleport) spawns aren't "crossing in" → timer only. The timer is
+        // also a safety floor for anything that never enters.
         p.stateTimer[i]! -= dt;
-        if (p.stateTimer[i]! <= 0 || arenaContains(p.posX[i]!, p.posZ[i]!, ACTIVATE_MARGIN)) {
+        const crossedIn =
+          p.spawnKind[i] === SpawnKind.Gate &&
+          arenaContains(p.posX[i]!, p.posZ[i]!, ACTIVATE_MARGIN);
+        if (p.stateTimer[i]! <= 0 || crossedIn) {
           p.state[i] = EnemyState.Active;
+          p.entryEase[i] = ENTRY_EASE; // ease the march velocity INTO steering, no snap
         }
         continue;
       }
@@ -98,8 +110,12 @@ export class EnemySystem {
           m++;
         }
         // Hold at the contact ring (footprint + a small gap) so the crowd circles
-        // the player instead of converging on the centre point and jiggling.
-        const stopDist = player.stats.collisionRadius + p.radius[i]! + 0.12;
+        // the player instead of converging on the centre point and jiggling. RANGED
+        // units with a `standoff` instead hold at that bigger distance — they trail
+        // the player at range (repositioning as you move) rather than rushing to melee.
+        const standoff = ENEMY_BY_VARIANT[p.variant[i]!]?.standoff ?? 0;
+        const stopDist =
+          standoff > 0 ? standoff : player.stats.collisionRadius + p.radius[i]! + 0.12;
         // Aggro gate (T-roam): a lurker outside its engagement radius ROAMS (slow
         // wander toward a drifting point) instead of homing the player — it only
         // locks on once you close in. Deterministic from id + tick (V16/V21).
@@ -137,9 +153,22 @@ export class EnemySystem {
           DEFAULT_STEER,
           stopDist,
         );
-        p.velX[i] = v.x;
-        p.velZ[i] = v.z;
+        // Entry ease: right after the gate march, blend the held march velocity
+        // toward the steer output so the direction turns over ENTRY_EASE seconds
+        // instead of snapping the instant steering takes over (walk-in jank).
+        const e = p.entryEase[i]!;
+        if (e > 0) {
+          const k = 1 - e / ENTRY_EASE; // 0 just-activated → 1 eased-in
+          p.velX[i] = p.velX[i]! * (1 - k) + v.x * k;
+          p.velZ[i] = p.velZ[i]! * (1 - k) + v.z * k;
+        } else {
+          p.velX[i] = v.x;
+          p.velZ[i] = v.z;
+        }
       }
+
+      // Decay the post-spawn entry ease (runs every step, not just on steer ticks).
+      if (p.entryEase[i]! > 0) p.entryEase[i]! = Math.max(0, p.entryEase[i]! - dt);
 
       // Integrate (chill slows movement — status effect, T39).
       const chill = p.chillMult[i]!;
@@ -173,10 +202,20 @@ export class EnemySystem {
         if (Math.abs(p.kbZ[i]!) < 0.05) p.kbZ[i] = 0;
       }
 
-      // Keep inside the arena (shape-aware).
-      const c = clampPoint(p.posX[i]!, p.posZ[i]!, 1);
-      p.posX[i] = c.x;
-      p.posZ[i] = c.z;
+      // Keep inside the arena (shape-aware) — but DON'T clamp an enemy that just
+      // went live and is still WALKING IN from the gate (outside the keep-in boundary,
+      // moving inward). Clamping it would snap it forward across the threshold (the
+      // "zip in" jank). It clamps normally once it's inside, or if it's being pushed
+      // further OUT (knockback) rather than ambling in.
+      const px = p.posX[i]!;
+      const pz = p.posZ[i]!;
+      const inside = arenaContains(px, pz, -1); // within the keep-in boundary
+      const movingOut = px * p.velX[i]! + pz * p.velZ[i]! > 0; // radial velocity outward
+      if (inside || movingOut) {
+        const c = clampPoint(px, pz, 1);
+        p.posX[i] = c.x;
+        p.posZ[i] = c.z;
+      }
 
       // Contact damage: triggers when the enemy reaches the player's FOOTPRINT
       // ring. Reach scales with the enemy's OWN size (×1.35) so a big brute can

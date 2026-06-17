@@ -37,6 +37,7 @@ export function buildProfileView(
     runCount: save.current.runHistory.length,
     byCombo,
     bossDefeated: !!save.current.unlocks['boss-beaten'],
+    difficultyUnlocked: !!save.current.unlocks['difficulty-unlocked'],
     discoveredWeapons: Object.keys(save.current.unlocks)
       .filter((k) => k.startsWith('weapon:') && save.current.unlocks[k])
       .map((k) => k.slice('weapon:'.length)),
@@ -58,6 +59,7 @@ export function buildSettingsView(save: SaveManager): SettingsView {
     enemyHealthbars: s.enemyHealthbars,
     toonShading: s.toonShading,
     arenaId: s.arenaId,
+    difficulty: s.difficulty ?? 0,
     showCountdown: s.showCountdown,
     cameraControls: s.cameraControls,
     showGrenadeRange: s.showGrenadeRange,

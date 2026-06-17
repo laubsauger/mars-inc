@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { EnemySystem } from './enemy-system';
-import { EnemyPool, EnemyState, RUST_MITE } from './enemies';
+import { EnemyPool, EnemyState, RUST_MITE, SpawnKind } from './enemies';
 import { createPlayer } from './player';
 
 describe('EnemySystem (T11/T13)', () => {
   it('telegraphing enemy does not move or deal damage', () => {
     const pool = new EnemyPool();
-    pool.spawn(RUST_MITE, 0.1, 0, 1.0, 0); // overlapping player but Telegraph
+    // Interior (teleport) telegraph spawn overlapping the player: stays Telegraph on
+    // its timer (a gate walk-in would instead go live on crossing the threshold).
+    pool.spawn(RUST_MITE, 0.1, 0, 1.0, 0, 1, SpawnKind.Teleport);
     const sys = new EnemySystem(pool, 2);
     const player = createPlayer();
     sys.step(player, 1, 1 / 60);

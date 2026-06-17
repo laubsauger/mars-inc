@@ -41,7 +41,7 @@ import {
 } from './progression/effects';
 import { promoteSpawns, eliteProgress } from './director/elites';
 import { stepGargantuans } from './gargantuan';
-import { activeArena } from './arena';
+import { activeArena, activeDifficulty } from './arena';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
 import { applyStatusScaled, MAX_PROC_DEPTH, PROC_CHAIN_INHERIT } from './combat/proc';
@@ -67,6 +67,8 @@ export interface RunSummary {
 const COUNTDOWN_SECONDS = 3;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
 const LOCAL_CROWD_RADIUS = 7; // m around the player counted as "nearby" for crowd cards
+const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky integer ticks,
+// not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.
 const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
 
 const ZERO_INPUT: InputSnapshot = {
@@ -141,6 +143,8 @@ export class World {
   private lastNearby = 0;
   /** Offense-conditional intensity 0..1 (render-only aura cue; V2 — render never writes it). */
   buffGlow = 0;
+  /** Accumulates real time until a DoT tick fires (DOT_INTERVAL) — chunky burn/bleed. */
+  private dotTimer = 0;
   /** Were enemies near you last step? → edge-detects "breathing room" (no one within 7m). */
   private hadNearby = false;
   /** Render-facing FX events; the render layer drains this each frame. */
@@ -327,7 +331,9 @@ export class World {
       // Spawn-time HP scale (never re-scales live units, V12). Steps HARD per power
       // tier (player level + boss kills) × the Act's base difficulty, so fodder HP
       // tracks the player's escalating damage instead of the run scaling by count.
-      hpScaleFor(this.player.level, this.stats.bossKills) * activeArena().difficultyMult,
+      hpScaleFor(this.player.level, this.stats.bossKills) *
+        activeArena().difficultyMult *
+        activeDifficulty().hpMult,
       this.fx,
       // Sawtooth: each HP step thins the crowd, density re-earned across the tier.
       countSawtooth(this.player.level, this.stats.bossKills),
@@ -464,8 +470,24 @@ export class World {
     if (this.weaponSystem.firedThisStep && this.effects.has('shot')) this.fireShotTrigger();
     // On-kill / overkill triggers fire after combat resolves (T38, V21 pipeline).
     const triggerDmg = this.fireKillTriggers();
-    // Status step (§5.4): burn DoT, chill/mark decay (T39).
-    const statusDmg = tickStatus(this.enemies, this.rng, dt, this.fx, this.mods.statusDamageMult);
+    // Status step (§5.4): burn DoT, chill/mark decay (T39). DoT DAMAGE is gated to
+    // ~2/s ticks (dotDt = the accumulated interval, 0 between ticks) so each burn hit
+    // is one chunky integer number, not 60 sub-1 ticks/s; status DURATIONS still count
+    // down every step (real dt) for correct timing.
+    this.dotTimer += dt;
+    let dotDt = 0;
+    if (this.dotTimer >= DOT_INTERVAL) {
+      dotDt = this.dotTimer;
+      this.dotTimer = 0;
+    }
+    const statusDmg = tickStatus(
+      this.enemies,
+      this.rng,
+      dt,
+      this.fx,
+      this.mods.statusDamageMult,
+      dotDt,
+    );
     // Status reactions (T53): primed status pairs consume + burst (V28). Off
     // until an upgrade enables one, so this is free in the base game.
     const reactionDmg = this.resolveReactions();
@@ -913,6 +935,7 @@ export class World {
     this.hadEnemies = false;
     this.hadNearby = false;
     this.lastNearby = 0;
+    this.dotTimer = 0;
     this.prevSprintActive = false;
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
     // Draft resources read the permanent bonuses applied above (T35), so reset the
