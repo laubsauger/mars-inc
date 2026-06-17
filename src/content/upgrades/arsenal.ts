@@ -15,7 +15,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'entrenchment',
     name: 'Entrenchment',
-    description: 'Dig in: damage ramps the longer you STAND STILL (up to +60%), resets on move.',
+    description:
+      'Dig in: +6% damage per second you hold position (max +60%/level). Walking drains it 2×/s; a sprint cancels it.',
     tags: ['ramp', 'damage', 'conditional'],
     grantsTags: ['ramp'],
     rarity: 'uncommon',

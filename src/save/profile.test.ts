@@ -39,6 +39,28 @@ describe('normalizeProfile (V14 forward-compatible, ⊥ throw on partial)', () =
     expect(p.recordsByArenaCharacter['rust-crown|lilu-tubs']!.mostKills).toBe(0); // filled
   });
 
+  it('fills + coerces the per-boss kill tally (T79, V40)', () => {
+    // Old save with no tally → empty map (additive, no migration needed).
+    expect(normalizeProfile({ schemaVersion: 1 })!.bossKills).toEqual({});
+    // Valid counts survive; junk / negative values are dropped, not crashed on.
+    const p = normalizeProfile({
+      bossKills: { 'gatekeeper-of-phobos': 3, 'foreman-krill': -2, junk: 'x' },
+    })!;
+    expect(p.bossKills['gatekeeper-of-phobos']).toBe(3);
+    expect(p.bossKills['foreman-krill']).toBeUndefined();
+    expect(p.bossKills['junk']).toBeUndefined();
+  });
+
+  it('fills + coerces per-boss mastery feats (T46)', () => {
+    expect(normalizeProfile({ schemaVersion: 1 })!.bossMastery).toEqual({});
+    const p = normalizeProfile({
+      bossMastery: { 'gatekeeper-of-phobos': ['defeat', 'fast', 'defeat', 7], bad: 'x' },
+    })!;
+    // Dedupes + drops non-strings; non-array entries are ignored.
+    expect(p.bossMastery['gatekeeper-of-phobos']).toEqual(['defeat', 'fast']);
+    expect(p.bossMastery['bad']).toBeUndefined();
+  });
+
   it('merges partial settings without dropping known keys', () => {
     const p = normalizeProfile({ settings: { masterVolume: 0.1 } })!;
     expect(p.settings.masterVolume).toBe(0.1);

@@ -120,14 +120,15 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'orbital-lease',
     name: 'Orbital Lease',
-    description: 'KEYSTONE: every shot detonates on impact — trade precision for area.',
+    description:
+      'KEYSTONE: +60% blast damage AND explosive/AoE cards are offered ×2 more often — the run brings the boom, this magnifies it.',
     branch: 'command',
     rarity: 'legendary',
     cost: 380,
     maxLevel: 1,
-    apply: (_p, _level, mods) => {
-      mods.blastRadius += 2.2;
-      mods.blastDamageMult = Math.max(mods.blastDamageMult, 0.6); // keystone splash actually bites
+    apply: (p, _level, mods) => {
+      mods.blastDamageMult = Math.min(1.2, mods.blastDamageMult + 0.6); // amplify (needs drafted AoE)
+      for (const t of ['explosive', 'aoe']) p.draftTagBias[t] = (p.draftTagBias[t] ?? 1) * 2;
     },
   },
   {

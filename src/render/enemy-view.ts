@@ -50,8 +50,13 @@ const VARIANT_COLORS = [
   COL.toxicGreen, // 9 Liability Blob (splitter ooze)
   COL.toxicGreen, // 10 Blobling
   COL.eliteMagenta, // 11 Phase Stalker (teleport ambusher)
-  COL.laserRed, // 12 Lance Sentinel — hot crimson laser turret
+  COL.sentinelSteel, // 12 Lance Sentinel — cold steel-blue hull (⊥ its red beam)
   COL.devourerViolet, // 13 Gargantuan — deep violet hulk
+  COL.brass, // 14 Foreman Krill (Act 1 mini I)
+  COL.kineticGold, // 15 Repo Sovereign (Act 1 mini II)
+  COL.healthRed, // 16 Magma Notary (Act 2 mini I)
+  COL.shieldCyan, // 17 Frostbite Magnate (Act 2 mini II)
+  COL.eliteMagenta, // 18 Devourer Prime (Act 2 final)
 ];
 
 // Silhouette families.
@@ -84,6 +89,11 @@ export const VARIANT_SHAPE: number[] = [
   Shape.Runner, // 11 phase stalker (fast chaser silhouette)
   Shape.Saucer, // 12 lance sentinel (hovering UFO turret)
   Shape.Brute, // 13 gargantuan (big asymmetric mass)
+  Shape.Brute, // 14 Foreman Krill (mini)
+  Shape.Boss, // 15 Repo Sovereign (mini — arena-machinery read)
+  Shape.Brute, // 16 Magma Notary (mini)
+  Shape.Boss, // 17 Frostbite Magnate (mini)
+  Shape.Boss, // 18 Devourer Prime (final)
 ];
 // Per-variant silhouette tweak [widthMul, heightMul] on top of the radius scale —
 // keeps fodder readable above an OCEAN of XP shards (shards sit at ~0.5 tall, so a

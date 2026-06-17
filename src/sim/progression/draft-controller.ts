@@ -36,6 +36,10 @@ const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
 const STARTING_LOCKS = 1; // per-run draft locks — hold a card for the next draft (T71)
 const STARTING_TAG_BANISHES = 1; // per-run tag banishes — drop a whole tag from the pool (T71)
 const SKIP_HEAL_FRAC = 0.15; // skipping a draft heals this fraction of max HP
+// Run-phase rarity lift (T44/V23): each boss kill adds this to the rarity `level`
+// dial, so rarer cards grow more likely as the run graduates power tiers. Matches
+// the wave-director's TIER_SIZE so a boss ≈ a full tier of rarity progress.
+const BOSS_RARITY_TIER = 5;
 
 /** Stable run refs + hooks the draft needs. player/mods/effects/stats are mutated
  *  in place across runs, so capturing them once is safe. */
@@ -258,6 +262,7 @@ export class DraftController {
             boost: this.foundationBoost(),
             tagBias: this.deps.player.draftTagBias,
             rarityBias: this.deps.player.draftRarityBias,
+            rarityLevelBonus: this.rarityLevelBonus(),
           })
         : [];
     return this.ensureMilestone([...forced, ...fresh], exclude);
@@ -278,6 +283,7 @@ export class DraftController {
       luck: this.deps.player.luck,
       banished: shownIds,
       rarityFilter: INTERESTING_RARITIES,
+      rarityLevelBonus: this.rarityLevelBonus(),
     });
     if (!pick) return hand; // pool had nothing rare+ left → keep the common hand (V11)
     // Replace a common slot (prefer the last, leave Lock-held slot 0 alone).
@@ -303,6 +309,7 @@ export class DraftController {
       boost: this.foundationBoost(),
       tagBias: this.deps.player.draftTagBias,
       rarityBias: this.deps.player.draftRarityBias,
+      rarityLevelBonus: this.rarityLevelBonus(),
     });
     return [...kept, ...fresh];
   }
@@ -320,6 +327,12 @@ export class DraftController {
 
   /** Foundation pity (T-pity): nudge the draft toward offence if the build has
    *  little/no kill power as the boss gearcheck looms. Soft — never forces a pick. */
+  /** Run-phase rarity lift (T44/V23): bosses slain × the per-tier bonus, fed to the
+   *  draft's rarity dial so rarer cards open up as the run advances power tiers. */
+  private rarityLevelBonus(): number {
+    return this.deps.stats.bossKills * BOSS_RARITY_TIER;
+  }
+
   private foundationBoost(): DraftBoost | undefined {
     const offense = this.offenseOwned();
     const lvl = this.deps.player.level;

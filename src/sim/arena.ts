@@ -35,7 +35,7 @@ export const COLD_VAULT: ArenaDef = {
   shape: { kind: 'rect', halfW: 56, halfZ: 31.5 },
   accent: '#32d7ff', // shield cyan / blue
   act: 1,
-  tagline: 'Standard contract. Learn the pit, build your loadout.',
+  tagline: 'Standard contract for freshmen.',
   difficultyMult: 1,
   paceMult: 1,
   gloryMult: 1,

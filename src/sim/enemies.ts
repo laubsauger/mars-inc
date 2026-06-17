@@ -87,6 +87,9 @@ export interface EnemyType {
   /** Damage-absorb charges (T-beam): each blocks ONE incoming damage instance
    *  (a flat shield that pops on the first hit). Absent/0 = no shield. */
   shield?: number;
+  /** Boss marker (T75): a boss body driven by the BossController + sequenced by the
+   *  act runner. Identity (name/tier/phases/charge) lives in `content/bosses.ts`. */
+  boss?: boolean;
 }
 
 /** Touch damage when an enemy reaches the player, unless its type overrides it. */
@@ -156,6 +159,9 @@ export class EnemyPool {
   /** Seconds of velocity-ease left after going Active — blends the straight gate
    *  march into steering so the walk-in handoff doesn't snap (T-roam/entry). */
   readonly entryEase: Float32Array;
+  /** Seconds the enemy PLANTS (no self-steering) — a beam turret stops to aim+fire,
+   *  then resumes. Knockback still applies, so a shove can still move it (T-beam). */
+  readonly anchorTime: Float32Array;
 
   constructor(capacity: number = MAX_ENEMIES) {
     this.capacity = capacity;
@@ -198,6 +204,7 @@ export class EnemyPool {
     this.elite = new Uint8Array(capacity);
     this.evaluated = new Uint8Array(capacity);
     this.entryEase = new Float32Array(capacity);
+    this.anchorTime = new Float32Array(capacity);
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
@@ -257,6 +264,7 @@ export class EnemyPool {
     this.elite[i] = 0;
     this.evaluated[i] = 0;
     this.entryEase[i] = 0;
+    this.anchorTime[i] = 0;
     return i;
   }
 
@@ -314,6 +322,7 @@ export class EnemyPool {
       this.elite[i] = this.elite[last]!;
       this.evaluated[i] = this.evaluated[last]!;
       this.entryEase[i] = this.entryEase[last]!;
+      this.anchorTime[i] = this.anchorTime[last]!;
     }
   }
 
@@ -369,6 +378,85 @@ export const BOSS_GATEKEEPER: EnemyType = {
   variant: 2,
   threat: 250,
   contactDamage: 22, // body-checks hurt — don't stand in the Gatekeeper
+  boss: true,
+  gore: 'blood',
+};
+
+// ── Act bosses (T75) ─────────────────────────────────────────────────────────
+// Each act fields a roster of distinct bosses (Miniboss I, Miniboss II, Final).
+// They share the pooled-enemy body + the BossController fight framework; their
+// IDENTITY (name / tier / phase count / charge) is data in `content/bosses.ts`.
+// Minibosses are smaller, lower-HP, fewer phases; finals are the big set-pieces.
+// All bleed (gore) so the boss-death blood catastrophe reads (T77).
+
+// Act 1 Miniboss I — a squat foreman; the first real wall, no lunge yet.
+export const FOREMAN_KRILL: EnemyType = {
+  id: 'foreman-krill',
+  radius: 1.7,
+  maxHealth: 540,
+  speed: 2.6,
+  separationWeight: 0.35,
+  variant: 14,
+  threat: 160,
+  contactDamage: 16,
+  boss: true,
+  gore: 'blood',
+};
+
+// Act 1 Miniboss II — repossession sovereign; faster, charges.
+export const REPO_SOVEREIGN: EnemyType = {
+  id: 'repo-sovereign',
+  radius: 1.9,
+  maxHealth: 880,
+  speed: 2.5,
+  separationWeight: 0.32,
+  variant: 15,
+  threat: 200,
+  contactDamage: 18,
+  boss: true,
+  gore: 'blood',
+};
+
+// Act 2 Miniboss I — magma notary; heavy, hits hard.
+export const MAGMA_NOTARY: EnemyType = {
+  id: 'magma-notary',
+  radius: 1.9,
+  maxHealth: 1040,
+  speed: 2.5,
+  separationWeight: 0.32,
+  variant: 16,
+  threat: 220,
+  contactDamage: 18,
+  boss: true,
+  gore: 'blood',
+};
+
+// Act 2 Miniboss II — frostbite magnate; charges + chunky.
+export const FROSTBITE_MAGNATE: EnemyType = {
+  id: 'frostbite-magnate',
+  radius: 2.0,
+  maxHealth: 1380,
+  speed: 2.4,
+  separationWeight: 0.3,
+  variant: 17,
+  threat: 240,
+  contactDamage: 20,
+  boss: true,
+  gore: 'blood',
+};
+
+// Act 2 Final — Devourer Prime; the biggest set-piece, 3 phases + charge.
+export const DEVOURER_PRIME: EnemyType = {
+  id: 'devourer-prime',
+  radius: 2.7,
+  maxHealth: 2600,
+  speed: 2.3,
+  separationWeight: 0.3,
+  variant: 18,
+  threat: 320,
+  contactDamage: 24,
+  boss: true,
+  gore: 'blood',
 };
 
 // Severance Lobber — first ranged class (T33). Hangs back (slow) and lobs a
@@ -542,6 +630,11 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Phase Stalker',
   'Lance Sentinel',
   'Gargantuan',
+  'Foreman Krill',
+  'Repo Sovereign',
+  'Magma Notary',
+  'Frostbite Magnate',
+  'Devourer Prime',
 ];
 
 // Frostbite Auditor — cryo lobber (T33). Lobs a slow-fusing FROST writ that
@@ -576,7 +669,7 @@ export const FROSTBITE_AUDITOR: EnemyType = {
  *  to keep moving off its firing line. */
 export const LANCE_SENTINEL: EnemyType = {
   id: 'lance-sentinel',
-  radius: 1.1, // bigger — a real hovering hulk, not fodder-sized
+  radius: 1.5, // a real hovering hulk — clearly bigger than the crowd
   maxHealth: 140, // hefty — a real obstacle, not fodder
   speed: 1.4, // slow creeping turret, but mobile enough to reposition between shots
   separationWeight: 0.7,
@@ -629,6 +722,11 @@ export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
   PHASE_STALKER,
   LANCE_SENTINEL,
   GARGANTUAN,
+  FOREMAN_KRILL,
+  REPO_SOVEREIGN,
+  MAGMA_NOTARY,
+  FROSTBITE_MAGNATE,
+  DEVOURER_PRIME,
 ];
 
 /**

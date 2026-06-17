@@ -119,10 +119,19 @@ function LevelXp() {
 
 function EnemyCounter() {
   const enemiesAlive = useUiStore((s) => s.hud.enemiesAlive);
+  const runGlory = useUiStore((s) => s.hud.runGlory);
   return (
     <div className="absolute top-5 right-6 min-w-28 border border-rust/80 bg-pit/72 px-3 py-2 text-right font-mono shadow-[0_12px_34px_rgba(0,0,0,0.45),inset_0_0_0_1px_rgba(240,200,121,0.08)]">
       <div className="text-[10px] uppercase text-dust">Hostiles</div>
       <div className="text-2xl font-black leading-none text-gold tabular-nums">{enemiesAlive}</div>
+      <div
+        className="mt-1.5 flex items-center justify-end gap-1 border-t border-rust/40 pt-1 text-[11px] tabular-nums text-gold/90"
+        title="Martian Glory earned this run so far (banked when the run ends)"
+      >
+        <span className="text-[9px] uppercase tracking-wide text-dust">Glory</span>
+        <span className="font-bold">+{runGlory.toLocaleString()}</span>
+        <span className="text-gold/70">◆</span>
+      </div>
     </div>
   );
 }
@@ -134,7 +143,15 @@ function Announce() {
   useEffect(() => {
     if (!announce) return;
     setShown(announce);
-    const ms = announce.kind === 'boss' ? 3200 : 1900;
+    // Bosses linger longest; waves/evolutions medium; enemy toasts shortest.
+    const ms =
+      announce.kind === 'boss' || announce.kind === 'miniboss'
+        ? 3200
+        : announce.kind === 'unlock'
+          ? 2800
+          : announce.kind === 'wave' || announce.kind === 'evolution'
+            ? 2200
+            : 1900;
     const t = setTimeout(() => setShown(null), ms);
     return () => clearTimeout(t);
     // Re-fire whenever a new event id arrives.
@@ -142,26 +159,121 @@ function Announce() {
 
   if (!shown) return null;
 
-  if (shown.kind === 'boss') {
+  // FINAL / MINIBOSS — big centered warning. The kind (not a live slice) decides the
+  // tier label so it can never read "FINAL BOSS" over a themed wave again.
+  if (shown.kind === 'boss' || shown.kind === 'miniboss') {
+    const isFinal = shown.kind === 'boss';
     return (
       <div
-        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-20 py-8 text-center font-mono"
+        className={`pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 text-center font-mono ${
+          isFinal ? 'px-24 py-10' : 'px-20 py-8'
+        }`}
         style={{ background: JUICE_BACKDROP }}
       >
-        <div className="text-xs tracking-[0.5em] text-ember [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
-          ⚠ WARDEN INBOUND ⚠
+        <div
+          className={`tracking-[0.5em] [text-shadow:0_2px_8px_rgba(0,0,0,0.95)] ${
+            isFinal ? 'text-sm text-gold' : 'text-xs text-ember'
+          }`}
+        >
+          {isFinal ? '☠ FINAL BOSS ☠' : '⚠ MINIBOSS INBOUND ⚠'}
         </div>
-        <div className="mt-1 text-3xl font-black uppercase tracking-widest text-gold [text-shadow:0_3px_12px_rgba(0,0,0,0.95),0_0_22px_rgba(255,210,63,0.45)]">
+        <div
+          className={`mt-1 font-black uppercase tracking-widest text-gold ${
+            isFinal
+              ? 'text-5xl [text-shadow:0_4px_16px_rgba(0,0,0,0.95),0_0_34px_rgba(255,210,63,0.65)]'
+              : 'text-3xl [text-shadow:0_3px_12px_rgba(0,0,0,0.95),0_0_22px_rgba(255,210,63,0.45)]'
+          }`}
+        >
+          {shown.text}
+        </div>
+        {isFinal && (
+          <div className="mt-2 text-[11px] uppercase tracking-[0.4em] text-ember/90 [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
+            Act finale
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // EVOLUTION — a gold/cyan upgrade flourish (its own read, not a threat).
+  if (shown.kind === 'evolution') {
+    return (
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-16 py-6 text-center font-mono"
+        style={{ background: JUICE_BACKDROP }}
+      >
+        <div className="text-xs tracking-[0.5em] text-cyan [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
+          ◆ WEAPON EVOLVED ◆
+        </div>
+        <div className="mt-1 text-2xl font-black uppercase tracking-widest text-cyan [text-shadow:0_3px_12px_rgba(0,0,0,0.95),0_0_22px_rgba(50,215,255,0.45)]">
+          {shown.text.replace(/^EVOLVED — /, '')}
+        </div>
+      </div>
+    );
+  }
+
+  // UNLOCK — a first-kill breadth reward (tree branch / next act / prestige seed).
+  if (shown.kind === 'unlock') {
+    return (
+      <div
+        className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 px-16 py-6 text-center font-mono"
+        style={{ background: JUICE_BACKDROP }}
+      >
+        <div className="text-xs tracking-[0.5em] text-gold [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
+          ◆ UNLOCKED ◆
+        </div>
+        <div className="mt-1 text-2xl font-black uppercase tracking-widest text-gold [text-shadow:0_3px_12px_rgba(0,0,0,0.95),0_0_22px_rgba(255,210,63,0.5)]">
           {shown.text}
         </div>
       </div>
     );
   }
+
+  // WAVE — a scripted milestone burst. A mid-screen call-out, clearly NOT a boss.
+  if (shown.kind === 'wave') {
+    return (
+      <div
+        className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 px-14 py-4 text-center font-mono"
+        style={{ background: JUICE_BACKDROP }}
+      >
+        <div className="text-[10px] tracking-[0.45em] text-ember [text-shadow:0_2px_8px_rgba(0,0,0,0.95)]">
+          ⚠ INCOMING ⚠
+        </div>
+        <div className="mt-1 text-2xl font-black uppercase tracking-widest text-bone [text-shadow:0_3px_12px_rgba(0,0,0,0.95)]">
+          {shown.text}
+        </div>
+      </div>
+    );
+  }
+
+  // ENEMY — a small new-class toast at the TOP-LEFT (same top line as the Warden /
+  // Hostiles readouts), kept OFF the centre so it never covers the north gate.
   return (
-    <div className="pointer-events-none absolute top-24 left-1/2 -translate-x-1/2 border border-rust/70 bg-pit/75 px-3 py-1.5 text-center font-mono">
+    <div className="pointer-events-none absolute top-5 left-6 border border-rust/70 bg-pit/75 px-3 py-1.5 font-mono">
       <span className="text-[10px] uppercase tracking-widest text-dust">New threat — </span>
       <span className="text-sm font-bold tracking-wide text-bone">{shown.text}</span>
     </div>
+  );
+}
+
+/** Boss-presence arena escalation (T75 feedback, V39 spirit). While ANY boss is on
+ *  the field the stage reads hostile via a SUBTLE, STATIC edge vignette — ember for a
+ *  miniboss, a heavier crimson for the final. Deliberately calm: no pulsing/blinking
+ *  (there's already plenty on screen), it just eases in/out. Pure view. */
+function BossVignette() {
+  const active = useUiStore((s) => s.boss.active);
+  const tier = useUiStore((s) => s.boss.tier);
+  if (!active) return null;
+  const isFinal = tier === 'final';
+  // Edge-only darkening + a faint coloured rim — corners, not a screen-wide wash.
+  const tint = isFinal ? 'rgba(200,40,30,0.22)' : 'rgba(196,106,43,0.15)';
+  const edge = isFinal ? 'rgba(22,0,0,0.46)' : 'rgba(18,6,0,0.36)';
+  const spread = isFinal ? '110px' : '80px';
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-1000"
+      style={{ boxShadow: `inset 0 0 ${spread} ${edge}, inset 0 0 36px ${tint}` }}
+    />
   );
 }
 
@@ -170,19 +282,45 @@ function BossBar() {
   if (!boss.active) return null;
   const pct = Math.max(0, Math.min(1, boss.hp01)) * 100;
   const critical = boss.phase >= boss.phases - 1;
+  const isFinal = boss.tier === 'final';
+  // Final boss: wider, taller, gold-rimmed bar with a banner tag — a clearly bigger
+  // moment than a miniboss's lean ember bar (T78, V39).
   return (
-    <div className="absolute bottom-24 left-1/2 w-[44rem] max-w-[82vw] -translate-x-1/2 font-mono">
+    <div
+      className={`absolute bottom-24 left-1/2 -translate-x-1/2 font-mono ${
+        isFinal ? 'w-[56rem] max-w-[92vw]' : 'w-[40rem] max-w-[80vw]'
+      }`}
+    >
       <div className="mb-1 flex items-end justify-between">
-        <span className="text-sm font-black uppercase tracking-[0.3em] text-ember drop-shadow-[0_0_10px_rgba(196,106,43,0.5)]">
+        <span
+          className={`font-black uppercase tracking-[0.3em] ${
+            isFinal
+              ? 'text-lg text-gold drop-shadow-[0_0_16px_rgba(255,210,63,0.6)]'
+              : 'text-sm text-ember drop-shadow-[0_0_10px_rgba(196,106,43,0.5)]'
+          }`}
+        >
+          {isFinal && <span className="mr-2 text-ember">☠ FINAL</span>}
           {boss.name}
         </span>
-        <span className="text-[10px] uppercase tracking-widest text-dust">
-          Phase {boss.phase + 1}/{boss.phases}
+        <span
+          className={`uppercase tracking-widest ${
+            isFinal ? 'text-[11px] text-gold/80' : 'text-[10px] text-dust'
+          }`}
+        >
+          {isFinal ? 'Final Boss · ' : 'Miniboss · '}Phase {boss.phase + 1}/{boss.phases}
         </span>
       </div>
-      <div className="relative h-4 w-full overflow-hidden rounded-sm border-2 border-rust bg-pit/80 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+      <div
+        className={`relative w-full overflow-hidden rounded-sm bg-pit/80 ${
+          isFinal
+            ? 'h-6 border-2 border-gold shadow-[0_12px_40px_rgba(0,0,0,0.6),0_0_24px_rgba(255,210,63,0.25)]'
+            : 'h-4 border-2 border-rust shadow-[0_10px_30px_rgba(0,0,0,0.5)]'
+        }`}
+      >
         <div
-          className={`h-full transition-[width] duration-200 ${critical ? 'bg-ember' : 'bg-gold'}`}
+          className={`h-full transition-[width] duration-200 ${
+            critical ? 'bg-ember' : isFinal ? 'bg-gold' : 'bg-ember/80'
+          }`}
           style={{ width: `${pct}%` }}
         />
         {Array.from({ length: boss.phases - 1 }).map((_, i) => (
@@ -271,6 +409,7 @@ function ResetView() {
 export function Hud() {
   return (
     <>
+      <BossVignette />
       <HealthBar />
       <ShieldPips />
       <HotBar />

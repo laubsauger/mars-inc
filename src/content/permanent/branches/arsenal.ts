@@ -5,6 +5,40 @@
 import type { PermanentUpgrade } from '../index';
 
 export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
+  // ── Boss-gated keystones (T47/V25): revealed by a first-kill unlock, and the
+  //    second one demands mastery (feats) too. Trophies/mastery GATE, Glory PAYS. ──
+  {
+    id: 'foreman-payload',
+    name: "Foreman's Payload",
+    description: '+8% weapon damage per level. Salvaged from the Foreman.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 3,
+    gate: { unlock: 'tree:arsenal-foreman', requirement: 'Defeat Foreman Krill' },
+    apply: (_p, level, mods) => {
+      mods.damageMult += 0.08 * level;
+    },
+  },
+  {
+    id: 'sovereign-warrant',
+    name: "Sovereign's Warrant",
+    description: '+6% fire rate AND +1 pierce. Earned by mastering the Sovereign.',
+    branch: 'arsenal',
+    rarity: 'legendary',
+    cost: 320,
+    maxLevel: 2,
+    gate: {
+      unlock: 'tree:arsenal-sovereign',
+      masteryBoss: 'repo-sovereign',
+      masteryFeats: 3,
+      requirement: 'Master the Repo Sovereign (3 feats)',
+    },
+    apply: (_p, level, mods) => {
+      mods.fireRateMult += 0.06 * level;
+      mods.pierce += level;
+    },
+  },
   {
     id: 'gyro-bracing',
     name: 'Gyro Bracing',
@@ -56,37 +90,38 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'splinter-rounds',
     name: 'Splinter Rounds',
-    description: 'Start with +1 pierce per level — shots punch through the front rank.',
+    description: 'DRAFT BIAS: pierce/precision cards are offered ×1.7 more often per level.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 150,
     maxLevel: 2,
-    apply: (_p, level, mods) => {
-      mods.pierce += level;
+    apply: (p, level) => {
+      const m = Math.pow(1.7, level);
+      for (const t of ['pierce', 'precision']) p.draftTagBias[t] = (p.draftTagBias[t] ?? 1) * m;
     },
   },
   {
     id: 'ricochet-clause',
     name: 'Ricochet Clause',
-    description: 'Start with +1 ricochet bounce per level — spent shots hunt a fresh target.',
+    description: 'DRAFT BIAS: ricochet cards are offered ×1.7 more often per level.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 150,
     maxLevel: 2,
-    apply: (_p, level, mods) => {
-      mods.ricochet += level;
+    apply: (p, level) => {
+      p.draftTagBias['ricochet'] = (p.draftTagBias['ricochet'] ?? 1) * Math.pow(1.7, level);
     },
   },
   {
     id: 'arc-garnishment',
     name: 'Arc Garnishment',
-    description: 'Start with +1 chain-lightning arc per level — hits leap to packed crowds.',
+    description: 'DRAFT BIAS: chain-lightning cards are offered ×1.7 more often per level.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 160,
     maxLevel: 2,
-    apply: (_p, level, mods) => {
-      mods.chainCount += level;
+    apply: (p, level) => {
+      p.draftTagBias['chain'] = (p.draftTagBias['chain'] ?? 1) * Math.pow(1.7, level);
     },
   },
   {
@@ -141,14 +176,14 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'armor-piercing',
     name: 'Armor-Piercing Rounds',
-    description: '+2 pierce and +20% crit damage — punch through and punish.',
+    description: 'AMPLIFY: +20% crit damage, and pierce cards are offered ×1.5 more often.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 150,
     maxLevel: 1,
-    apply: (_p, _level, mods) => {
-      mods.pierce += 2;
-      mods.critDamageMult += 0.2;
+    apply: (p, _level, mods) => {
+      mods.critDamageMult += 0.2; // amplify (pays off once you draft pierce + crit)
+      p.draftTagBias['pierce'] = (p.draftTagBias['pierce'] ?? 1) * 1.5;
     },
   },
   {

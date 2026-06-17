@@ -24,7 +24,9 @@ export type {
   FloatingLabel,
   SheetView,
   PermanentView,
+  PrestigeNodeView,
   MetaState,
+  AchievementToast,
   DevBridge,
 } from './store-types';
 import type {
@@ -39,9 +41,11 @@ import type {
   BossView,
   DraftState,
   BossRewardState,
+  ConclusionState,
   FloatingLabel,
   SheetView,
   MetaState,
+  AchievementToast,
   DevBridge,
 } from './store-types';
 
@@ -54,9 +58,12 @@ export interface UiStore {
   hud: HudState;
   boss: BossView;
   announce: AnnounceState | null;
+  /** Rich achievement-unlock toast (T-ach) — coexists with `announce`. */
+  achievement: AchievementToast | null;
   inspect: InspectView | null;
   draft: DraftState;
   bossReward: BossRewardState;
+  conclusion: ConclusionState;
   labels: FloatingLabel[];
   sheet: SheetView | null;
   result: RunResultView | null;
@@ -66,6 +73,10 @@ export interface UiStore {
   /** Bridge to sim — set by boot glue, called by the upgrade screen. */
   chooseUpgrade: (index: number) => void;
   chooseBossReward: (index: number) => void;
+  /** Bridge to sim — resolve the end-of-act conclusion: extract or Overrun (T75). */
+  chooseConclusion: (extract: boolean) => void;
+  /** Bridge to sim — surrender the run (honorable self-death, banks progress, T76). */
+  surrenderRun: () => void;
   /** Bridge to sim — re-roll unlocked draft options (T41). */
   rerollDraft: (lockedIds: string[]) => void;
   /** Bridge to sim — banish a draft option for the run (T41). */
@@ -91,6 +102,10 @@ export interface UiStore {
   togglePause: () => void;
   /** Bridge to save — buy a permanent upgrade with Martian Glory. */
   buyPermanent: (id: string) => void;
+  /** Bridge to save — sacrifice the Glory tree for Red Dust (prestige, T72). */
+  prestige: () => void;
+  /** Bridge to save — buy a Red-Dust prestige node (T72). */
+  buyPrestigeNode: (id: string) => void;
   /** Bridge to save — refund ALL spent Glory and clear the Glory Tree (respec). */
   resetPermanents: () => void;
   /** Bridge to save — wipe ALL persisted progress and reload to a fresh profile. */
@@ -102,6 +117,7 @@ export interface UiStore {
   setHud: (h: HudState) => void;
   setBoss: (b: BossView) => void;
   setAnnounce: (a: AnnounceState) => void;
+  setAchievement: (a: AchievementToast) => void;
   setInspect: (v: InspectView | null) => void;
   setDraft: (d: DraftState) => void;
   setResult: (r: RunResultView | null) => void;
@@ -111,6 +127,9 @@ export interface UiStore {
   setChooseUpgrade: (fn: (index: number) => void) => void;
   setBossReward: (b: BossRewardState) => void;
   setChooseBossReward: (fn: (index: number) => void) => void;
+  setConclusion: (c: ConclusionState) => void;
+  setChooseConclusion: (fn: (extract: boolean) => void) => void;
+  setSurrenderRun: (fn: () => void) => void;
   setLabels: (l: FloatingLabel[]) => void;
   setSheet: (s: SheetView | null) => void;
   setRerollDraft: (fn: (lockedIds: string[]) => void) => void;
@@ -125,6 +144,8 @@ export interface UiStore {
   setResetView: (fn: () => void) => void;
   setTogglePause: (fn: () => void) => void;
   setBuyPermanent: (fn: (id: string) => void) => void;
+  setPrestige: (fn: () => void) => void;
+  setBuyPrestigeNode: (fn: (id: string) => void) => void;
   setResetPermanents: (fn: () => void) => void;
   setResetProgress: (fn: () => void) => void;
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) => void;
@@ -151,6 +172,7 @@ const INITIAL_HUD: HudState = {
   sprintMax: 1,
   grenade01: 1,
   autoShoot: false,
+  runGlory: 0,
 };
 
 const INITIAL_DRAFT: DraftState = {
@@ -163,12 +185,22 @@ const INITIAL_DRAFT: DraftState = {
   tagBanishesLeft: 0,
   lockedId: null,
 };
-const INITIAL_META: MetaState = { glory: 0, lastEarned: 0, permanents: [] };
+const INITIAL_META: MetaState = {
+  glory: 0,
+  lastEarned: 0,
+  permanents: [],
+  redDust: 0,
+  prestigeCount: 0,
+  prestigeUnlocked: false,
+  prestigeReady: 0,
+  prestigeNodes: [],
+};
 const INITIAL_PROFILE: ProfileView = {
   bestTimeSec: 0,
   bossDefeated: false,
   difficultyUnlocked: false,
   discoveredWeapons: [],
+  achievements: {},
   bestLevel: 0,
   mostKills: 0,
   runCount: 0,
@@ -201,11 +233,13 @@ export const useUiStore = create<UiStore>((set) => ({
   devOpen: false,
   dev: null,
   hud: INITIAL_HUD,
-  boss: { active: false, hp01: 0, phase: 0, phases: 3, name: '' },
+  boss: { active: false, hp01: 0, phase: 0, phases: 3, name: '', tier: 'final' },
   announce: null,
+  achievement: null,
   inspect: null,
   draft: INITIAL_DRAFT,
   bossReward: { open: false, id: 0, options: [] },
+  conclusion: { open: false, id: 0 },
   labels: [],
   sheet: null,
   result: null,
@@ -214,6 +248,8 @@ export const useUiStore = create<UiStore>((set) => ({
   settings: INITIAL_SETTINGS,
   chooseUpgrade: () => {},
   chooseBossReward: () => {},
+  chooseConclusion: () => {},
+  surrenderRun: () => {},
   rerollDraft: () => {},
   banishOption: () => {},
   lockCard: () => {},
@@ -226,6 +262,8 @@ export const useUiStore = create<UiStore>((set) => ({
   resetView: () => {},
   togglePause: () => {},
   buyPermanent: () => {},
+  prestige: () => {},
+  buyPrestigeNode: () => {},
   resetPermanents: () => {},
   resetProgress: () => {},
   applySetting: () => {},
@@ -234,6 +272,7 @@ export const useUiStore = create<UiStore>((set) => ({
   setHud: (hud) => set({ hud }),
   setBoss: (boss) => set({ boss }),
   setAnnounce: (announce) => set({ announce }),
+  setAchievement: (achievement) => set({ achievement }),
   setInspect: (inspect) => set({ inspect }),
   setDraft: (draft) => set({ draft }),
   setResult: (result) => set({ result }),
@@ -245,6 +284,9 @@ export const useUiStore = create<UiStore>((set) => ({
   setLabels: (labels) => set({ labels }),
   setSheet: (sheet) => set({ sheet }),
   setChooseBossReward: (chooseBossReward) => set({ chooseBossReward }),
+  setConclusion: (conclusion) => set({ conclusion }),
+  setChooseConclusion: (chooseConclusion) => set({ chooseConclusion }),
+  setSurrenderRun: (surrenderRun) => set({ surrenderRun }),
   setRerollDraft: (rerollDraft) => set({ rerollDraft }),
   setBanishOption: (banishOption) => set({ banishOption }),
   setLockCard: (lockCard) => set({ lockCard }),
@@ -257,6 +299,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setResetView: (resetView) => set({ resetView }),
   setTogglePause: (togglePause) => set({ togglePause }),
   setBuyPermanent: (buyPermanent) => set({ buyPermanent }),
+  setPrestige: (prestige) => set({ prestige }),
+  setBuyPrestigeNode: (buyPrestigeNode) => set({ buyPrestigeNode }),
   setResetPermanents: (resetPermanents) => set({ resetPermanents }),
   setResetProgress: (resetProgress) => set({ resetProgress }),
   setApplySetting: (applySetting) => set({ applySetting }),
@@ -271,12 +315,17 @@ export const uiActions = {
   setHud: (h: HudState) => useUiStore.getState().setHud(h),
   setBoss: (b: BossView) => useUiStore.getState().setBoss(b),
   setAnnounce: (a: AnnounceState) => useUiStore.getState().setAnnounce(a),
+  setAchievement: (a: AchievementToast) => useUiStore.getState().setAchievement(a),
   setInspect: (v: InspectView | null) => useUiStore.getState().setInspect(v),
   setDraft: (d: DraftState) => useUiStore.getState().setDraft(d),
   setBossReward: (b: BossRewardState) => useUiStore.getState().setBossReward(b),
   setLabels: (l: FloatingLabel[]) => useUiStore.getState().setLabels(l),
   setSheet: (sh: SheetView | null) => useUiStore.getState().setSheet(sh),
   setChooseBossReward: (fn: (i: number) => void) => useUiStore.getState().setChooseBossReward(fn),
+  setConclusion: (c: ConclusionState) => useUiStore.getState().setConclusion(c),
+  setChooseConclusion: (fn: (extract: boolean) => void) =>
+    useUiStore.getState().setChooseConclusion(fn),
+  setSurrenderRun: (fn: () => void) => useUiStore.getState().setSurrenderRun(fn),
   setResult: (r: RunResultView | null) => useUiStore.getState().setResult(r),
   setMeta: (m: MetaState) => useUiStore.getState().setMeta(m),
   setProfile: (p: ProfileView) => useUiStore.getState().setProfile(p),
@@ -294,6 +343,8 @@ export const uiActions = {
   setResetView: (fn: () => void) => useUiStore.getState().setResetView(fn),
   setTogglePause: (fn: () => void) => useUiStore.getState().setTogglePause(fn),
   setBuyPermanent: (fn: (id: string) => void) => useUiStore.getState().setBuyPermanent(fn),
+  setPrestige: (fn: () => void) => useUiStore.getState().setPrestige(fn),
+  setBuyPrestigeNode: (fn: (id: string) => void) => useUiStore.getState().setBuyPrestigeNode(fn),
   setResetPermanents: (fn: () => void) => useUiStore.getState().setResetPermanents(fn),
   setResetProgress: (fn: () => void) => useUiStore.getState().setResetProgress(fn),
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) =>

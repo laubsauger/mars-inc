@@ -116,16 +116,16 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
     id: 'toxic-bloom',
     name: 'Toxic Bloom',
     description:
-      'KEYSTONE: every kill bursts a toxic cloud — 9 damage to enemies within 3.5m of the corpse.',
+      'KEYSTONE: +40% status (DoT) damage AND status cards are offered ×2 more often — a deep toxin specialist (the RUN supplies the poison, this sharpens it).',
     branch: 'biology',
     rarity: 'legendary',
     cost: 400,
     maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('kill', (c) => {
-        c.dealArea(c.x, c.z, 3.5, 9);
-        c.fx.push('toxiccloud', c.x, c.z, 3.5); // visible green gas puff (radius in dx)
-      });
+    apply: (p, _level, mods) => {
+      mods.statusDamageMult += 0.4; // amplify — only bites once you draft DoT/status cards
+      for (const t of ['status', 'burn', 'bleed', 'corrode', 'chill', 'shock']) {
+        p.draftTagBias[t] = (p.draftTagBias[t] ?? 1) * 2;
+      }
     },
   },
   {

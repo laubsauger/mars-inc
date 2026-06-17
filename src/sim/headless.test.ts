@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { World } from './world';
-import { EnemyPool, RUST_MITE, BOSS_GATEKEEPER } from './enemies';
+import { EnemyPool, RUST_MITE, ENEMY_BY_VARIANT } from './enemies';
 import { WaveDirector, budgetAt } from './director/wave-director';
 import { Rng } from '../core/rng';
 import { makePacket, computeOutgoing } from './combat/damage';
@@ -53,20 +53,23 @@ describe('V8 director bounds', () => {
     }
   });
 
-  it('fires the Gatekeeper boss milestone once, within the cap', () => {
+  it('fields the act-1 first boss once it never dies (sequenced runner, T75)', () => {
     const pool = new EnemyPool();
     const rng = new Rng(99);
     const director = new WaveDirector();
+    director.reset(); // build the act roster (default cold-vault = Act 1)
     let elapsed = 0;
-    // ~290s: just past the stretched boss milestone (BOSS_AT 90 × TIMELINE_STRETCH 3 = 270s).
+    // ~290s: well past the act's firstBossAt (55 escalation × TIMELINE_STRETCH 2 = 110s).
     for (let t = 0; t < 17400; t++) {
       elapsed += DT;
       director.step(pool, rng, elapsed, DT);
     }
     expect(director.bossSpawned).toBe(true);
     let bosses = 0;
-    for (let i = 0; i < pool.count; i++) if (pool.variant[i] === BOSS_GATEKEEPER.variant) bosses++;
-    expect(bosses).toBe(1); // exactly one boss, milestone doesn't repeat
+    for (let i = 0; i < pool.count; i++) if (ENEMY_BY_VARIANT[pool.variant[i]!]?.boss) bosses++;
+    // Nothing kills it here, so the sequence holds at Miniboss I: exactly one boss,
+    // and the stage never advances without a kill.
+    expect(bosses).toBe(1);
   });
 });
 

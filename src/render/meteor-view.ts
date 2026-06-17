@@ -28,7 +28,11 @@ const RING_FLASH = 0.22; // s the ground ring flares after impact, then clears
 
 const ROCK = new Color(0x1a0d08); // charred body
 const ROCK_HOT = new Color(0xff7a2a); // molten leading face / glow
-const RING = new Color(1.0, 0.32, 0.1); // danger orange-red
+const RING = new Color(1.0, 0.32, 0.1); // PLAYER Moonshot: danger orange-red
+// HOSTILE boss meteor (T44): a cold VIOLET strike so the player never mistakes an
+// incoming boss orbital for their own. Ring + rock body both shift to this hue.
+const RING_HOSTILE = new Color(0.62, 0.16, 1.0);
+const ROCK_HOSTILE = new Color(0.5, 0.18, 1.1); // multiplies the rock body toward violet
 
 export class MeteorView {
   private rock: InstancedMesh;
@@ -42,6 +46,7 @@ export class MeteorView {
   private radius = new Float32Array(MAX);
   private fall = new Float32Array(MAX);
   private age = new Float32Array(MAX);
+  private hostile = new Uint8Array(MAX); // 1 = boss meteor → violet (T44)
   private count = 0;
 
   constructor(scene: Scene) {
@@ -54,9 +59,13 @@ export class MeteorView {
       emissive: ROCK_HOT.clone(),
       emissiveIntensity: 1.1,
       toneMapped: false,
+      vertexColors: true, // per-instance body tint → violet for hostile meteors (T44)
     });
     this.rock = new InstancedMesh(rockGeo, rockMat, MAX);
     this.rock.instanceMatrix.setUsage(DynamicDrawUsage);
+    const rockBuf = new Float32Array(MAX * 3).fill(1);
+    this.rock.instanceColor = new InstancedBufferAttribute(rockBuf, 3);
+    this.rock.instanceColor.setUsage(DynamicDrawUsage);
     this.rock.frustumCulled = false;
     this.rock.count = 0;
     scene.add(this.rock);
@@ -79,7 +88,16 @@ export class MeteorView {
     scene.add(this.ring);
   }
 
-  consume(events: readonly { kind: string; x: number; z: number; dx: number; dz: number }[]): void {
+  consume(
+    events: readonly {
+      kind: string;
+      x: number;
+      z: number;
+      dx: number;
+      dz: number;
+      variant: number;
+    }[],
+  ): void {
     for (const e of events) {
       if (e.kind !== 'meteor' || this.count >= MAX) continue;
       const i = this.count++;
@@ -88,6 +106,7 @@ export class MeteorView {
       this.fall[i] = e.dx > 0.05 ? e.dx : 1.2; // fall time
       this.radius[i] = e.dz > 0.5 ? e.dz : 6; // blast radius
       this.age[i] = 0;
+      this.hostile[i] = e.variant === 1 ? 1 : 0; // boss meteor → violet
     }
   }
 
@@ -116,7 +135,9 @@ export class MeteorView {
         this.dummy.rotation.set(this.age[i]! * 6.0, this.age[i]! * 4.3, this.age[i]! * 5.1);
         this.dummy.scale.setScalar(s);
         this.dummy.updateMatrix();
-        this.rock.setMatrixAt(rockN++, this.dummy.matrix);
+        this.rock.setMatrixAt(rockN, this.dummy.matrix);
+        this.rock.setColorAt(rockN, this.hostile[i] ? ROCK_HOSTILE : this.tmp.setRGB(1, 1, 1));
+        rockN++;
       }
 
       // ── Ground danger ring (telegraph → impact flash) ───────────────────────
@@ -138,13 +159,17 @@ export class MeteorView {
       this.dummy.scale.set(scale, scale, scale);
       this.dummy.updateMatrix();
       this.ring.setMatrixAt(ringN, this.dummy.matrix);
-      this.ring.setColorAt(ringN, this.tmp.copy(RING).multiplyScalar(bright));
+      this.ring.setColorAt(
+        ringN,
+        this.tmp.copy(this.hostile[i] ? RING_HOSTILE : RING).multiplyScalar(bright),
+      );
       ringN++;
     }
     this.rock.count = rockN;
     this.ring.count = ringN;
     this.rock.instanceMatrix.needsUpdate = true;
     this.ring.instanceMatrix.needsUpdate = true;
+    if (this.rock.instanceColor) this.rock.instanceColor.needsUpdate = true;
     if (this.ring.instanceColor) this.ring.instanceColor.needsUpdate = true;
   }
 
@@ -156,6 +181,7 @@ export class MeteorView {
       this.radius[i] = this.radius[last]!;
       this.fall[i] = this.fall[last]!;
       this.age[i] = this.age[last]!;
+      this.hostile[i] = this.hostile[last]!;
     }
   }
 }

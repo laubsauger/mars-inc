@@ -17,8 +17,22 @@ import { ARSENAL_PERMANENTS } from './branches/arsenal';
 import { COMMAND_PERMANENTS } from './branches/command';
 import { ARENA_PERMANENTS } from './branches/arena';
 import { INFAMY_PERMANENTS } from './branches/infamy';
+import { INFLATION_FREE, laborInflation } from '../balance/prestige';
 
 export type GloryRarity = 'common' | 'rare' | 'legendary';
+
+/** Boss gate on a Glory-tree node (T47, V25): the node stays LOCKED until a boss
+ *  unlock key is owned (its themed branch revealed) AND, optionally, enough mastery
+ *  feats are earned vs a specific boss. Trophies/mastery GATE; Glory PAYS (V25). */
+export interface PermanentGate {
+  /** Required `unlocks[key]` (a T48 first-kill key, e.g. `tree:arsenal-foreman`). */
+  unlock: string;
+  /** Optional mastery threshold: ≥ this many feats earned vs `masteryBoss`. */
+  masteryBoss?: string;
+  masteryFeats?: number;
+  /** Human label for the lock requirement (shown in the tree). */
+  requirement: string;
+}
 
 export interface PermanentUpgrade {
   id: string;
@@ -28,9 +42,27 @@ export interface PermanentUpgrade {
   rarity: GloryRarity;
   cost: number; // Martian Glory per level
   maxLevel: number;
+  /** Boss-gated node (T47): hidden/locked until the gate is satisfied. */
+  gate?: PermanentGate;
   // `mods`/`effects` let a node SEED a build (start with a status primer, a drone,
   // recoil tuning…), not just buff a player stat. Plain stat nodes ignore the extras.
   apply: (player: Player, level: number, mods: RunMods, effects: BuildEffects) => void;
+}
+
+/** Is a node's boss gate satisfied? (no gate → always). Trophies/mastery GATE, Glory
+ *  PAYS (V25). Pure — reads the persisted unlocks + per-boss mastery feat sets. */
+export function permanentGateMet(
+  def: PermanentUpgrade,
+  unlocks: Record<string, boolean>,
+  mastery: Record<string, string[]>,
+): boolean {
+  const g = def.gate;
+  if (!g) return true;
+  if (!unlocks[g.unlock]) return false;
+  if (g.masteryFeats && g.masteryBoss) {
+    if ((mastery[g.masteryBoss]?.length ?? 0) < g.masteryFeats) return false;
+  }
+  return true;
 }
 
 export const PERMANENT_UPGRADES: PermanentUpgrade[] = [
@@ -64,8 +96,21 @@ const RARITY_COST_MULT: Record<GloryRarity, number> = {
   rare: 2.6, // layer-2 nodes — meaningfully steeper than the cheap common ring
   legendary: 3.4, // branch-tip keystones — a real, run-defining Glory commitment
 };
-export function levelCost(def: PermanentUpgrade, ownedLevel: number): number {
+// Global "Labor Costs" inflation (T72/V34): the more permanent levels you own, the
+// pricier EVERY further node gets (bounded). `totalBought` = total owned levels across
+// the tree; `inflationFree` = the surcharge-free tier (raised by the Labor Union
+// prestige node). Defaults make this a no-op for callers that don't track the total.
+export function levelCost(
+  def: PermanentUpgrade,
+  ownedLevel: number,
+  totalBought = 0,
+  inflationFree = INFLATION_FREE,
+): number {
   return Math.round(
-    def.cost * UNLOCK_DISCOUNT * RARITY_COST_MULT[def.rarity] * Math.pow(COST_GROWTH, ownedLevel),
+    def.cost *
+      UNLOCK_DISCOUNT *
+      RARITY_COST_MULT[def.rarity] *
+      Math.pow(COST_GROWTH, ownedLevel) *
+      laborInflation(totalBought, inflationFree),
   );
 }

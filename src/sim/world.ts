@@ -33,6 +33,7 @@ import { stepXpResource } from './xp-resource';
 import { FxQueue } from './fx';
 import { type RunMods, defaultMods, resetMods } from './progression/mods';
 import { type PermanentLevels, applyPermanents } from './progression/permanents';
+import { type PrestigeLevels, applyPrestige } from '../content/prestige-nodes';
 import {
   BuildEffects,
   type ConditionalResult,
@@ -41,7 +42,7 @@ import {
 } from './progression/effects';
 import { promoteSpawns, eliteProgress } from './director/elites';
 import { stepGargantuans } from './gargantuan';
-import { activeArena, activeDifficulty } from './arena';
+import { activeArena, activeDifficulty, interiorPoint } from './arena';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
 import { applyStatusScaled, MAX_PROC_DEPTH, PROC_CHAIN_INHERIT } from './combat/proc';
@@ -67,6 +68,7 @@ export interface RunSummary {
 const COUNTDOWN_SECONDS = 3;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
 const LOCAL_CROWD_RADIUS = 7; // m around the player counted as "nearby" for crowd cards
+const STATIONARY_MOVE_DECAY = 2; // hold-ground ramp BLEEDS this× build-rate while moving
 const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky integer ticks,
 // not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.
 const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
@@ -145,6 +147,8 @@ export class World {
   buffGlow = 0;
   /** Accumulates real time until a DoT tick fires (DOT_INTERVAL) — chunky burn/bleed. */
   private dotTimer = 0;
+  /** Countdown to the next run-phase environmental hazard eruption (T44). */
+  private arenaHazardTimer = 0;
   /** Were enemies near you last step? → edge-detects "breathing room" (no one within 7m). */
   private hadNearby = false;
   /** Render-facing FX events; the render layer drains this each frame. */
@@ -185,6 +189,16 @@ export class World {
   bossRewardChoices: BossReward[] = [];
   bossRewardId = 0; // bumps when the overlay opens (UI refresh key)
 
+  // Act conclusion (T75/T50, V36). After the FINAL boss of the act falls (and its
+  // reward is claimed) the run freezes on a two-choice prompt: Extract (bank the
+  // win, run over) or Overrun (opt into the endless gauntlet). `pendingConclusion`
+  // bridges the gap while the final boss reward overlay is still open.
+  conclusion = false;
+  conclusionId = 0;
+  private pendingConclusion = false;
+  /** True once the player chose Overrun — the finite act is done; endless from here. */
+  infinite = false;
+
   /** Level-up → upgrade-draft lifecycle (T18/T41/T71). Owns the pending-level queue,
    *  rolled options, per-run draft resources, banished set, lock, and upgradeLevels.
    *  The public draft API is delegated to it below so the UI surface is unchanged. */
@@ -192,6 +206,8 @@ export class World {
 
   /** Owned permanent (meta) upgrade levels, applied to the player at run start. */
   private permanents: PermanentLevels;
+  /** Owned Red-Dust prestige nodes (T72) — applied at run start after permanents. */
+  private prestigeNodes: PrestigeLevels = {};
   /** Dev control board (T74): set true the moment any dev grant touches this run —
    *  main gates record/Glory banking on it (V35: a tampered run never banks). */
   cheated = false;
@@ -273,6 +289,11 @@ export class World {
     this.permanents = permanents;
   }
 
+  /** Update owned prestige nodes (T72); next run applies their run-start seeds. */
+  setPrestige(nodes: PrestigeLevels): void {
+    this.prestigeNodes = nodes;
+  }
+
   get alive(): boolean {
     return this.player.health > 0;
   }
@@ -298,7 +319,7 @@ export class World {
       return;
     }
     if (this.input.pause) this.paused = !this.paused;
-    if (this.paused || this.leveling || this.bossReward) return;
+    if (this.paused || this.leveling || this.bossReward || this.conclusion) return;
 
     // Pre-combat countdown: player can orient; no spawns; run clock held at 0.
     if (this.countdown > 0) {
@@ -321,6 +342,10 @@ export class World {
     // Capture the sprint rising edge before the dash-shock block consumes
     // `prevSprintActive` — XP Liquidation (T58) fires on the same edge.
     const sprintRising = this.player.sprint.active && !this.prevSprintActive;
+    // Orchestrate boss-creep cadence by the active boss's phase (T44/V42): a boss
+    // deeper into its phases floods more reinforcements. (One-step lag is fine — the
+    // boss controller updates phase later this step.)
+    this.director.bossPhase = this.boss.active ? this.boss.currentPhase : 0;
     // Adapt composition/pace to the build (bounded, V12) — never per-enemy stats.
     this.director.step(
       this.enemies,
@@ -419,6 +444,10 @@ export class World {
     this.prevSprintActive = this.player.sprint.active;
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
     this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
+    // Run-phase environmental hazard (T44/V23): each boss kill graduates the pit to a
+    // deadlier state — telegraphed ground eruptions start at tier 1 and quicken with
+    // each kill. Queued BEFORE enemyAttacks.step so they tick + telegraph this step.
+    this.stepArenaHazards(dt);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
     this.enemyAttacks.step(this.enemies, this.player, this.rng, dt, this.fx);
 
@@ -503,8 +532,10 @@ export class World {
       dt,
       this.input.pickup,
     );
-    // Medkits drop from kills + auto-heal on walk-over (T33+).
-    this.healthDrops.step(this.player, this.weaponSystem.kills, this.rng, this.fx, dt);
+    // Medkits drop from kills + auto-heal on walk-over (T33+). Run-phase: each boss
+    // kill raises the drop rate so survivability keeps pace with the escalation (T44).
+    const dropMult = 1 + Math.min(4, this.stats.bossKills) * 0.3;
+    this.healthDrops.step(this.player, this.weaponSystem.kills, this.rng, this.fx, dt, dropMult);
     // Bounty relics: timed map pickups that grant an upgrade draft (move-to-collect,
     // a second upgrade source on top of XP). Feeds the level-up draft pipeline.
     this.bounties.step(this.player, this.rng, this.fx, dt);
@@ -627,10 +658,48 @@ export class World {
     this.draftCtl.update(dt); // tick the flourish delay → open the draft when due
 
     // Death ends the run (loss). EACH boss kill is a progression hinge: it opens a
-    // major in-run reward (freezes the sim) and the run continues, harder — and a
-    // tougher boss follows (recurring gauntlet, V22 ×N).
+    // major in-run reward (freezes the sim) and the run continues — until the act's
+    // FINAL boss falls, which (after the reward) offers extract-or-Overrun (T75).
     if (!this.alive) this.end(false);
-    else if (this.boss.justDefeated) this.openBossReward();
+    else if (this.boss.justDefeated) this.onBossKilled();
+  }
+
+  /** A boss fell this step. Advance the act sequence, grant the major reward, and —
+   *  if that was the act's final boss — queue the conclusion prompt (T75, V36). */
+  private onBossKilled(): void {
+    this.director.advanceBossStage();
+    this.pendingConclusion = this.director.actComplete();
+    this.openBossReward();
+    // If the boss offered no reward (empty pool) the reward overlay never opened, so
+    // jump straight to the conclusion when the act is complete.
+    if (!this.bossReward && this.pendingConclusion) this.openConclusion();
+  }
+
+  /** Open the end-of-act conclusion prompt (freezes the sim like the boss reward). */
+  private openConclusion(): void {
+    this.pendingConclusion = false;
+    this.conclusion = true;
+    this.conclusionId += 1;
+  }
+
+  /** Run-phase environmental hazard (T44/V23): telegraphed ground eruptions whose
+   *  pace + spread grow with each boss kill — the pit itself escalates. Off at tier 0,
+   *  on from the first boss kill. Routes the shared hazard pool (telegraph → V9, V3
+   *  pipeline damage), deterministic via the run rng (V16). */
+  private stepArenaHazards(dt: number): void {
+    const tier = this.stats.bossKills;
+    if (tier <= 0) return;
+    this.arenaHazardTimer -= dt;
+    if (this.arenaHazardTimer > 0) return;
+    // Faster cadence each tier, floored so it never machine-guns the floor.
+    this.arenaHazardTimer = Math.max(2.4, 6.0 - tier * 0.7);
+    const count = 1 + (tier >= 3 ? 1 : 0);
+    const radius = 3.4 + Math.min(2, tier * 0.4);
+    const damage = (16 + tier * 4) * activeDifficulty().hpMult; // dodgeable (telegraphed)
+    for (let k = 0; k < count; k++) {
+      const p = interiorPoint(this.rng.next(), this.rng.next(), 0.2, 0.85);
+      this.enemyAttacks.hazardAt(p.x, p.z, radius, 1.4, damage);
+    }
   }
 
   /** Build the conditional context for this step and combine all modifiers (T38). */
@@ -638,12 +707,20 @@ export class World {
     const e = this.enemies;
     const n = e.count;
     this.firingRampSec = n > 0 ? Math.min(12, this.firingRampSec + dt) : 0;
-    // Stand-still ramp: grows while holding position, resets the instant you move.
-    // "Holding position" tracks INPUT INTENT (no WASD), not actual velocity — recoil
-    // knockback constantly drifts you, so a velocity check never let Entrenchment ramp.
-    // Deliberate movement breaks it; getting shoved around does not (V4: intent on x,z).
+    // Hold-ground ramp (Entrenchment): builds while you hold position, BLEEDS while
+    // you walk (so light repositioning costs a little, sustained running clears it),
+    // and a SPRINT/DASH hard-cancels it — sprint is the explicit "I'm relocating" verb.
+    // This is a movement game: a hard reset on any step makes the ramp unusable, so
+    // walking only decays it ~2× build-rate. Tracks INPUT INTENT, not velocity, so
+    // recoil drift never costs you (V4).
     const moving = Math.hypot(this.input.moveX, this.input.moveZ) > 0.1;
-    this.stationarySec = moving ? 0 : Math.min(12, this.stationarySec + dt);
+    if (this.player.sprint.active) {
+      this.stationarySec = 0; // sprint/dash → instant cancel
+    } else {
+      this.stationarySec = moving
+        ? Math.max(0, this.stationarySec - dt * STATIONARY_MOVE_DECAY)
+        : Math.min(12, this.stationarySec + dt);
+    }
 
     let nearest = Infinity;
     let nearby = 0;
@@ -730,8 +807,10 @@ export class World {
   private throwGrenade(): void {
     const m = this.mods;
     // Baseline is a CROWD-CONTROLLER: modest centre damage with hard falloff to the
-    // rim (aoe.ts), big knockback. Upgrades grow it into a damage dealer.
-    const dmg = (6 + 6 * m.damageMult) * m.grenadeDamageMult;
+    // rim (aoe.ts), big knockback. Tuned so it does NOT one-hit every Rust Mite (6 HP)
+    // in the radius by default — only the inner core; the outer ring survives. Damage
+    // upgrades grow it into a real dealer.
+    const dmg = (4 + 4 * m.damageMult) * m.grenadeDamageMult;
     const radius = 3.6 + Math.min(2, m.blastRadius) + m.grenadeRadiusAdd;
     // Vacuum Charge inverts the shove into a PULL (negative force → radialPush
     // sucks enemies toward the blast — a gather tool instead of a scatter).
@@ -920,6 +999,10 @@ export class World {
     this.result = null;
     this.bossReward = false;
     this.bossRewardChoices = [];
+    this.conclusion = false;
+    this.pendingConclusion = false;
+    this.infinite = false;
+    this.arenaHazardTimer = 0;
     this.cheated = false; // a fresh run is clean until a dev grant touches it (T74/V35)
     this.devGodmode = false;
     this.countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
@@ -938,6 +1021,8 @@ export class World {
     this.dotTimer = 0;
     this.prevSprintActive = false;
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
+    // Prestige seeds (Red Dust nodes, T72) stack on top of permanents at run start.
+    applyPrestige(this.player, this.prestigeNodes, this.mods, this.effects);
     // Draft resources read the permanent bonuses applied above (T35), so reset the
     // draft controller AFTER permanents.
     this.draftCtl.reset();
@@ -1130,5 +1215,27 @@ export class World {
         : this.justEvolved;
     this.bossRewardChoices = [];
     this.bossReward = false;
+    // The act's final boss reward just closed → open the extract/Overrun prompt.
+    if (this.pendingConclusion) this.openConclusion();
+  }
+
+  /** Surrender (T76, V37): end the run NOW as an honorable self-death. Routes the
+   *  normal death path (a loss), so main banks Glory + unlocks exactly like dying —
+   *  one exit, no separate Quit. ⊥ discards earned progress. */
+  surrender(): void {
+    this.end(false);
+  }
+
+  /** Resolve the end-of-act conclusion (T75/T50). `extract` banks the win and ends
+   *  the run; otherwise opt into the endless Overrun gauntlet and resume, harder. */
+  chooseConclusion(extract: boolean): void {
+    if (!this.conclusion) return;
+    this.conclusion = false;
+    if (extract) {
+      this.end(true); // won the act → bank everything, run over
+    } else {
+      this.infinite = true;
+      this.director.enterInfinite();
+    }
   }
 }

@@ -64,6 +64,21 @@ export interface PlayerProfile {
    *  no run for that combo. Additive — old saves normalize to {}. */
   recordsByArenaCharacter: Record<string, RecordData>;
   runHistory: RunSummary[];
+  /** Per-boss lifetime kill counts (T79, trophy substrate for V25/T45). Keyed by
+   *  BossDef id. Banked AT KILL TIME (V40) so surrender/quit keeps the progress.
+   *  Additive — old saves normalize to {}. */
+  bossKills: Record<string, number>;
+  /** Per-boss FEAT mastery (T46, V26): the set of feat keys earned vs each boss —
+   *  defeat / fast / flawless / family:<weapon-family>. Feat-based, ⊥ HP-padding.
+   *  Banked at kill time; gates boss-themed Glory-tree nodes (T47). Keyed by BossDef
+   *  id → unique feat keys. Additive — old saves normalize to {}. */
+  bossMastery: Record<string, string[]>;
+  /** Prestige state (T72, V31): how many times the player has sacrificed the Glory
+   *  tree for Red Dust, and the owned Red-Dust prestige-node levels. Additive. */
+  prestige: { count: number; nodes: Record<string, number> };
+  /** Achievements earned → unlock timestamp (epoch ms, stamped by the caller; the
+   *  value's only used for sort/recency, presence = earned). Additive (old saves → {}). */
+  achievements: Record<string, number>;
 }
 
 /** Compose the (arena × character) record-bucket key. */
@@ -150,6 +165,10 @@ export function createDefaultProfile(): PlayerProfile {
     records: { bestTimeSec: 0, bestLevel: 0, mostKills: 0, highestSingleHit: 0 },
     recordsByArenaCharacter: {},
     runHistory: [],
+    bossKills: {},
+    bossMastery: {},
+    prestige: { count: 0, nodes: {} },
+    achievements: {},
   };
 }
 
@@ -178,7 +197,42 @@ export function normalizeProfile(raw: unknown): PlayerProfile | null {
     records: { ...base.records, ...(migrated.records ?? {}) },
     recordsByArenaCharacter: coerceRecordMap(migrated.recordsByArenaCharacter),
     runHistory: Array.isArray(migrated.runHistory) ? migrated.runHistory.slice(0, 50) : [],
+    bossKills: coerceCountMap(migrated.bossKills),
+    bossMastery: coerceStringArrayMap(migrated.bossMastery),
+    prestige: coercePrestige(migrated.prestige),
+    achievements: coerceCountMap(migrated.achievements),
   };
+}
+
+/** Coerce the prestige slice (old saves / corrupt → fresh). Count ≥ 0, nodes = a
+ *  clean count-map. */
+function coercePrestige(raw: unknown): { count: number; nodes: Record<string, number> } {
+  const r = (typeof raw === 'object' && raw ? raw : {}) as Record<string, unknown>;
+  const count = typeof r.count === 'number' && r.count >= 0 ? Math.floor(r.count) : 0;
+  return { count, nodes: coerceCountMap(r.nodes) };
+}
+
+/** Coerce an unknown value into a `Record<string, string[]>` (old saves / corrupt →
+ *  {}); each entry's array is filtered to unique strings. Used for boss mastery (T46). */
+function coerceStringArrayMap(raw: unknown): Record<string, string[]> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (Array.isArray(v))
+      out[k] = [...new Set(v.filter((s): s is string => typeof s === 'string'))];
+  }
+  return out;
+}
+
+/** Coerce an unknown value into a `Record<string, number>` of non-negative counts
+ *  (old saves / corrupt data → {}). Used for the per-boss kill tally (T79). */
+function coerceCountMap(raw: unknown): Record<string, number> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[k] = v;
+  }
+  return out;
 }
 
 /** Serialize the profile to a portable text blob (export, §I.save). */

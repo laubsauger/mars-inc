@@ -12,8 +12,14 @@ import { PERMANENT_UPGRADES } from '../content/permanent/index';
 import { ENEMY_BY_VARIANT, ENEMY_DISPLAY_NAME } from '../sim/enemies';
 
 /** Build the dev board bridge. `pushMeta` re-syncs the Glory/meta store slice
- *  after a currency/permanent mutation. */
-export function createDevBridge(world: World, save: SaveManager, pushMeta: () => void): DevBridge {
+ *  after a currency/permanent mutation; `pushProfile` re-syncs the profile slice
+ *  (drives the menu's act/difficulty unlock gates) after an unlock toggle (T80). */
+export function createDevBridge(
+  world: World,
+  save: SaveManager,
+  pushMeta: () => void,
+  pushProfile: () => void,
+): DevBridge {
   const dev: DevBridge = {
     upgrades: DEV_UPGRADE_CATALOG,
     weapons: WEAPONS.map((w) => ({ id: w.id, name: w.displayName })),
@@ -46,6 +52,21 @@ export function createDevBridge(world: World, save: SaveManager, pushMeta: () =>
         p.currencies.martianGlory = Math.max(0, p.currencies.martianGlory + amount);
       });
       pushMeta();
+    },
+    grantRedDust: (amount: number) => {
+      save.mutate((p) => {
+        p.currencies.redDust = Math.max(0, p.currencies.redDust + amount);
+      });
+      pushMeta();
+    },
+    isUnlocked: (key: string) => !!save.current.unlocks[key],
+    setUnlock: (key: string, on: boolean) => {
+      save.mutate((p) => {
+        if (on) p.unlocks[key] = true;
+        else delete p.unlocks[key];
+      });
+      pushProfile(); // menu act/difficulty gates read the profile slice → refresh it
+      pushMeta(); // prestige availability (prestige:seed) reads the meta slice
     },
     setPermanent: (id: string, level: number, persist: boolean) => {
       const lvl = Math.max(0, Math.floor(level));

@@ -7,36 +7,27 @@ import { useRef } from 'react';
 import { useUiStore, type MenuView } from '../store';
 import { SocialFooter } from '../SocialFooter';
 import { ARENAS, type ArenaId, DIFFICULTIES } from '../../sim/arena';
-import { Frame, MenuShell, Panel } from './menu/shared';
+import { actFor } from '../../content/acts';
+import { Frame, MenuShell } from './menu/shared';
 import { GloryTree } from './menu/GloryTree';
 import { WarriorPanel } from './menu/WarriorPanel';
 import { RecordsPanel } from './menu/RecordsPanel';
 import { SettingsPanel } from './menu/SettingsPanel';
 import { ArsenalPanel } from './menu/ArsenalPanel';
 import { CreditsPanel } from './menu/CreditsPanel';
+import { AchievementsPanel } from './menu/AchievementsPanel';
 export { SettingsControls } from './menu/SettingsPanel'; // PauseScreen imports via ./MainMenu
 
-const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run' };
+const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run', icon: '⚔' };
 
-const ITEMS: { view: MenuView; label: string; sub: string }[] = [
-  { view: 'warrior', label: 'Warrior', sub: 'Choose your fighter' },
-  { view: 'arsenal', label: 'Arsenal', sub: 'Weapon rack' },
-  { view: 'glory', label: 'Glory Tree', sub: 'Permanent upgrades' },
-  { view: 'challenges', label: 'Challenges', sub: 'Modifiers & seeds' },
-  { view: 'records', label: 'Records', sub: 'Your best runs' },
-  { view: 'settings', label: 'Settings', sub: 'Audio & options' },
+const ITEMS: { view: MenuView; label: string; sub: string; icon: string }[] = [
+  { view: 'warrior', label: 'Warrior', sub: 'Choose your fighter', icon: '♟' },
+  { view: 'arsenal', label: 'Arsenal', sub: 'Weapon rack', icon: '⚒' },
+  { view: 'glory', label: 'Glory Tree', sub: 'Permanent upgrades', icon: '◆' },
+  { view: 'challenges', label: 'Achievements', sub: 'Trophies & oddities', icon: '✪' },
+  { view: 'records', label: 'Records', sub: 'Your best runs', icon: '☰' },
+  { view: 'settings', label: 'Settings', sub: 'Audio & options', icon: '⚙' },
 ];
-
-function ComingSoon({ title, blurb }: { title: string; blurb: string }) {
-  return (
-    <Panel title={title}>
-      <div className="rounded-md border border-dashed border-rust/80 bg-umber/75 p-8 text-center">
-        <div className="text-lg text-bone/80">{blurb}</div>
-        <div className="mt-2 text-xs uppercase tracking-widest text-dust">Coming soon</div>
-      </div>
-    </Panel>
-  );
-}
 
 /** Act selector — the arena IS the difficulty/Act picker (T-Act). Act 1 = Cold
  *  Vault (blue, standard); Act 2 = Rust Crown (orange, harder, more Glory). Writes
@@ -51,7 +42,10 @@ function ActSelector() {
     .sort((a, b) => a.act - b.act);
   return (
     <div className="mb-3">
-      <div className="mb-1.5 px-1 text-[11px] uppercase tracking-widest text-dust">Select Act</div>
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-y-1 px-1">
+        <span className="text-[11px] uppercase tracking-widest text-dust">Select Act</span>
+        <DifficultyChips />
+      </div>
       <div className="grid grid-cols-2 gap-1.5">
         {acts.map((a) => {
           const locked = a.act > 1 && !bossDefeated;
@@ -101,11 +95,16 @@ function ActSelector() {
               <div className="text-sm font-black text-bone">{a.name}</div>
               <div className="mt-0.5 text-[11px] leading-tight text-bone/60">{a.tagline}</div>
               <div className="mt-1 text-[10px] uppercase tracking-wide text-bone/45">
-                {a.difficultyMult > 1 ? (
-                  <span className="text-bleed/80">Tougher hosts ×{a.difficultyMult}</span>
-                ) : (
-                  'Baseline difficulty'
-                )}
+                {(() => {
+                  const act = actFor(a.act);
+                  const final = act.bosses[act.bosses.length - 1];
+                  return (
+                    <span>
+                      {act.bosses.length} bosses · final{' '}
+                      <span className="text-bleed/80">☠ {final?.name ?? '???'}</span>
+                    </span>
+                  );
+                })()}
                 {selected ? <span className="ml-1 text-bone/70">· selected</span> : null}
               </div>
             </button>
@@ -116,44 +115,44 @@ function ActSelector() {
   );
 }
 
-// Global DIFFICULTY selector (T-Act) — appears only after the Act-2 boss falls. The
-// chosen tier scales enemy HP / pace / Glory on EVERY arena, so Act 1 stays a live
-// challenge and progression is a clear ladder.
-function DifficultySelector() {
+// Global DIFFICULTY chips (T-Act) — integrated top-right of the Act selector. ALL
+// tiers are always shown; Standard (index 0) is always available, the harder tiers
+// stay LOCKED until the Act-2 final boss falls once (profile.difficultyUnlocked).
+// The chosen tier scales enemy HP / pace / Glory on EVERY arena, so Act 1 stays a
+// live challenge and progression is a clear ladder.
+function DifficultyChips() {
   const difficulty = useUiStore((s) => s.settings.difficulty);
   const set = useUiStore((s) => s.applySetting);
   const unlocked = useUiStore((s) => s.profile.difficultyUnlocked);
-  if (!unlocked) return null;
   return (
-    <div className="mb-3">
-      <div className="mb-1.5 px-1 text-[11px] uppercase tracking-widest text-dust">Difficulty</div>
-      <div className="grid grid-cols-4 gap-1.5">
-        {DIFFICULTIES.map((d, i) => {
-          const selected = (difficulty ?? 0) === i;
-          return (
-            <button
-              key={d.id}
-              onClick={() => set({ difficulty: i })}
-              className={`rounded-sm border-2 px-2 py-2 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.7)] transition focus:outline-none ${
-                selected
-                  ? 'border-gold bg-umber/85'
-                  : 'border-rust/55 bg-pit/45 hover:border-bone/40'
-              }`}
-              title={`Enemy HP ×${d.hpMult} · pace ×${d.paceMult} · Glory ×${d.gloryMult}`}
-            >
-              <div className="text-[12px] font-black uppercase tracking-wider text-bone">
-                {d.name}
-              </div>
-              <div className="mt-0.5 text-[10px] leading-tight text-bone/55">
-                HP ×{d.hpMult}
-                {d.gloryMult > 1 ? (
-                  <span className="text-gold"> · +{Math.round((d.gloryMult - 1) * 100)}% ◆</span>
-                ) : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="mr-0.5 text-[10px] uppercase tracking-widest text-dust/70">Difficulty</span>
+      {DIFFICULTIES.map((d, i) => {
+        const locked = i > 0 && !unlocked;
+        const selected = (difficulty ?? 0) === i;
+        return (
+          <button
+            key={d.id}
+            disabled={locked}
+            onClick={() => set({ difficulty: i })}
+            title={
+              locked
+                ? 'Defeat the Act 2 final boss to unlock harder tiers'
+                : `Enemy HP ×${d.hpMult} · pace ×${d.paceMult} · Glory ×${d.gloryMult}`
+            }
+            className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide transition focus:outline-none ${
+              selected
+                ? 'border-gold bg-gold/15 text-gold'
+                : locked
+                  ? 'cursor-not-allowed border-rust/30 bg-pit/40 text-bone/30'
+                  : 'border-rust/55 bg-pit/45 text-bone/70 hover:border-bone/40'
+            }`}
+          >
+            {locked ? '🔒 ' : ''}
+            {d.name}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -173,9 +172,14 @@ function Root() {
           onClick={enterPit}
           className="group mb-3 flex w-full items-center justify-between rounded-sm border-2 border-gold bg-[linear-gradient(135deg,rgba(255,210,63,0.35),rgba(196,106,43,0.42)_45%,rgba(255,59,48,0.28))] px-5 py-4 text-left shadow-[0_14px_40px_rgba(196,106,43,0.18),inset_0_0_0_1px_rgba(7,5,4,0.75)] transition hover:border-cyan hover:bg-[linear-gradient(135deg,rgba(50,215,255,0.34),rgba(216,76,255,0.25)_48%,rgba(255,210,63,0.38))] hover:shadow-[0_16px_46px_rgba(50,215,255,0.22),inset_0_0_0_1px_rgba(7,5,4,0.75)] focus:border-cyan focus:outline-none"
         >
-          <span className="min-w-0">
-            <span className="block text-2xl font-black text-bone">{PRIMARY_ITEM.label}</span>
-            <span className="mt-1 block text-sm text-bone/82">{PRIMARY_ITEM.sub}</span>
+          <span className="flex min-w-0 items-center gap-5">
+            <span className="w-11 shrink-0 text-center text-[2.7rem] leading-none text-gold drop-shadow-[0_0_10px_rgba(255,210,63,0.4)] transition group-hover:scale-110 group-hover:text-cyan">
+              {PRIMARY_ITEM.icon}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-2xl font-black text-bone">{PRIMARY_ITEM.label}</span>
+              <span className="mt-1 block text-sm text-bone/82">{PRIMARY_ITEM.sub}</span>
+            </span>
           </span>
           <span className="ml-4 shrink-0 border border-pit/80 bg-pit/70 px-3 py-1 text-sm font-black text-gold transition group-hover:text-cyan">
             START
@@ -183,22 +187,24 @@ function Root() {
         </button>
 
         <ActSelector />
-        <DifficultySelector />
 
-        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {ITEMS.map((it) => (
             <button
               key={it.view}
               onClick={() => setMenuView(it.view)}
-              className="group flex min-h-16 items-center justify-between rounded-sm border border-rust/85 bg-umber/82 px-3.5 py-2.5 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.75)] transition hover:border-cyan hover:bg-[linear-gradient(135deg,rgba(143,63,36,0.68),rgba(50,215,255,0.14))] focus:border-gold focus:outline-none"
+              className="group flex min-h-[4.25rem] items-center gap-4 rounded-sm border border-rust/85 bg-umber/82 px-4 py-3.5 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.75)] transition hover:border-cyan hover:bg-[linear-gradient(135deg,rgba(143,63,36,0.68),rgba(50,215,255,0.14))] focus:border-gold focus:outline-none"
             >
-              <span className="min-w-0">
-                <span className="block text-sm font-black text-bone md:text-base">{it.label}</span>
+              <span className="w-8 shrink-0 text-center text-3xl leading-none text-gold/90 transition group-hover:scale-110 group-hover:text-cyan">
+                {it.icon}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-black text-bone md:text-lg">{it.label}</span>
                 <span className="mt-0.5 block text-xs text-bone/62 group-hover:text-bone/88">
                   {it.sub}
                 </span>
               </span>
-              <span className="ml-3 shrink-0 text-xl text-rust transition group-hover:text-cyan">
+              <span className="shrink-0 text-xl text-rust/70 transition group-hover:translate-x-0.5 group-hover:text-cyan">
                 ▸
               </span>
             </button>
@@ -207,8 +213,9 @@ function Root() {
         <div className="mt-3 flex justify-end border-t border-rust/50 pt-3">
           <button
             onClick={() => setMenuView('credits')}
-            className="rounded-sm border border-rust/70 bg-pit/60 px-3 py-1.5 text-xs uppercase text-bone/60 transition hover:border-gold hover:text-gold focus:border-gold focus:outline-none"
+            className="flex items-center gap-1.5 rounded-sm border border-rust/70 bg-pit/60 px-3 py-1.5 text-xs uppercase text-bone/60 transition hover:border-gold hover:text-gold focus:border-gold focus:outline-none"
           >
+            <span aria-hidden>✦</span>
             Credits
           </button>
         </div>
@@ -233,7 +240,7 @@ function ActiveMenu() {
     case 'glory':
       return <GloryTree />;
     case 'challenges':
-      return <ComingSoon title="CHALLENGES" blurb="Daily seeds, redline mode, boss rush." />;
+      return <AchievementsPanel />;
     case 'root':
       return <Root />;
   }

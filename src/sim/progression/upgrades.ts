@@ -145,13 +145,19 @@ export function available(
 // Rarity drives draft odds (T41). Base rate × a level/luck boost that lifts the
 // rarer tiers as the run deepens — early picks are mostly common, late picks see
 // legendaries/corrupted/prototypes far more often.
+// Per-CARD base weight by rarity. These are tuned against the POOL COUNTS, not in a
+// vacuum: there are ~43 rare / 34 uncommon cards vs only ~9 common, so a "fair-looking"
+// 0.3 for rare made the rare TOTAL (43×0.3) outweigh commons (9×1) → drafts flooded
+// with rare/uncommon. Bases pulled down so the per-tier TOTALS land ~common 47% /
+// uncommon 32% / rare 18% / legendary+curse ~3% at base level (rarer tiers still climb
+// with level + luck from this lower floor).
 const RARITY_BASE: Record<Rarity, number> = {
   common: 1,
-  uncommon: 0.6,
-  rare: 0.3,
-  corrupted: 0.14,
-  prototype: 0.12,
-  legendary: 0.08,
+  uncommon: 0.26,
+  rare: 0.18,
+  corrupted: 0.1,
+  prototype: 0.1,
+  legendary: 0.06,
 };
 const RARITY_BOOST: Record<Rarity, number> = {
   common: 0,
@@ -234,6 +240,10 @@ export interface DraftParams {
   /** Per-rarity odds multiplier from Glory-Tree rarity nodes (e.g. {legendary: 1.4}).
    *  Folded into rarityWeight — finer control than the all-tiers `luck` lever. */
   rarityBias?: Record<string, number> | undefined;
+  /** Run-phase rarity lift (T44/V23): added to `level` ONLY for rarity weighting, so
+   *  each boss kill makes rarer tiers more likely (the run graduates a power tier).
+   *  Doesn't touch availability/prerequisites — `level` here is purely a rarity dial. */
+  rarityLevelBonus?: number | undefined;
 }
 
 /** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
@@ -300,7 +310,9 @@ export function rollDraft(
   params: DraftParams = {},
 ): UpgradeDefinition[] {
   const count = params.count ?? 3;
-  const level = params.level ?? 1;
+  // `level` here is the RARITY dial only (weightOf → rarityWeight); the run-phase
+  // bonus lifts rarer tiers per boss kill without affecting availability (V23/T44).
+  const level = (params.level ?? 1) + (params.rarityLevelBonus ?? 0);
   const luck = params.luck ?? 0;
   const boost = params.boost;
   const tagBias = params.tagBias;

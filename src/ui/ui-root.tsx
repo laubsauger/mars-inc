@@ -7,12 +7,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Unsupported } from './screens/Unsupported';
 import { UpgradeScreen } from './screens/UpgradeScreen';
 import { BossRewardScreen } from './screens/BossRewardScreen';
+import { ConclusionScreen } from './screens/ConclusionScreen';
 import { PauseScreen } from './screens/PauseScreen';
 import { FloatingLayer } from './FloatingLayer';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { MainMenu } from './screens/MainMenu';
 import { Hud } from './Hud';
 import { DevMenu } from './dev/DevMenu';
+import { AchievementToastView } from './AchievementToastView';
 import { useUiStore } from './store';
 import './index.css';
 
@@ -30,6 +32,7 @@ function Screen() {
           <Hud />
           <UpgradeScreen />
           <BossRewardScreen />
+          <ConclusionScreen />
           <PauseScreen />
         </>
       );
@@ -44,6 +47,8 @@ function App() {
   return (
     <>
       <Screen />
+      {/* Achievement toast (T-ach) — global so it shows on any screen. */}
+      <AchievementToastView />
       {/* Dev control board (T74) — always available (corner pill + F2). */}
       <DevMenu />
     </>

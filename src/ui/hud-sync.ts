@@ -4,10 +4,18 @@
 
 import type { HudState } from './store-types';
 import type { World } from '../sim/world';
+import { runScore, killScore, gloryAward } from '../content/balance/glory';
+import { activeArena, activeDifficulty } from '../sim/arena';
 
 export function buildHudState(world: World): HudState {
   const p = world.player;
   const sp = p.sprint;
+  // Glory this run has earned SO FAR (same RunScore curve as the end-screen award,
+  // T72/V34) — depth + threat-weighted kills, NO time. Boss income is separate.
+  const runGlory = gloryAward(
+    runScore({ level: p.level, killScore: killScore(world.stats.killsByVariant) }),
+    activeArena().gloryMult * activeDifficulty().gloryMult * p.gloryMult,
+  );
   return {
     health: p.health,
     maxHealth: p.maxHealth,
@@ -28,5 +36,6 @@ export function buildHudState(world: World): HudState {
     sprintMax: sp.maxCharges,
     grenade01: world.grenadeCharge01,
     autoShoot: world.autoShoot,
+    runGlory,
   };
 }

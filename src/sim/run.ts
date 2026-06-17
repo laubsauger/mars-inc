@@ -51,27 +51,10 @@ export interface RunResult {
   won: boolean; // true if the run ended by defeating the boss (T33)
 }
 
-/**
- * Martian Glory awarded for a run (T26, §9.5). Rewards how FAR you got, not just
- * showing up: depth (level) scales quadratically while time/kills are small drips
- * — a tier-1 death pays a pittance, a deep run pays real money. Beating the boss
- * pays a victory bounty. Progression unlocks possibilities, not raw power. Pure
- * & deterministic from the result.
- */
-export function gloryFor(result: RunResult, gloryMult = 1): number {
-  const win = result.won ? 200 : 0;
-  // SUB-linear depth reward (§V34: GLORY_P < 1) — the old `level²` term made deep
-  // runs pay exponentially, snowballing the Glory Tree. `level^1.4` keeps early
-  // payouts intact (~L10 unchanged) but tapers the late tail hard. Kills weight cut
-  // too: late runs rack thousands of kills, so a fat per-kill rate ballooned income.
-  // Kills weight kept low: it scales with the arena's paceMult (Act 2 floods enemies),
-  // so a fat per-kill rate double-counted difficulty on top of gloryMult. Depth (level)
-  // is the main signal; kills/duration are a modest survival bonus.
-  const base =
-    result.durationSec * 0.2 + result.kills * 0.06 + Math.pow(result.level, 1.4) * 2.4 + win;
-  // Harder Acts pay more (T-Act): the growth outlet for Glory-Tree investment.
-  return Math.floor(base * gloryMult);
-}
+// Martian Glory for a run now lives in balance data (T72/V34): `runScore` + `gloryAward`
+// in `content/balance/glory.ts` (RunScore folds depth/kills/time/boss/difficulty, then
+// a sub-linear curve). main computes it at run-end with the full inputs the RunResult
+// alone doesn't carry (boss kills, difficulty tier).
 
 /** Pure projection of accumulated stats into the result summary (V20). */
 export function computeResult(stats: RunStats, won = false): RunResult {

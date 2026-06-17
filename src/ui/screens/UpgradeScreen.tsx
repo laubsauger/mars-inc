@@ -2,8 +2,9 @@
 // colour-coded; the player can lock a card, re-roll the rest, banish an option
 // for the run, or skip the draft for a heal. Keyboard 1/2/3 selects.
 
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUiStore } from '../store';
+import { UpgradeCardContent } from '../components/UpgradeCardContent';
 
 const RARITY_STYLE: Record<
   string,
@@ -76,15 +77,26 @@ export function UpgradeScreen() {
   const key = draft.options.map((o) => o.id).join('|');
   useEffect(() => setLocked(new Set()), [key]);
 
+  // Select with a brief "grabbed" beat: the picked card pops, the others discard,
+  // then we commit the choice (~240ms — matches the CSS, stays snappy). picked
+  // resets when a fresh draft opens (key change).
+  const [picked, setPicked] = useState<number | null>(null);
+  useEffect(() => setPicked(null), [key]);
+  const select = (i: number) => {
+    if (picked !== null) return; // already committing
+    setPicked(i);
+    window.setTimeout(() => choose(i), 240);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const n = Number(e.key);
-      if (n >= 1 && n <= draft.options.length) choose(n - 1);
+      if (n >= 1 && n <= draft.options.length) select(n - 1);
       else if (e.key.toLowerCase() === 'r') reroll([...locked]);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft.options.length, choose, reroll, locked]);
+  }, [draft.options.length, choose, reroll, locked, select]);
 
   if (!draft.open) return null;
 
@@ -121,7 +133,7 @@ export function UpgradeScreen() {
 
       {/* key=dealKey → the whole hand remounts on a NEW draft so the staggered
           deal-in animation replays; chained level-ups visibly re-deal. */}
-      <div key={dealKey} className="flex max-w-full flex-col gap-4 md:flex-row">
+      <div key={dealKey} className="flex max-w-full flex-col gap-6 md:flex-row">
         {draft.options.map((o, i) => {
           const isLocked = locked.has(o.id);
           const isHeld = draft.lockedId === o.id;
@@ -130,8 +142,8 @@ export function UpgradeScreen() {
           return (
             <div
               key={o.id}
-              style={{ animationDelay: `${i * 70}ms` }}
-              className={`draft-deal group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
+              style={{ animationDelay: picked === null ? `${i * 70}ms` : '0ms' }}
+              className={`${picked === i ? 'draft-grab' : picked !== null ? 'draft-discard' : 'draft-deal'} group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
             >
               <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
               {/* Faint "approved" corner stamp — tucked into the very top-right corner,
@@ -183,56 +195,15 @@ export function UpgradeScreen() {
               </div>
 
               <button
-                onClick={() => choose(i)}
+                onClick={() => select(i)}
                 className="my-3 flex flex-1 flex-col gap-3 border-y border-rust/45 py-4 text-left focus:outline-none"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-xl font-black leading-tight text-bone group-hover/card:text-sun">
-                    {o.name}
-                  </div>
-                  {isUpgrade ? (
-                    <span className="mt-0.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-gold bg-gold/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold shadow-[0_0_12px_rgba(255,210,63,0.25)]">
-                      Lv {o.level}
-                      <span className="text-gold/60">→</span>
-                      {o.level + 1}
-                    </span>
-                  ) : (
-                    <span className="mt-0.5 shrink-0 rounded-sm border border-cyan/55 bg-cyan/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-cyan">
-                      New
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm leading-5 text-bone/76">{o.description}</div>
-                {o.changes.length > 0 && (
-                  <div className="rounded-sm border border-rust/40 bg-pit/55 px-2 py-1.5">
-                    {/* 4-col grid so the Now/After headers sit exactly over the
-                        from/to values (header used to mislabel the label column). */}
-                    <div className="grid grid-cols-[1fr_auto_0.75rem_auto] items-center gap-x-1.5 text-[11px]">
-                      <span className="text-[8px] font-black uppercase tracking-widest text-bone/35">
-                        Stat
-                      </span>
-                      <span className="text-right text-[8px] font-black uppercase tracking-widest text-bone/35">
-                        Now
-                      </span>
-                      <span />
-                      <span className="text-right text-[8px] font-black uppercase tracking-widest text-bone/35">
-                        After
-                      </span>
-                      {o.changes.map((c) => (
-                        <Fragment key={c.label}>
-                          <span className="uppercase tracking-wide text-bone/55">{c.label}</span>
-                          <span className="text-right font-black tabular-nums text-bone/40">
-                            {c.from}
-                          </span>
-                          <span className="text-center text-sun">→</span>
-                          <span className="text-right font-black tabular-nums text-bone/85">
-                            {c.to}
-                          </span>
-                        </Fragment>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <UpgradeCardContent
+                  name={o.name}
+                  description={o.description}
+                  level={o.level}
+                  changes={o.changes}
+                />
               </button>
 
               {/* Tags row — clickable to banish a whole tag from the run pool (T71). */}
@@ -262,7 +233,7 @@ export function UpgradeScreen() {
 
               <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
                 <button
-                  onClick={() => choose(i)}
+                  onClick={() => select(i)}
                   className={`rounded-sm border px-3 py-2 text-xs font-black uppercase tracking-widest transition ${style.border} ${style.text} bg-pit/82 hover:bg-bone/10 focus:outline-none`}
                 >
                   Select

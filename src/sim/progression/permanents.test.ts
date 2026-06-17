@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyPermanents } from './permanents';
 import { createPlayer } from '../player';
-import { gloryFor } from '../run';
+import { runScore, killScore, gloryAward } from '../../content/balance/glory';
 import { PERMANENT_UPGRADES } from '../../content/permanent/index';
 import { defaultMods } from './mods';
 import { BuildEffects } from './effects';
@@ -68,45 +68,61 @@ describe('Glory-Tree permanents (T35 reweave — amplify, gate rules; no build-s
     }
   });
 
-  it('seeds the mod layer as a BASE value that in-run draft picks stack on top of', () => {
-    // Glory Tree contributes starting pierce; the draft's pierce upgrades all use
-    // `mods.pierce += …` (additive mod layer), so they build on the seeded base
-    // rather than replacing it — explosive radius / damage / chain work the same,
-    // and applyPermanents runs before any draft in world.reset.
+  it('seeds the mod layer as a BASE that in-run draft picks stack on top of (STAT amplifiers only)', () => {
+    // Glory Tree contributes a base STAT amplifier (e.g. +damage%); the draft's
+    // upgrades use `mods.X += …` (additive layer), so they build on the seeded base
+    // rather than replacing it. Mechanic GRANTS (pierce/chain/ricochet/projectile/
+    // blast/DoT) are NOT seeded here — those are draft-only, the tree only biases the
+    // draft toward them (see draftTagBias). applyPermanents runs before any draft.
     const mods = defaultMods();
-    applyPermanents(createPlayer(), { 'splinter-rounds': 2 }, mods, new BuildEffects());
-    expect(mods.pierce).toBe(2); // base from the Glory Tree
-    mods.pierce += 1; // a draft pierce pick adds ON TOP, never overwrites
-    expect(mods.pierce).toBe(3);
+    const base = mods.damageMult;
+    applyPermanents(createPlayer(), { 'overcharged-rounds': 2 }, mods, new BuildEffects());
+    expect(mods.damageMult).toBeCloseTo(base + 0.08); // +4% × 2 levels from the tree
+    mods.damageMult += 0.25; // a draft damage pick adds ON TOP, never overwrites
+    expect(mods.damageMult).toBeCloseTo(base + 0.33);
+  });
+
+  it('does NOT seed build mechanics (pierce/chain/ricochet) — those are draft-only', () => {
+    const mods = defaultMods();
+    applyPermanents(
+      createPlayer(),
+      { 'splinter-rounds': 2, 'arc-garnishment': 2, 'ricochet-clause': 2 },
+      mods,
+      new BuildEffects(),
+    );
+    // The tree biases the draft toward them but never grants the mechanic for free.
+    expect(mods.pierce).toBe(0);
+    expect(mods.chainCount).toBe(0);
+    expect(mods.ricochet).toBe(0);
   });
 });
 
-describe('gloryFor (T26 award)', () => {
-  it('rewards longer, deadlier, higher-level runs more', () => {
-    const small = gloryFor({
-      kills: 5,
-      damageDealt: 0,
-      damageTaken: 0,
-      durationSec: 30,
-      level: 2,
-      upgradesTaken: 1,
-      dps: 0,
-      killsPerMin: 0,
-      won: false,
-    });
-    const big = gloryFor({
-      kills: 200,
-      damageDealt: 0,
-      damageTaken: 0,
-      durationSec: 600,
-      level: 20,
-      upgradesTaken: 10,
-      dps: 0,
-      killsPerMin: 0,
-      won: true,
-    });
+describe('Glory award (T72/V34 RunScore curve — rarity calibration)', () => {
+  it('rewards deeper, higher-value-kill runs more', () => {
+    const small = gloryAward(runScore({ level: 2, killScore: 1 }));
+    const big = gloryAward(runScore({ level: 20, killScore: 20 }));
     expect(big).toBeGreaterThan(small);
     expect(small).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a fresh run (level 1, nothing done) mints ~0 Glory', () => {
+    expect(gloryAward(runScore({ level: 1, killScore: 0 }))).toBe(0);
+  });
+
+  it('TIME mints nothing (calibration) + cheap fodder barely scores', () => {
+    // Only mites (variant 0, threat 1): 200 kills → a tiny kill score, no time term.
+    const mites = killScore([200]);
+    expect(mites).toBeLessThan(4); // 200 × 1 × 0.015 = 3 → trivial
+    // A short low-level mite-spam run mints single-digit Glory, not tens.
+    const earlyGlory = gloryAward(runScore({ level: 5, killScore: mites }));
+    expect(earlyGlory).toBeLessThan(12);
+  });
+
+  it('valuable kills (brutes/elites) score far above cheap fodder', () => {
+    const mite = killScore([10]); // variant 0 threat 1
+    const brutes = [...new Array(8).fill(0)];
+    brutes[7] = 10; // variant 7 = Audit Brute (threat 16)
+    expect(killScore(brutes)).toBeGreaterThan(mite * 10);
   });
 });
 

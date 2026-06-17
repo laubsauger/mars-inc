@@ -7,7 +7,6 @@ import type { EnemyPool } from '../enemies';
 import {
   RUST_MITE,
   DEBT_HOUND,
-  BOSS_GATEKEEPER,
   SEVERANCE_LOBBER,
   REPO_MARSHAL,
   FORECLOSURE_MORTAR,
@@ -18,6 +17,7 @@ import {
   PHASE_STALKER,
   LANCE_SENTINEL,
   GARGANTUAN,
+  ENEMY_BY_VARIANT,
   SpawnKind,
   type EnemyType,
 } from '../enemies';
@@ -25,6 +25,8 @@ import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
 import { GATE_COUNT } from '../constants';
 import { gateOuterPoint, interiorPoint, activeArena, activeDifficulty } from '../arena';
+import { type ActDef, actFor } from '../../content/acts';
+import type { BossDef } from '../../content/bosses';
 
 const TELEGRAPH = 1.1; // gate-doors open + enemy walks in during this window (T37)
 const TELE_TELEGRAPH = 1.0; // teleport materialize tell before the stalker is live (V9)
@@ -32,8 +34,17 @@ const TELE_AT = 60; // seconds → Phase Stalkers start blinking in
 const TELE_PERIOD = 14; // base seconds between teleport waves (shrinks late)
 const CHEAPEST = RUST_MITE.threat;
 const HARD_CAP = 1200; // absolute ceiling regardless of curve (≤ pool capacity, V8)
-const BOSS_AT = 75; // escalation-time seconds → first Gatekeeper (× TIMELINE_STRETCH 2 = 150s real)
-const BOSS_PERIOD = 75; // REAL seconds between boss waves after the previous one falls
+// First-boss timing + the breather between sequenced bosses come from the ActDef
+// (T75). BOSS_PERIOD only governs the ENDLESS Overrun mode (T50): once the act's
+// final boss falls and the player opts into infinite, the director recurs the
+// final-boss body on this period, scaling HP with each kill.
+const BOSS_PERIOD = 70; // REAL seconds between recurring bosses in Overrun (infinite)
+// Boss-creep cadence (T75 feedback): while a boss is up the normal wave rhythm is
+// paused, replaced by this lighter reinforcement trickle so the fight still has
+// adds without burying the boss. REAL seconds between trickles + group size.
+const BOSS_CREEP_PERIOD = 5.5; // seconds between reinforcement trickles during a boss
+const BOSS_CREEP_FIRST = 4; // delay before the FIRST trickle after the boss arrives
+const BOSS_CREEP_GROUP = 2; // base enemies per trickle (a touch more late-run)
 // The whole timeline is stretched by this factor: the director reads
 // elapsed/TIMELINE_STRETCH for ALL escalation (budget, waves, patterns, variant
 // intros, teleporters, the boss), so the run ramps with the SAME shape but spread
@@ -160,8 +171,23 @@ export class WaveDirector {
   private bank = 0;
   private phase = 0;
   private boss = false; // at least one boss has spawned this run
-  private bossWaveTimer = 0; // countdown to the next boss wave (0 = spawn ASAP at BOSS_AT)
-  private bossesSpawned = 0; // how many bosses fielded → escalates each one's HP
+  // Act runner (T75): the FINITE default path fields the act's bosses in order.
+  // `bossStage` = index of the NEXT boss to spawn (== bosses.length once the final
+  // is down). `bossArmTimer` is the REAL-seconds breather before the next boss
+  // arms (set on a kill via advanceBossStage). `act` is this run's roster.
+  private act: ActDef = actFor(1);
+  private bossStage = 0;
+  private bossArmTimer = 0;
+  private forceNextBoss = false; // dev: spawn the next staged boss ASAP (T74)
+  private bossCreepTimer = 0; // countdown to the next boss-creep reinforcement trickle
+  /** Active boss phase (0-based), set by the world each step — orchestrates the
+   *  boss-creep cadence (higher phase → more/faster reinforcements, T44/V42). */
+  bossPhase = 0;
+  // Overrun (T50): once the final boss falls, the player may opt into an ENDLESS
+  // gauntlet — the director then recurs the final-boss body on BOSS_PERIOD with
+  // escalating HP. `infinite` flips on via enterInfinite().
+  private infinite = false;
+  private bossesSpawned = 0; // how many bosses fielded → escalates HP in Overrun
   private waveTimer = 0.4; // first wave lands quickly — no slow empty open
   private sweepGate = 0; // clockwise cursor for the Sweep pattern
   private lastSentinelGate = -1; // last gate a sentinel used → spread them across gates
@@ -185,15 +211,22 @@ export class WaveDirector {
     this.bank = 0;
     this.phase = 0;
     this.boss = false;
-    this.bossWaveTimer = 0;
+    this.bossStage = 0;
+    this.bossArmTimer = 0;
+    this.forceNextBoss = false;
+    this.bossCreepTimer = BOSS_CREEP_FIRST;
+    this.bossPhase = 0;
+    this.infinite = false;
     this.bossesSpawned = 0;
     this.waveTimer = 0.4;
     this.sweepGate = 0;
     this.lastSentinelGate = -1;
     this.teleTimer = TELE_PERIOD;
     this.waveNumber = 0;
-    // Build this run's themed schedule for the active Act (set before reset, T-Act).
+    // Build this run's themed schedule + boss roster for the active Act (set before
+    // reset, T-Act/T75).
     const act = activeArena().act;
+    this.act = actFor(act);
     this.themes = THEMED_WAVES.filter((t) => t.act === act).sort((a, b) => a.at - b.at);
     this.themeIdx = 0;
     this.recurAt = Infinity;
@@ -211,10 +244,44 @@ export class WaveDirector {
     return this.boss;
   }
 
-  /** Dev (T74): drop the boss-wave countdown so the next step fields a boss now
-   *  (still goes through the normal spawn + HP-scale path; ignored if one's up). */
+  /** The boss about to be fielded next (Miniboss I/II or the Final), or null once
+   *  the act's roster is exhausted in the finite path. The HUD reads it for the
+   *  inbound-boss countdown label + tier styling (T78). */
+  nextBossDef(): BossDef | null {
+    if (this.infinite) return this.act.bosses[this.act.bosses.length - 1] ?? null;
+    return this.bossStage < this.act.bosses.length ? this.act.bosses[this.bossStage]! : null;
+  }
+
+  /** The finite act roster is fully cleared (final boss down) and the run is NOT
+   *  in endless Overrun → the world offers the conclusion (extract / Overrun). */
+  actComplete(): boolean {
+    return !this.infinite && this.bossStage >= this.act.bosses.length;
+  }
+
+  /** A boss fell: advance to the next stage + arm its breather. Called by the world
+   *  on the boss-kill edge so spawn sequencing stays the director's authority. */
+  advanceBossStage(): void {
+    this.bossStage++;
+    this.bossesSpawned++;
+    this.bossArmTimer = this.infinite ? BOSS_PERIOD : this.act.interBossGap;
+  }
+
+  /** Opt into the endless Overrun gauntlet after the final boss (T50). The director
+   *  then recurs the final-boss body on BOSS_PERIOD with escalating HP. */
+  enterInfinite(): void {
+    this.infinite = true;
+    this.bossArmTimer = BOSS_PERIOD;
+  }
+
+  get isInfinite(): boolean {
+    return this.infinite;
+  }
+
+  /** Dev (T74): field the next staged boss on the next step (still routes through
+   *  the normal spawn + HP-scale path; ignored while a boss is already up). */
   forceBossNow(): void {
-    this.bossWaveTimer = 0;
+    this.bossArmTimer = 0;
+    this.forceNextBoss = true;
   }
 
   private pickType(rng: Rng, elapsed: number, houndBias: number, act: number): EnemyType {
@@ -257,22 +324,104 @@ export class WaveDirector {
     return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++, hpScale) >= 0;
   }
 
-  /** Is a boss currently on the field (active or telegraphing)? Gates the next wave. */
+  /** Drive the boss SEQUENCE (T75). Finite path: spawn the next staged boss once
+   *  its timer elapses and none is on the field; Overrun: recur the final body with
+   *  escalating HP. HP scale folds the boss's own scale × the Act/difficulty mult. */
+  private stepBoss(pool: EnemyPool, rng: Rng, elapsed: number, dt: number, cap: number): void {
+    const actDiff = activeArena().difficultyMult * activeDifficulty().hpMult;
+
+    if (this.infinite) {
+      if (pool.count >= cap) return;
+      if (this.bossOnField(pool)) {
+        this.bossArmTimer = BOSS_PERIOD; // hold while a boss lives
+        return;
+      }
+      this.bossArmTimer -= dt;
+      if (this.bossArmTimer <= 0) {
+        const def = this.act.bosses[this.act.bosses.length - 1]!;
+        const scale = def.scale * (1 + this.bossesSpawned * 0.5) * actDiff;
+        if (this.spawnAtGate(pool, rng, def.enemyType, scale)) {
+          this.boss = true;
+          this.bossArmTimer = BOSS_PERIOD;
+          this.bossCreepTimer = BOSS_CREEP_FIRST;
+        }
+      }
+      return;
+    }
+
+    // Finite act roster.
+    if (this.bossStage >= this.act.bosses.length) return; // act cleared
+    if (pool.count >= cap) return;
+    if (this.bossOnField(pool)) return; // a boss is up; stage advances on its death
+
+    let ready: boolean;
+    if (this.bossStage === 0 && !this.boss) {
+      ready = elapsed >= this.act.firstBossAt; // escalation-time gate for the opener
+    } else {
+      this.bossArmTimer -= dt; // real-seconds breather after the previous kill
+      ready = this.bossArmTimer <= 0;
+    }
+    if (this.forceNextBoss) ready = true;
+    if (!ready) return;
+
+    const def = this.act.bosses[this.bossStage]!;
+    if (this.spawnAtGate(pool, rng, def.enemyType, def.scale * actDiff)) {
+      this.boss = true;
+      this.forceNextBoss = false;
+      this.bossCreepTimer = BOSS_CREEP_FIRST; // hold the creep a beat after the boss lands
+    }
+  }
+
+  /** Boss-creep cadence (T75 feedback): while a boss is up, the normal wave rhythm is
+   *  paused — this lighter trickle keeps reinforcements coming (mostly gate spawns,
+   *  the odd teleport-in) so the fight has pressure without a full horde burying the
+   *  boss. Bounded by the concurrent cap (V8). */
+  private stepBossCreep(
+    pool: EnemyPool,
+    rng: Rng,
+    elapsed: number,
+    dt: number,
+    cap: number,
+    fx?: FxQueue,
+  ): void {
+    if (pool.count >= cap) return;
+    this.bossCreepTimer -= dt;
+    if (this.bossCreepTimer > 0) return;
+    // Phase-orchestrated (V42): each phase break quickens the cadence + adds a body,
+    // so a boss under pressure floods more reinforcements (floored so it never spams).
+    const phase = Math.max(0, this.bossPhase);
+    this.bossCreepTimer = Math.max(2.4, BOSS_CREEP_PERIOD - phase * 0.8);
+    const n = BOSS_CREEP_GROUP + phase + (elapsed > 100 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      if (pool.count >= cap) return;
+      const type = this.pickType(rng, elapsed, 0, activeArena().act);
+      this.spawnCluster(pool, rng, rng.int(0, GATE_COUNT - 1), type);
+    }
+    // Past the teleport unlock, occasionally blink one in so the interior isn't safe.
+    if (elapsed >= TELE_AT && rng.next() < 0.5) this.spawnTeleporter(pool, rng, cap, fx);
+  }
+
+  /** Is ANY boss currently on the field (active or telegraphing)? Gates the next
+   *  wave + the boss-sequence spawn (T75: any boss body, not just the Gatekeeper). */
   private bossOnField(pool: EnemyPool): boolean {
     for (let i = 0; i < pool.count; i++) {
-      if (pool.variant[i] === BOSS_GATEKEEPER.variant) return true;
+      if (ENEMY_BY_VARIANT[pool.variant[i]!]?.boss) return true;
     }
     return false;
   }
 
   /** Real seconds until the next boss arrives, for the HUD countdown — `null` while
-   *  a boss is already on the field (the boss bar takes over). Mirrors the spawn
-   *  gate: pre-first-boss it's the BOSS_AT threshold (in real time), then the
-   *  recurring BOSS_PERIOD wave timer. (Estimate: ignores the count<cap hold.) */
+   *  a boss is on the field (the bar takes over) or the act roster is exhausted.
+   *  Stage 0 reads the act's firstBossAt threshold (real time); later stages + the
+   *  Overrun gauntlet read the breather timer. (Estimate: ignores the count<cap.) */
   timeToNextBoss(elapsed: number, pool: EnemyPool): number | null {
     if (this.bossOnField(pool)) return null;
-    if (!this.boss) return Math.max(0, BOSS_AT * TIMELINE_STRETCH - elapsed);
-    return Math.max(0, this.bossWaveTimer);
+    if (this.infinite) return Math.max(0, this.bossArmTimer);
+    if (this.bossStage >= this.act.bosses.length) return null;
+    if (this.bossStage === 0 && !this.boss) {
+      return Math.max(0, this.act.firstBossAt * TIMELINE_STRETCH - elapsed);
+    }
+    return Math.max(0, this.bossArmTimer);
   }
 
   /** Spawn-time HP scale for fodder this step (run-phase escalation, T44). */
@@ -305,75 +454,69 @@ export class WaveDirector {
     // progression, not just elapsed time → fewer, beefier enemies after a step.
     const cap = Math.min(Math.floor(b.maxConcurrentEnemies * actPace * capMul), pool.capacity);
 
-    // Recurring boss waves (V22 hinge × N): the first Gatekeeper at BOSS_AT, then a
-    // TOUGHER one each BOSS_PERIOD after the previous falls — you fight through an
-    // escalating gauntlet of bosses, not a single milestone. Each boss's HP scales
-    // with how many you've already slain (× the Act multiplier). Spawned free
-    // (not from the bank) and only while none is on the field (≤ cap, V8).
-    if (elapsed >= BOSS_AT && pool.count < cap) {
-      if (this.bossOnField(pool)) {
-        this.bossWaveTimer = BOSS_PERIOD; // hold the countdown while a boss lives
-      } else {
-        this.bossWaveTimer -= dt;
-        if (this.bossWaveTimer <= 0) {
-          const scale =
-            (1 + this.bossesSpawned * 0.6) *
-            activeArena().difficultyMult *
-            activeDifficulty().hpMult;
-          if (this.spawnAtGate(pool, rng, BOSS_GATEKEEPER, scale)) {
-            this.bossesSpawned++;
-            this.boss = true;
-            this.bossWaveTimer = BOSS_PERIOD;
-          }
-        }
+    // Act boss sequence (T75, V36): field the act's bosses in order — Miniboss I →
+    // Miniboss II → Final — each gated by its arrival timer + "no boss currently up".
+    // The world advances the stage on a boss's death (advanceBossStage) and, once
+    // the final falls, offers extract-or-Overrun. Overrun flips this to an endless
+    // recurring-final gauntlet (V22 × N). Bosses spawn free (not from the bank).
+    this.stepBoss(pool, rng, elapsed, dt, cap);
+
+    // BOSS PHASE (T75 feedback): while a boss (mini or final) is on the field, PAUSE
+    // the NORMAL wave cadence (themed bursts, gate pulses, teleport waves) and run a
+    // SEPARATE, lighter boss-creep cadence instead — a steady trickle of reinforcements
+    // through the gates + occasional teleport-ins — so the fight has pressure without
+    // the full horde drowning the boss. The normal clocks freeze, so the breather
+    // isn't "spent" mid-fight; they resume the instant the boss falls.
+    const bossUp = this.bossOnField(pool);
+    if (bossUp) {
+      this.stepBossCreep(pool, rng, elapsed, dt, cap, fx);
+    } else {
+      // Themed milestone waves (T-themes): when the escalation clock crosses the next
+      // scheduled theme, drop its scripted burst (FREE, surround) + flag a HUD banner.
+      // Catches up if several thresholds passed in one big dt (while still ≤ capacity).
+      while (this.themeIdx < this.themes.length && elapsed >= this.themes[this.themeIdx]!.at) {
+        const t = this.themes[this.themeIdx]!;
+        this.themeIdx++;
+        this.spawnBurst(pool, rng, t.type, t.count);
+        this.waveEvent = t.label;
+        if (fx) fx.push('levelup', 0, 0); // a celebratory cue (no bespoke fx needed)
+        // Authored schedule just emptied → arm the RECURRING phase from here.
+        if (this.themeIdx >= this.themes.length) this.recurAt = t.at + RECUR_INTERVAL;
       }
-    }
+      // RECURRING themed waves (post-schedule): keep the run punctuated past the last
+      // milestone (and past boss 1 — runs continue). Cycle the act's pool with counts
+      // that GROW each cycle, so late-game beats escalate rather than repeat flat.
+      while (this.themes.length > 0 && elapsed >= this.recurAt) {
+        const t = this.themes[this.recurCount % this.themes.length]!;
+        const tier = 2 + Math.floor(this.recurCount / this.themes.length); // ×2, ×3, … per full cycle
+        const count = Math.round(t.count * (1 + this.recurCount * 0.18));
+        this.recurCount++;
+        this.recurAt += RECUR_INTERVAL;
+        this.spawnBurst(pool, rng, t.type, count);
+        this.waveEvent = `${t.label} ×${tier}`;
+        if (fx) fx.push('levelup', 0, 0);
+      }
 
-    // Themed milestone waves (T-themes): when the escalation clock crosses the next
-    // scheduled theme, drop its scripted burst (FREE, surround) + flag a HUD banner.
-    // Catches up if several thresholds passed in one big dt (while still ≤ capacity).
-    while (this.themeIdx < this.themes.length && elapsed >= this.themes[this.themeIdx]!.at) {
-      const t = this.themes[this.themeIdx]!;
-      this.themeIdx++;
-      this.spawnBurst(pool, rng, t.type, t.count);
-      this.waveEvent = t.label;
-      if (fx) fx.push('levelup', 0, 0); // a celebratory cue (no bespoke fx needed)
-      // Authored schedule just emptied → arm the RECURRING phase from here.
-      if (this.themeIdx >= this.themes.length) this.recurAt = t.at + RECUR_INTERVAL;
-    }
-    // RECURRING themed waves (post-schedule): keep the run punctuated past the last
-    // milestone (and past boss 1 — runs continue). Cycle the act's pool with counts
-    // that GROW each cycle, so late-game beats escalate rather than repeat flat.
-    while (this.themes.length > 0 && elapsed >= this.recurAt) {
-      const t = this.themes[this.recurCount % this.themes.length]!;
-      const tier = 2 + Math.floor(this.recurCount / this.themes.length); // ×2, ×3, … per full cycle
-      const count = Math.round(t.count * (1 + this.recurCount * 0.18));
-      this.recurCount++;
-      this.recurAt += RECUR_INTERVAL;
-      this.spawnBurst(pool, rng, t.type, count);
-      this.waveEvent = `${t.label} ×${tier}`;
-      if (fx) fx.push('levelup', 0, 0);
-    }
+      // Wave rhythm: hold spawns between pulses (the breather), then release a
+      // clustered burst from a growing subset of gates. The bank built up during
+      // the breather is what funds the burst — so waves naturally scale with the
+      // budget curve while the arena gets moments to breathe.
+      this.waveTimer -= dt;
+      if (this.waveTimer <= 0) {
+        this.waveTimer = waveGap(elapsed);
+        this.waveNumber++;
+        this.spawnWave(pool, rng, elapsed, houndBias, cap);
+      }
 
-    // Wave rhythm: hold spawns between pulses (the breather), then release a
-    // clustered burst from a growing subset of gates. The bank built up during
-    // the breather is what funds the burst — so waves naturally scale with the
-    // budget curve while the arena gets moments to breathe.
-    this.waveTimer -= dt;
-    if (this.waveTimer <= 0) {
-      this.waveTimer = waveGap(elapsed);
-      this.waveNumber++;
-      this.spawnWave(pool, rng, elapsed, houndBias, cap);
-    }
-
-    // Phase Stalkers: a separate cadence that IGNORES the gates and materializes
-    // at interior points — so the player can't just watch the perimeter (V9 tell).
-    if (elapsed >= TELE_AT) {
-      this.teleTimer -= dt;
-      if (this.teleTimer <= 0) {
-        this.teleTimer = Math.max(6, TELE_PERIOD - (elapsed - TELE_AT) * 0.04);
-        const n = elapsed > 130 ? 2 : 1;
-        for (let k = 0; k < n; k++) this.spawnTeleporter(pool, rng, cap, fx);
+      // Phase Stalkers: a separate cadence that IGNORES the gates and materializes
+      // at interior points — so the player can't just watch the perimeter (V9 tell).
+      if (elapsed >= TELE_AT) {
+        this.teleTimer -= dt;
+        if (this.teleTimer <= 0) {
+          this.teleTimer = Math.max(6, TELE_PERIOD - (elapsed - TELE_AT) * 0.04);
+          const n = elapsed > 130 ? 2 : 1;
+          for (let k = 0; k < n; k++) this.spawnTeleporter(pool, rng, cap, fx);
+        }
       }
     }
 

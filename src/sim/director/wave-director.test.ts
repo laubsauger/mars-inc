@@ -8,7 +8,14 @@ import {
   powerProgress,
   NEUTRAL_ADAPT,
 } from './wave-director';
-import { EnemyPool, RUST_MITE, PHASE_STALKER, SpawnKind } from '../enemies';
+import {
+  EnemyPool,
+  RUST_MITE,
+  PHASE_STALKER,
+  FOREMAN_KRILL,
+  SpawnKind,
+  ENEMY_BY_VARIANT,
+} from '../enemies';
 import { Rng } from '../../core/rng';
 import { FxQueue } from '../fx';
 import { arenaContains } from '../arena';
@@ -16,11 +23,17 @@ import { arenaContains } from '../arena';
 describe('Phase Stalker teleporter (T33+)', () => {
   it('materializes at interior points (not gates) after the unlock time, with FX', () => {
     const d = new WaveDirector();
+    d.reset();
+    // Boss fights PAUSE normal emission (T75), and by the teleport-unlock time a boss
+    // would be up — so clear the act roster first to isolate the inter-boss state.
+    d.advanceBossStage();
+    d.advanceBossStage();
+    d.advanceBossStage();
     const pool = new EnemyPool();
     const rng = new Rng(3);
     const fx = new FxQueue();
-    // Teleport unlock is stretched: TELE_AT 60 × TIMELINE_STRETCH 3 = 180s real.
-    // Step ~40s of run time starting just past that so a teleport wave fires.
+    // Teleport unlock is stretched: TELE_AT 60 × TIMELINE_STRETCH 2 = 120s real.
+    // Step ~40s of run time starting past that so a teleport wave fires.
     for (let t = 0; t < 40; t += 1 / 60) {
       d.step(pool, rng, 185 + t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
     }
@@ -187,6 +200,79 @@ describe('WaveDirector (V8 bounded spawns)', () => {
       d.step(pool, rng, t, dt, { pace: 1.4, houndBias: 0.3 });
       expect(pool.count).toBeLessThanOrEqual(budgetAt(t).maxConcurrentEnemies);
     }
+  });
+});
+
+describe('act boss sequence (T75, V36)', () => {
+  it('fields the act roster in order, advancing only on a kill', () => {
+    const d = new WaveDirector();
+    d.reset(); // default arena = cold-vault → Act 1
+    expect(d.nextBossDef()?.id).toBe('foreman-krill');
+    expect(d.nextBossDef()?.tier).toBe('miniboss');
+    d.advanceBossStage();
+    expect(d.nextBossDef()?.id).toBe('repo-sovereign');
+    d.advanceBossStage();
+    expect(d.nextBossDef()?.tier).toBe('final'); // Gatekeeper
+    expect(d.actComplete()).toBe(false);
+    d.advanceBossStage();
+    expect(d.actComplete()).toBe(true); // final down → act cleared
+    expect(d.nextBossDef()).toBe(null);
+  });
+
+  it('Overrun flips the cleared act into an endless final-boss gauntlet (T50)', () => {
+    const d = new WaveDirector();
+    d.reset();
+    d.advanceBossStage();
+    d.advanceBossStage();
+    d.advanceBossStage();
+    expect(d.actComplete()).toBe(true);
+    d.enterInfinite();
+    expect(d.isInfinite).toBe(true);
+    expect(d.actComplete()).toBe(false); // endless: never "complete"
+    expect(d.nextBossDef()?.tier).toBe('final'); // recurs the final body
+  });
+
+  it('pauses the NORMAL wave cadence during a boss, running a lighter creep (T75)', () => {
+    const dt = 1 / 60;
+    const rng = () => new Rng(11);
+    // Reference: a normal 40s window with NO boss fields a full set of waves.
+    const normalPool = new EnemyPool();
+    const dn = new WaveDirector();
+    dn.reset();
+    dn.advanceBossStage(); // clear the roster so no boss spawns in the window
+    dn.advanceBossStage();
+    dn.advanceBossStage();
+    for (let t = 200; t < 240; t += dt) dn.step(normalPool, rng(), t, dt, NEUTRAL_ADAPT, 1);
+
+    // With a boss on the field the SAME window fields only the creep trickle.
+    const bossPool = new EnemyPool();
+    const db = new WaveDirector();
+    db.reset();
+    bossPool.spawn(FOREMAN_KRILL, 0, 0, 0, 0);
+    for (let t = 200; t < 240; t += dt) db.step(bossPool, rng(), t, dt, NEUTRAL_ADAPT, 1);
+
+    const creep = bossPool.count - 1; // minus the boss body
+    expect(creep).toBeGreaterThan(0); // reinforcements DO trickle in (not a hard block)
+    expect(creep).toBeLessThan(normalPool.count); // …but far fewer than normal waves
+  });
+
+  it('the first miniboss arrives only after the act firstBossAt (not before)', () => {
+    const d = new WaveDirector();
+    d.reset();
+    const pool = new EnemyPool();
+    const rng = new Rng(7);
+    const dt = 1 / 60;
+    const countBosses = (): number => {
+      let n = 0;
+      for (let i = 0; i < pool.count; i++) if (ENEMY_BY_VARIANT[pool.variant[i]!]?.boss) n++;
+      return n;
+    };
+    let t = 0;
+    // firstBossAt 55 escalation × TIMELINE_STRETCH 2 = 110s real. Before that → none.
+    for (; t < 100; t += dt) d.step(pool, rng, t, dt);
+    expect(countBosses()).toBe(0);
+    for (; t < 140; t += dt) d.step(pool, rng, t, dt);
+    expect(countBosses()).toBe(1); // exactly the first miniboss, no kill → holds
   });
 });
 

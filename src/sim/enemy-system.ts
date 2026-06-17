@@ -98,8 +98,14 @@ export class EnemySystem {
         continue;
       }
 
-      // Low-frequency steering, staggered by per-enemy phase.
-      if ((tick + p.steerPhase[i]!) % STEER_DIVISOR === 0) {
+      // PLANTED (T-beam): a turret stops to aim + fire (stop → aim → shoot → move).
+      // Zero the steering velocity so it stays put; knockback below still applies, so
+      // a shove can still slide it (and its beam follows). Decays every step.
+      if (p.anchorTime[i]! > 0) {
+        p.anchorTime[i] = Math.max(0, p.anchorTime[i]! - dt);
+        p.velX[i] = 0;
+        p.velZ[i] = 0;
+      } else if ((tick + p.steerPhase[i]!) % STEER_DIVISOR === 0) {
         const n = this.hash.queryCircle(p.posX[i]!, p.posZ[i]!, p.radius[i]! * 4, this.ids);
         let m = 0;
         for (let k = 0; k < n && m < MAX_NEIGHBORS; k++) {

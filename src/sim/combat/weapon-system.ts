@@ -774,6 +774,10 @@ function compactDead(enemies: EnemyPool, kills: KillEvent[], fx: FxQueue): void 
       // Carry the body radius in the dx slot so the render scales the death poof to
       // the enemy — a small mite gets a tiny puff, not a swarm-wide flash (T37).
       fx.push('death', x, z, enemies.radius[i]!, 0, variant);
+      // Boss death (T77/V38): a massively scaled blood eruption that splatters the
+      // ground, on top of the death poof. Render reads dx = boss radius for scale.
+      if (ENEMY_BY_VARIANT[variant]?.boss)
+        fx.push('bloodburst', x, z, enemies.radius[i]!, 0, variant);
       enemies.kill(i);
     }
   }

@@ -7,6 +7,8 @@
 
 import { useEffect, useReducer, useState } from 'react';
 import { useUiStore } from '../store';
+import { UpgradeCardContent } from '../components/UpgradeCardContent';
+import { PermanentTooltipBody, permanentBranchBorder } from '../components/PermanentTooltipBody';
 
 const RARITY_TEXT: Record<string, string> = {
   common: 'text-bone/80',
@@ -64,6 +66,21 @@ function DevBoard() {
   const [glory, setGlory] = useState(1000);
   const [scenario, setScenario] = useState('');
   const [scenarioMsg, setScenarioMsg] = useState('');
+  // Hover tooltips — reuse the IN-GAME card face + Glory-Tree tooltip (no duplicated
+  // markup/descriptions). Permanent tooltip pulls the full PermanentView (description/
+  // rarity/cost) from the same meta slice the Glory Tree renders.
+  const permViews = useUiStore((s) => s.meta.permanents);
+  const [hovCard, setHovCard] = useState<string | null>(null);
+  const [hovPerm, setHovPerm] = useState<string | null>(null);
+  const [hovY, setHovY] = useState(0); // cursor Y → tooltip aligns with the hovered row
+  const cardOf = (id: string | null) =>
+    id ? (dev.upgrades.find((u) => u.id === id) ?? null) : null;
+  const permOf = (id: string | null) => (id ? (permViews.find((p) => p.id === id) ?? null) : null);
+  const hoveredCard = cardOf(hovCard);
+  const hoveredPerm = permOf(hovPerm);
+  // Vertically center the tooltip on the cursor, clamped to stay on-screen.
+  const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const tipTop = Math.max(120, Math.min(winH - 120, hovY));
 
   const cards = dev.upgrades.filter(
     (u) =>
@@ -261,6 +278,12 @@ function DevBoard() {
               return (
                 <div
                   key={u.id}
+                  onMouseEnter={(ev) => {
+                    setHovCard(u.id);
+                    setHovY(ev.clientY);
+                  }}
+                  onMouseMove={(ev) => setHovY(ev.clientY)}
+                  onMouseLeave={() => setHovCard((c) => (c === u.id ? null : c))}
                   className="flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 text-[11px] hover:bg-bone/5"
                 >
                   <span className={`truncate ${RARITY_TEXT[u.rarity] ?? 'text-bone/80'}`}>
@@ -293,6 +316,12 @@ function DevBoard() {
               return (
                 <div
                   key={p.id}
+                  onMouseEnter={(ev) => {
+                    setHovPerm(p.id);
+                    setHovY(ev.clientY);
+                  }}
+                  onMouseMove={(ev) => setHovY(ev.clientY)}
+                  onMouseLeave={() => setHovPerm((c) => (c === p.id ? null : c))}
                   className="flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 text-[11px] hover:bg-bone/5"
                 >
                   <span className="truncate text-bone/80">
@@ -327,7 +356,140 @@ function DevBoard() {
             })}
           </div>
         </Section>
+
+        <Section title="Progression / Acts">
+          <div className="flex flex-wrap gap-1.5">
+            <Btn
+              tone={dev.isUnlocked('boss-beaten') ? 'gold' : 'rust'}
+              onClick={() => {
+                const on = !dev.isUnlocked('boss-beaten');
+                dev.setUnlock('boss-beaten', on); // ActSelector gate
+                dev.setUnlock('act-cleared:1', on); // generic next-act gate
+                bump();
+              }}
+            >
+              {dev.isUnlocked('boss-beaten') ? '✓ Act 2' : 'Unlock Act 2'}
+            </Btn>
+            <Btn
+              tone={dev.isUnlocked('difficulty-unlocked') ? 'gold' : 'rust'}
+              onClick={() => {
+                dev.setUnlock('difficulty-unlocked', !dev.isUnlocked('difficulty-unlocked'));
+                bump();
+              }}
+            >
+              {dev.isUnlocked('difficulty-unlocked') ? '✓ Difficulty' : 'Unlock difficulty'}
+            </Btn>
+            <Btn
+              tone={dev.isUnlocked('prestige:seed') ? 'gold' : 'rust'}
+              onClick={() => {
+                dev.setUnlock('prestige:seed', !dev.isUnlocked('prestige:seed'));
+                bump();
+              }}
+            >
+              {dev.isUnlocked('prestige:seed') ? '✓ Prestige' : 'Unlock prestige'}
+            </Btn>
+            <Btn
+              tone="cyan"
+              onClick={() => {
+                for (const k of [
+                  'boss-beaten',
+                  'act-cleared:1',
+                  'act-cleared:2',
+                  'difficulty-unlocked',
+                  'prestige:seed',
+                ]) {
+                  dev.setUnlock(k, true);
+                }
+                bump();
+              }}
+            >
+              Unlock ALL
+            </Btn>
+            <Btn
+              tone="rust"
+              onClick={() => {
+                for (const k of [
+                  'boss-beaten',
+                  'act-cleared:1',
+                  'act-cleared:2',
+                  'difficulty-unlocked',
+                  'prestige:seed',
+                ]) {
+                  dev.setUnlock(k, false);
+                }
+                bump();
+              }}
+            >
+              Re-lock ALL
+            </Btn>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-wide text-bone/45">Red Dust</span>
+            <Btn
+              tone="rust"
+              onClick={() => {
+                dev.grantRedDust(10);
+                bump();
+              }}
+            >
+              +10 ❖
+            </Btn>
+            <Btn
+              tone="rust"
+              onClick={() => {
+                dev.grantRedDust(-1000);
+                bump();
+              }}
+            >
+              Clear ❖
+            </Btn>
+          </div>
+          <div className="mt-1 text-[9px] uppercase tracking-wide text-bone/35">
+            Acts, difficulty selector + end-game prestige. "Unlock ALL" opens everything so you
+            never get stuck testing late content. Toggle/re-lock to verify gates.
+          </div>
+        </Section>
       </div>
+
+      {/* Hover tooltips — render the SAME card face + Glory-Tree tooltip as in-game,
+          parked along the board's left edge (rows scroll, so a fixed panel is simplest). */}
+      {hoveredCard && (
+        <div
+          style={{ top: tipTop }}
+          className="pointer-events-none fixed right-[22.5rem] z-[61] w-72 -translate-y-1/2 rounded-sm border border-rust/60 bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)]"
+        >
+          <div
+            className={`mb-1 text-[10px] font-black uppercase tracking-widest ${RARITY_TEXT[hoveredCard.rarity] ?? 'text-bone/70'}`}
+          >
+            {hoveredCard.rarity}
+          </div>
+          <UpgradeCardContent
+            name={hoveredCard.name}
+            description={hoveredCard.description}
+            level={dev.upgradeLevelOf(hoveredCard.id)}
+          />
+          {hoveredCard.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {hoveredCard.tags.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-sm border border-rust/60 bg-pit/82 px-1.5 py-0.5 text-[9px] uppercase text-gold"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {hoveredPerm && (
+        <div
+          style={{ top: tipTop }}
+          className={`pointer-events-none fixed right-[22.5rem] z-[61] w-64 -translate-y-1/2 rounded-sm border bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ${permanentBranchBorder(hoveredPerm.branch)}`}
+        >
+          <PermanentTooltipBody permanent={hoveredPerm} />
+        </div>
+      )}
     </div>
   );
 }

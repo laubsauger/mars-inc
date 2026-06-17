@@ -54,7 +54,10 @@ function goreColor(variant: number): Color | null {
 function goreScale(variant: number): number {
   const r = ENEMY_BY_VARIANT[variant]?.radius ?? 0.8;
   // Biased so tier-1 fodder stays modest (was gushing); brutes/boss still erupt.
-  return Math.max(0.45, Math.min(2.2, r / 0.95));
+  // Bosses (T77/V38) scale UP harder — a body-check on a Gatekeeper paints the
+  // floor, so the cap lifts to 3.2 for boss bodies while fodder stays ≤ 2.2.
+  const cap = ENEMY_BY_VARIANT[variant]?.boss ? 3.2 : 2.2;
+  return Math.max(0.45, Math.min(cap, r / 0.95));
 }
 
 // Irregular blob disc (one-time) so decals read as PUDDLES, not perfect ellipses.
@@ -210,6 +213,9 @@ export class BloodView {
           this.coatPlayer(e.x, e.z, c, sz);
         }
       } else if (e.kind === 'death') {
+        // Bosses get the dedicated 'bloodburst' catastrophe instead (T77) — skip the
+        // normal death gush so we don't double up.
+        if (ENEMY_BY_VARIANT[e.variant]?.boss) continue;
         const c = goreColor(e.variant);
         // Death gush: radial, more matter (no incoming direction → burst outward).
         if (c) {
@@ -219,6 +225,11 @@ export class BloodView {
           this.spray(e.x, e.z, 0, 0, c, n, 1.2 + rnd() * 0.8, sz);
           this.coatPlayer(e.x, e.z, c, sz);
         }
+      } else if (e.kind === 'bloodburst') {
+        // Boss death (T77/V38): a massively exaggerated gore eruption + a ground
+        // splatter scaled to the boss body (dx = boss radius). reduce-flash tames it.
+        const c = goreColor(e.variant);
+        if (c) this.bossBurst(e.x, e.z, e.dx > 0 ? e.dx : 2.4, c);
       }
     }
   }
@@ -268,6 +279,53 @@ export class BloodView {
       // Wider per-droplet size spread (more visible variety), scaled by enemy.
       this.dsize[i] = (0.3 + rnd() * rnd() * 2.0) * sizeMul;
     }
+  }
+
+  /** Boss-death blood CATASTROPHE (T77/V38): a huge multi-ring eruption of droplets
+   *  PLUS an immediate ground splatter (big decals stamped in rough rings around the
+   *  body), so the floor is painted the instant the boss falls — not just where the
+   *  droplets happen to land. Scaled by the boss radius; reduce-flash tames volume.
+   *  Pooled + capped like all blood (V5); pure view, no sim feedback (V2). */
+  private bossBurst(x: number, z: number, radius: number, color: Color): void {
+    const flash = this.reduceFlash ? 0.4 : 1;
+    const sz = Math.max(2.2, radius); // boss-scale droplets — fat, far-flung
+    // A dense radial eruption in a few force "shells" so it reads as an explosion
+    // of gore, not a single puff. Droplet pool is capped, so this is self-limiting.
+    const shells = 3;
+    for (let s = 0; s < shells; s++) {
+      const force = (2.4 + s * 1.6) * (0.9 + rnd() * 0.4);
+      const n = Math.round(flash * (26 - s * 4) * Math.max(1, radius / 2));
+      this.spray(x, z, 0, 0, color, n, force, sz);
+    }
+    // Immediate ground splatter: stamp big puddles in two rough rings around the
+    // body so the floor is drenched right away (a boss leaves a CRATER of gore).
+    const rings: ReadonlyArray<readonly [number, number]> = [
+      [radius * 0.6, 8],
+      [radius * 1.4, 10],
+    ];
+    const decals = Math.round(flash * 18);
+    let placed = 0;
+    for (const [rr, count] of rings) {
+      for (let k = 0; k < count && placed < decals; k++, placed++) {
+        const a = (k / count) * Math.PI * 2 + rnd() * 0.7;
+        const d = rr * (0.7 + rnd() * 0.6);
+        const dx = Math.cos(a);
+        const dz = Math.sin(a);
+        // Travel outward so the streaks point away from the body (explosion read).
+        this.landDecal(
+          x + dx * d,
+          z + dz * d,
+          dx * 6,
+          dz * 6,
+          color.r,
+          color.g,
+          color.b,
+          (1.6 + rnd() * 1.8) * Math.max(1, radius / 2),
+        );
+      }
+    }
+    // Drench the player hard if they were standing in the kill zone.
+    this.coatPlayer(x, z, color, sz * 1.5);
   }
 
   private landDecal(

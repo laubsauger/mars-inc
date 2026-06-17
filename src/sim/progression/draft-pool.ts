@@ -33,12 +33,14 @@ export const DRAFT_POOL: UpgradeDefinition[] = [
 export const DEV_UPGRADE_CATALOG: ReadonlyArray<{
   id: string;
   name: string;
+  description: string;
   rarity: string;
   maxLevel: number;
   tags: readonly string[];
 }> = DRAFT_POOL.map((u) => ({
   id: u.id,
   name: u.name,
+  description: u.description, // feeds the dev card tooltip (single source ⊥ duplication)
   rarity: u.rarity,
   maxLevel: u.maxLevel,
   tags: u.tags,

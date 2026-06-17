@@ -41,6 +41,7 @@ export function buildProfileView(
     discoveredWeapons: Object.keys(save.current.unlocks)
       .filter((k) => k.startsWith('weapon:') && save.current.unlocks[k])
       .map((k) => k.slice('weapon:'.length)),
+    achievements: { ...save.current.achievements },
   };
 }
 

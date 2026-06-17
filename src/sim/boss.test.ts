@@ -71,6 +71,7 @@ describe('boss controller', () => {
     expect(boss.snapshot().phase).toBe(1);
     expect(pool.count).toBeGreaterThan(enemiesBefore); // adds summoned
     expect(attacks.hazards.count).toBeGreaterThan(0); // slam shockwave armed
+    expect(attacks.beams.count).toBeGreaterThan(0); // final boss break fires a laser star (T44)
 
     // Drop to ~20% → final phase.
     pool.health[bi] = BOSS_GATEKEEPER.maxHealth * 0.2;

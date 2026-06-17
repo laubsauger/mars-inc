@@ -1,6 +1,6 @@
 // Boot. WebGPU detect → unsupported screen (§C, §I.url). Wires input + sim + render.
 
-import { Scene, FogExp2 } from 'three';
+import { Scene, FogExp2, Color } from 'three';
 import { isWebGpuSupported, createRenderer } from './render/renderer';
 import { createPostProcessing } from './render/post';
 import { createCamera, screenToGround, frameArena } from './render/camera';
@@ -51,11 +51,41 @@ const MUSIC_TRACKS = Object.values(
   }),
 ) as string[];
 import { budgetAt, TIMELINE_STRETCH } from './sim/director/wave-director';
-import { gloryFor } from './sim/run';
-import { PERMANENT_UPGRADES, permanentById, levelCost } from './content/permanent/index';
+import {
+  bossGloryFor,
+  splitBossGlory,
+  bankRunPot,
+  bossFeats,
+  runScore,
+  killScore,
+  gloryAward,
+} from './content/balance/glory';
+import { firstKillUnlock } from './content/boss-unlocks';
+import { difficultyMilestone } from './content/difficulty-rewards';
+import { prestigeYield, INFLATION_FREE } from './content/balance/prestige';
+import {
+  PRESTIGE_NODES,
+  prestigeNodeById,
+  prestigeCapLift,
+  prestigeInflationFree,
+} from './content/prestige-nodes';
+import type { PrestigeNodeView } from './ui/store';
+import {
+  PERMANENT_UPGRADES,
+  permanentById,
+  levelCost,
+  permanentGateMet,
+} from './content/permanent/index';
+import { newlyEarned, ACHIEVEMENT_BY_ID, type AchTier } from './content/achievements';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
-import { setActiveArena, ARENAS, setActiveDifficulty, activeDifficulty } from './sim/arena';
+import {
+  setActiveArena,
+  ARENAS,
+  setActiveDifficulty,
+  activeDifficulty,
+  DIFFICULTIES,
+} from './sim/arena';
 import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile';
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
@@ -75,6 +105,10 @@ if (!app) throw new Error('#app missing');
 // The only warrior in the slice (T27). Records bucket by character id so adding
 // fighters later just adds keys — no schema change.
 const ACTIVE_CHARACTER = { id: 'lilu-tubs', name: 'Lilu Tubs' } as const;
+
+/** Highest act index across all arenas — clearing ITS final boss unlocks the global
+ *  difficulty selector (and makes the optional end-game prestige available). */
+const MAX_ACT = Math.max(...Object.values(ARENAS).map((a) => a.act));
 
 /** Mini character sheet for the enemy nearest the ground cursor (hover inspect).
  *  Render-only (V2): reads sim state, never mutates it. null when nothing hovered. */
@@ -292,6 +326,56 @@ async function boot(parent: HTMLElement): Promise<void> {
     pushProfile();
   };
 
+  // ── Achievements (T-ach): check the live run + lifetime snapshot against the
+  // not-yet-earned set; unlock + queue a rich toast (staggered if several land at
+  // once). Cheated runs bank nothing (V35, handled in newlyEarned). ──
+  let achToastId = 0;
+  let achToastActive = false;
+  const achQueue: { name: string; desc: string; icon: string; tier: AchTier }[] = [];
+  const dispatchAch = (): void => {
+    if (achToastActive || achQueue.length === 0) return;
+    achToastActive = true;
+    const t = achQueue.shift()!;
+    uiActions.setAchievement({ id: ++achToastId, ...t });
+    window.setTimeout(() => {
+      achToastActive = false;
+      dispatchAch();
+    }, 4600);
+  };
+  const checkAchievements = (final = false): void => {
+    const s = world.stats;
+    const earned = newlyEarned(
+      {
+        kills: s.kills,
+        bossKills: s.bossKills,
+        timeSurvived: world.elapsed, // live run clock (combat time; 0 during countdown)
+        damageTaken: s.damageTaken,
+        level: world.player.level,
+        upgradesTaken: s.upgradesTaken,
+        killsByVariant: s.killsByVariant,
+        ended: final,
+        won: final && !!world.result?.won,
+        weaponId: world.weaponSystem.primaryId ?? '',
+        cheated: world.cheated,
+        difficulty: save.current.settings.difficulty ?? 0,
+        runCount: save.current.runHistory.length,
+        lifetimeGlory: save.current.currencies.martianGlory,
+        lifetimeBossKills: Object.values(save.current.bossKills).reduce((a, b) => a + b, 0),
+      },
+      save.current.achievements,
+    );
+    if (earned.length === 0) return;
+    save.mutate((p) => {
+      for (const id of earned) if (!p.achievements[id]) p.achievements[id] = Date.now();
+    });
+    pushProfile();
+    for (const id of earned) {
+      const a = ACHIEVEMENT_BY_ID.get(id);
+      if (a) achQueue.push({ name: a.name, desc: a.desc, icon: a.icon, tier: a.tier });
+    }
+    dispatchAch();
+  };
+
   // Boot lands on the main menu over the rendered empty arena (§13.4).
   // Dev shortcut: `?play` (in dev builds) skips the menu and drops straight into
   // a run — fast iteration with hot reload, no clicking through the menu.
@@ -322,8 +406,30 @@ async function boot(parent: HTMLElement): Promise<void> {
   uiActions.setBanishTag((tag) => world.banishTag(tag));
   uiActions.setSkipDraft(() => world.skipDraft());
   uiActions.setChooseBossReward((i) => world.chooseBossReward(i));
+  uiActions.setChooseConclusion((extract) => world.chooseConclusion(extract));
+  uiActions.setSurrenderRun(() => world.surrender());
   let draftShownFor = -1; // de-dupe store pushes while a draft is open
   let rewardShownFor = -1; // de-dupe boss-reward overlay pushes
+  let conclusionShownFor = -1; // de-dupe the end-of-act conclusion overlay
+  let lastBankedBossKills = 0; // T79: bosses already banked to the save this run
+  // T45 boss-Glory banking economy: `securedThisRun` = boss Glory already banked at
+  // kill time (safe); `runPot` = Glory at risk, banked × a multiplier at run-end
+  // (extract) or a fraction (death). Reset per run in armRun().
+  let securedThisRun = 0;
+  let runPot = 0;
+  // T46 boss-mastery: snapshot the run clock + damage-taken when a boss fight STARTS
+  // so a kill can award feats (fast / flawless). Edge-detected on boss.active.
+  let bossActiveLast = false;
+  let fightStartElapsed = 0;
+  let fightStartDamage = 0;
+  // T44 (V23/V43): per-boss-kill arena escalation — the pit darkens + reddens a step
+  // each time a boss falls, a readable "graduated to the next power tier" cue. Fog is
+  // render-only (V2); we lerp base → hostile across up to FOG_TIERS boss kills.
+  const FOG_BASE = new Color(0x140c08);
+  const FOG_HOT = new Color(0x2a0a06); // dark crimson haze at the top tier
+  const FOG_BASE_DENS = 0.0038;
+  const FOG_TIERS = 4;
+  let lastFogTier = -1;
   let endShown = false; // de-dupe the game-over transition
   let wasPaused = false; // edge-detect pause to refresh the character sheet
   // Intro telegraphs (T33): announce the boss + each new enemy class once per run.
@@ -335,15 +441,37 @@ async function boot(parent: HTMLElement): Promise<void> {
   const seenVariants = new Set<number>();
   let lastGlory = 0; // glory earned on the most recent run (for the panel)
 
-  // Build the meta slice (Glory + permanent upgrades) from the saved profile.
+  // Total owned permanent levels — drives the global "Labor Costs" inflation (T72).
+  const totalOwnedLevels = (): number =>
+    Object.values(save.current.permanentUpgrades).reduce((s, n) => s + (n ?? 0), 0);
+  // Base (no-inflation) Glory sunk into the whole tree — the prestige-yield basis.
+  const totalGlorySpentBase = (): number => {
+    let sum = 0;
+    for (const [id, lvl] of Object.entries(save.current.permanentUpgrades)) {
+      const def = permanentById(id);
+      if (!def) continue;
+      for (let k = 0; k < (lvl ?? 0); k++) sum += levelCost(def, k); // base cost (no inflation)
+    }
+    return sum;
+  };
+
+  // Build the meta slice (Glory + permanents + Red Dust prestige) from the profile.
   const pushMeta = (): void => {
     const glory = save.current.currencies.martianGlory;
+    const redDust = save.current.currencies.redDust;
     const owned = save.current.permanentUpgrades;
+    const pres = save.current.prestige;
+    const total = totalOwnedLevels();
+    const free = prestigeInflationFree(INFLATION_FREE, pres.nodes); // Labor Union raises it
+    const capLift = prestigeCapLift(pres.nodes); // Overcapacity lifts every node's cap
     const permanents: PermanentView[] = PERMANENT_UPGRADES.map((u) => {
       const lvl = owned[u.id] ?? 0;
-      const next = levelCost(u, lvl); // cost of the NEXT level (escalates per level)
+      const effMax = u.maxLevel + capLift;
+      const next = levelCost(u, lvl, total, free); // next level (escalates + inflates)
       let spent = 0;
-      for (let k = 0; k < lvl; k++) spent += levelCost(u, k);
+      for (let k = 0; k < lvl; k++) spent += levelCost(u, k); // base for the refund/display
+      // Boss gate (T47/V25): trophies/mastery GATE, Glory PAYS.
+      const locked = !permanentGateMet(u, save.current.unlocks, save.current.bossMastery);
       return {
         id: u.id,
         name: u.name,
@@ -353,21 +481,81 @@ async function boot(parent: HTMLElement): Promise<void> {
         cost: next,
         spent,
         owned: lvl,
-        maxLevel: u.maxLevel,
-        affordable: lvl < u.maxLevel && glory >= next,
+        maxLevel: effMax,
+        affordable: !locked && lvl < effMax && glory >= next,
+        locked,
+        // exactOptionalPropertyTypes: only attach the label when actually locked.
+        ...(locked && u.gate ? { lockLabel: u.gate.requirement } : {}),
       };
     });
-    uiActions.setMeta({ glory, lastEarned: lastGlory, permanents });
+    // Prestige unlocks once the Act-2 final boss seeds it (T48 → 'prestige:seed').
+    const canPrestige = !!save.current.unlocks['prestige:seed'];
+    const prestigeReady = canPrestige ? prestigeYield(totalGlorySpentBase()) : 0;
+    const prestigeNodes: PrestigeNodeView[] = PRESTIGE_NODES.map((n) => {
+      const lvl = pres.nodes[n.id] ?? 0;
+      return {
+        id: n.id,
+        name: n.name,
+        description: n.description,
+        cost: n.costRedDust,
+        owned: lvl,
+        maxLevel: n.maxLevel,
+        affordable: lvl < n.maxLevel && redDust >= n.costRedDust,
+      };
+    });
+    uiActions.setMeta({
+      glory,
+      lastEarned: lastGlory,
+      permanents,
+      redDust,
+      prestigeCount: pres.count,
+      prestigeUnlocked: canPrestige,
+      prestigeReady,
+      prestigeNodes,
+    });
   };
   pushMeta();
+
+  // Bridge: PRESTIGE (T72) — sacrifice the whole Glory tree to MINT Red Dust. Gated
+  // by the prestige seed (Act-2 final-boss unlock). Wipes permanents; ⊥ refunds Glory.
+  uiActions.setPrestige(() => {
+    if (!save.current.unlocks['prestige:seed']) return;
+    const minted = prestigeYield(totalGlorySpentBase());
+    if (minted <= 0) return;
+    save.mutate((p) => {
+      p.currencies.redDust += minted;
+      p.prestige.count += 1;
+      p.permanentUpgrades = {}; // the tree is sacrificed (no Glory refund — it's spent)
+    });
+    world.setPermanents(save.current.permanentUpgrades);
+    pushMeta();
+  });
+
+  // Bridge: buy a Red-Dust prestige node (T72). Applies next run.
+  uiActions.setBuyPrestigeNode((id) => {
+    const node = prestigeNodeById(id);
+    if (!node) return;
+    const lvl = save.current.prestige.nodes[id] ?? 0;
+    if (lvl >= node.maxLevel || save.current.currencies.redDust < node.costRedDust) return;
+    save.mutate((p) => {
+      p.currencies.redDust -= node.costRedDust;
+      p.prestige.nodes[id] = lvl + 1;
+    });
+    world.setPrestige(save.current.prestige.nodes);
+    pushMeta();
+  });
 
   // Bridge: buy a permanent upgrade with Martian Glory (T26). Next run applies it.
   uiActions.setBuyPermanent((id) => {
     const def = permanentById(id);
     if (!def) return;
     const lvl = save.current.permanentUpgrades[id] ?? 0;
-    const price = levelCost(def, lvl);
-    if (lvl >= def.maxLevel || save.current.currencies.martianGlory < price) return;
+    const free = prestigeInflationFree(INFLATION_FREE, save.current.prestige.nodes);
+    const effMax = def.maxLevel + prestigeCapLift(save.current.prestige.nodes);
+    const price = levelCost(def, lvl, totalOwnedLevels(), free); // Labor-Costs inflated (T72)
+    if (lvl >= effMax || save.current.currencies.martianGlory < price) return;
+    // Boss gate (T47/V25): can't buy a locked node even with the Glory.
+    if (!permanentGateMet(def, save.current.unlocks, save.current.bossMastery)) return;
     save.mutate((p) => {
       p.currencies.martianGlory -= price;
       p.permanentUpgrades[id] = lvl + 1;
@@ -427,10 +615,14 @@ async function boot(parent: HTMLElement): Promise<void> {
   };
   const armRun = (): void => {
     world.setPermanents(save.current.permanentUpgrades);
+    world.setPrestige(save.current.prestige.nodes); // T72 Red-Dust seeds
     world.reset(); // fresh arena + player at spawn; `started` stays false
     discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
     audio.stopMusic(); // menu theme off in the pit
     endShown = false;
+    securedThisRun = 0;
+    runPot = 0;
+    lastBankedBossKills = 0;
     uiActions.setResult(null);
     uiActions.setScreen('arena');
     world.started = !briefingPending(); // hold until "Got it" when the briefing shows
@@ -737,7 +929,85 @@ async function boot(parent: HTMLElement): Promise<void> {
       // Push HUD slice to the store (selectors re-render only changed widgets).
       uiActions.setHud(buildHudState(world));
       uiActions.setBoss(world.boss.snapshot());
+      if (world.started && !world.ended) checkAchievements(false); // live in-run unlocks
       uiActions.setInspect(computeInspect(world));
+
+      // T79 (V40): bank boss-kill progress AT KILL TIME, not at run-end — so a
+      // surrender / quit / refresh after a boss falls KEEPS the unlock + trophy.
+      // A dev-tampered run never banks (V35/V41). A run restart resets the counter
+      // (stats.bossKills drops below what we've banked).
+      // Arena escalation: shift the fog one step per boss kill (only when it changes).
+      const fogTier = Math.min(FOG_TIERS, world.stats.bossKills);
+      if (fogTier !== lastFogTier && scene.fog instanceof FogExp2) {
+        lastFogTier = fogTier;
+        const f = fogTier / FOG_TIERS;
+        scene.fog.color.copy(FOG_BASE).lerp(FOG_HOT, f);
+        scene.fog.density = FOG_BASE_DENS + f * 0.0016;
+      }
+
+      // Boss-fight start edge (T46): snapshot the clock + damage for feat scoring.
+      if (world.boss.active && !bossActiveLast) {
+        fightStartElapsed = world.elapsed;
+        fightStartDamage = world.stats.damageTaken;
+      }
+      bossActiveLast = world.boss.active;
+
+      if (world.stats.bossKills < lastBankedBossKills) {
+        lastBankedBossKills = world.stats.bossKills;
+        securedThisRun = 0;
+        runPot = 0;
+      }
+      if (!world.cheated && world.stats.bossKills > lastBankedBossKills) {
+        lastBankedBossKills = world.stats.bossKills;
+        const killedId = world.boss.lastKilledId;
+        const tier = world.boss.lastKilledTier ?? 'miniboss';
+        const actDef = ARENAS[save.current.settings.arenaId];
+        // First time THIS boss has ever fallen? → grant its breadth unlock (T48, V24).
+        const firstKill = !!killedId && !save.current.unlocks[`boss-killed:${killedId}`];
+        const unlock = firstKill && killedId ? firstKillUnlock(killedId) : undefined;
+        // T45: split this kill's Glory — secure a slice NOW, bank the rest at run-end.
+        const total = bossGloryFor(
+          tier,
+          actDef.gloryMult,
+          activeDifficulty().gloryMult * world.player.gloryMult,
+        );
+        const { secured, pot } = splitBossGlory(total);
+        securedThisRun += secured;
+        runPot += pot;
+        // T46 feats (V26 — feat-based, ⊥ HP-padding): score this kill from the fight.
+        const feats = bossFeats(
+          world.elapsed - fightStartElapsed,
+          world.stats.damageTaken - fightStartDamage,
+          world.weaponSystem.weapons[0]?.def.family,
+        );
+        save.mutate((p) => {
+          p.currencies.martianGlory += secured; // SECURED slice banked immediately (V24)
+          if (killedId) {
+            p.unlocks[`boss-killed:${killedId}`] = true; // first-kill unlock (V24)
+            p.bossKills[killedId] = (p.bossKills[killedId] ?? 0) + 1; // trophy tally
+            // Merge earned feats into the boss's mastery set (deduped, T46).
+            const have = new Set(p.bossMastery[killedId] ?? []);
+            for (const f of feats) have.add(f);
+            p.bossMastery[killedId] = [...have];
+          }
+          // Clearing an act's FINAL boss unlocks the NEXT act (the previous-act gate).
+          // Minibosses do NOT unlock the next act — only the act's final boss does.
+          if (tier === 'final') {
+            p.unlocks['boss-beaten'] = true; // legacy key: Act 1 final → Act 2 open
+            p.unlocks[`act-cleared:${actDef.act}`] = true; // generic next-act gate
+            // Clearing the FINAL act's final boss unlocks the difficulty selector —
+            // core content, NO prestige required (prestige is optional end-game only).
+            if (actDef.act >= MAX_ACT) p.unlocks['difficulty-unlocked'] = true;
+          }
+          // First-kill BREADTH unlock (T48): a tree branch / next act / prestige seed.
+          if (unlock) p.unlocks[unlock.key] = true;
+        });
+        void save.flush();
+        pushMeta();
+        pushProfile();
+        // Announce the breadth unlock (after the save so the menu reflects it).
+        if (unlock) uiActions.setAnnounce({ id: ++annId, kind: 'unlock', text: unlock.label });
+      }
 
       // Refresh the character sheet when pause opens (the pause menu shows it).
       if (world.paused && !wasPaused) uiActions.setSheet(world.characterSheet());
@@ -752,7 +1022,12 @@ async function boot(parent: HTMLElement): Promise<void> {
       lastAnnTick = world.tick;
       if (world.boss.active && !bossAnnounced) {
         bossAnnounced = true;
-        uiActions.setAnnounce({ id: ++annId, kind: 'boss', text: world.boss.snapshot().name });
+        const snap = world.boss.snapshot();
+        uiActions.setAnnounce({
+          id: ++annId,
+          kind: snap.tier === 'final' ? 'boss' : 'miniboss',
+          text: snap.name,
+        });
       }
       const en = world.enemies;
       for (let i = 0; i < en.count; i++) {
@@ -771,7 +1046,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         lastEvolved = world.justEvolved;
         uiActions.setAnnounce({
           id: ++annId,
-          kind: 'boss',
+          kind: 'evolution',
           text: `EVOLVED — ${world.justEvolved}`,
         });
       } else if (!world.justEvolved) {
@@ -780,7 +1055,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       // Themed milestone wave (T-themes): banner when a scripted burst lands.
       if (world.director.waveEvent && world.director.waveEvent !== lastWaveEvent) {
         lastWaveEvent = world.director.waveEvent;
-        uiActions.setAnnounce({ id: ++annId, kind: 'boss', text: world.director.waveEvent });
+        uiActions.setAnnounce({ id: ++annId, kind: 'wave', text: world.director.waveEvent });
       }
 
       // Death → award Martian Glory (T26), record the run, show the game-over
@@ -790,26 +1065,50 @@ async function boot(parent: HTMLElement): Promise<void> {
         const r = world.result;
         // A dev-tampered run NEVER banks Glory / records / history (V35) — still show
         // the summary so the flow works, just don't pollute the save.
-        lastGlory = world.cheated
+        const gloryMult =
+          ARENAS[save.current.settings.arenaId].gloryMult *
+          activeDifficulty().gloryMult * // global difficulty tier (T-Act)
+          world.player.gloryMult; // ARENA/INFAMY Glory mult (T35)
+        // RunScore → Glory (T72/V34): sub-linear award from depth/kills/time/bosses/
+        // difficulty, × the arena/difficulty/infamy multiplier. Plus the boss RUN-POT
+        // banked at run-end (T45) — extract pays the pot at a bonus, death keeps a slice.
+        const survival = world.cheated
           ? 0
-          : gloryFor(
-              r,
-              ARENAS[save.current.settings.arenaId].gloryMult *
-                activeDifficulty().gloryMult * // global difficulty tier (T-Act)
-                world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
+          : gloryAward(
+              runScore({ level: r.level, killScore: killScore(world.stats.killsByVariant) }),
+              gloryMult,
             );
+        const potBank = world.cheated ? 0 : bankRunPot(runPot, r.won);
+        // Difficulty-milestone first-clear bounty (T49): a one-time Glory bonus +
+        // unlock the first time you EXTRACT an act at this difficulty tier.
+        const diffIdx = save.current.settings.difficulty ?? 0;
+        const milestone = difficultyMilestone(
+          diffIdx,
+          DIFFICULTIES[diffIdx]?.name ?? 'Standard',
+          DIFFICULTIES.length,
+        );
+        const newMilestone = !world.cheated && r.won && !save.current.unlocks[milestone.key];
+        const milestoneBonus = newMilestone ? milestone.gloryBonus : 0;
+        const milestoneRedDust = newMilestone ? milestone.redDustBonus : 0;
+        // The summary's "Glory earned" = the WHOLE run: the secured slices already
+        // banked at each boss kill + survival + the banked run-pot + any milestone.
+        lastGlory = world.cheated ? 0 : securedThisRun + survival + potBank + milestoneBonus;
         if (!world.cheated) {
           save.mutate((p) => {
-            p.currencies.martianGlory += lastGlory;
-            // Slaying the Gatekeeper (or winning the run) permanently unlocks Act 2.
-            if (world.stats.bossKills > 0 || r.won) p.unlocks['boss-beaten'] = true;
-            // Beating the Act-2 boss unlocks the global DIFFICULTY selector (T-Act) —
-            // harder tiers for EVERY arena, so Act 1 stays relevant + progression reads.
-            if (
-              ARENAS[save.current.settings.arenaId].act >= 2 &&
-              (world.stats.bossKills > 0 || r.won)
-            ) {
-              p.unlocks['difficulty-unlocked'] = true;
+            // Secured boss Glory was already banked at kill time — add only the rest.
+            p.currencies.martianGlory += survival + potBank + milestoneBonus;
+            // Top-difficulty first clear mints Red Dust (T49 "max-diff → prestige reward").
+            if (milestoneRedDust > 0) p.currencies.redDust += milestoneRedDust;
+            if (newMilestone) p.unlocks[milestone.key] = true; // difficulty-clear milestone (T49)
+            // EXTRACTING an act (won = its final boss felled) unlocks the NEXT act.
+            // (Mid-run final kills already banked this at kill time; this is the
+            // backstop for the extract path.) Difficulty is unlocked via PRESTIGE, ⊥ here.
+            if (r.won) {
+              const act = ARENAS[save.current.settings.arenaId].act;
+              p.unlocks['boss-beaten'] = true;
+              p.unlocks[`act-cleared:${act}`] = true;
+              // Last act cleared → difficulty selector (core content, no prestige).
+              if (act >= MAX_ACT) p.unlocks['difficulty-unlocked'] = true;
             }
             // Update the global best AND the per-arena / per-character buckets so
             // Records can break down "best run" by where + who (T65).
@@ -834,7 +1133,13 @@ async function boot(parent: HTMLElement): Promise<void> {
           void save.flush();
           pushMeta();
           pushProfile();
+          if (newMilestone) {
+            uiActions.setAnnounce({ id: ++annId, kind: 'unlock', text: milestone.label });
+          }
         }
+        // Final achievement pass — end/win + freshly-banked lifetime stats (runCount,
+        // Glory). Cheated runs bank nothing (newlyEarned guards on it).
+        checkAchievements(true);
         const sum = world.runSummary();
         uiActions.setSheet(world.characterSheet());
         uiActions.setResult({
@@ -906,6 +1211,15 @@ async function boot(parent: HTMLElement): Promise<void> {
         uiActions.setBossReward({ open: false, id: world.bossRewardId, options: [] });
       }
 
+      // End-of-act conclusion overlay (T75): extract or opt into endless Overrun.
+      if (world.conclusion && conclusionShownFor !== world.conclusionId) {
+        conclusionShownFor = world.conclusionId;
+        uiActions.setConclusion({ open: true, id: world.conclusionId });
+      } else if (!world.conclusion && conclusionShownFor !== -1) {
+        conclusionShownFor = -1;
+        uiActions.setConclusion({ open: false, id: world.conclusionId });
+      }
+
       const metrics: OverlayMetrics = {
         fps,
         frameMs,
@@ -944,7 +1258,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   window.addEventListener('beforeunload', () => void save.flush());
 
   // Dev control board bridge (T74) — see boot/dev-bridge.ts.
-  const dev = createDevBridge(world, save, pushMeta);
+  const dev = createDevBridge(world, save, pushMeta, pushProfile);
   uiActions.setDev(dev);
 
   // Dev hook for e2e / debugging invisible sim state (execution rule 11). Temp.

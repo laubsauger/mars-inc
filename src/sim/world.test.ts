@@ -3,7 +3,14 @@
 
 import { describe, it, expect } from 'vitest';
 import { World } from './world';
-import { EnemyState, RUST_MITE, BOSS_GATEKEEPER } from './enemies';
+import {
+  EnemyState,
+  RUST_MITE,
+  BOSS_GATEKEEPER,
+  FOREMAN_KRILL,
+  REPO_SOVEREIGN,
+  type EnemyType,
+} from './enemies';
 
 const DT = 1 / 60;
 
@@ -78,6 +85,92 @@ describe('boss reward (T43)', () => {
     expect(w.bossReward).toBe(false);
     w.step(DT);
     expect(w.tick).toBe(tick + 1);
+  });
+});
+
+describe('act conclusion + victory (T75, V36)', () => {
+  // Spawn a boss body, kill it, and claim its reward (if any). Returns once the
+  // boss-kill flow has settled (reward claimed or conclusion opened).
+  function killBossAndClaim(w: World, type: EnemyType): void {
+    const bi = w.enemies.spawn(type, 6, 0, 0, 0);
+    w.enemies.state[bi] = EnemyState.Active;
+    w.step(DT); // activate the controller
+    for (let i = 0; i < w.enemies.count; i++) {
+      if (w.enemies.variant[i] === type.variant) w.enemies.health[i] = 0;
+    }
+    for (let t = 0; t < 6 && !w.bossReward && !w.conclusion; t++) w.step(DT);
+    if (w.bossReward) w.chooseBossReward(0);
+  }
+
+  it('clearing the act roster opens the conclusion; extract wins the run', () => {
+    const w = new World(0xac7);
+    w.start();
+    w.countdown = 0;
+
+    killBossAndClaim(w, FOREMAN_KRILL); // Miniboss I
+    expect(w.conclusion).toBe(false);
+    expect(w.ended).toBe(false);
+
+    killBossAndClaim(w, REPO_SOVEREIGN); // Miniboss II
+    expect(w.conclusion).toBe(false);
+
+    killBossAndClaim(w, BOSS_GATEKEEPER); // Final → conclusion
+    expect(w.conclusion).toBe(true);
+    expect(w.ended).toBe(false); // frozen on the choice, not over yet
+
+    w.chooseConclusion(true); // EXTRACT
+    expect(w.conclusion).toBe(false);
+    expect(w.ended).toBe(true);
+    expect(w.result?.won).toBe(true);
+  });
+
+  it('a boss death enqueues the scaled blood-catastrophe FX (T77, V38)', () => {
+    const w = new World(0xb10);
+    w.start();
+    w.countdown = 0;
+    const bi = w.enemies.spawn(BOSS_GATEKEEPER, 6, 0, 0, 0);
+    w.enemies.state[bi] = EnemyState.Active;
+    w.step(DT); // activate
+    w.fx.clear();
+    for (let i = 0; i < w.enemies.count; i++) {
+      if (w.enemies.variant[i] === BOSS_GATEKEEPER.variant) w.enemies.health[i] = 0;
+    }
+    w.step(DT); // kill compacts → bloodburst pushed
+    const burst = w.fx.events.find((e) => e.kind === 'bloodburst');
+    expect(burst).toBeDefined();
+    expect(burst!.dx).toBeGreaterThan(1); // carries the boss radius for scaling
+  });
+
+  it('environmental hazards erupt only after a boss kill (T44/V23)', () => {
+    // Tier 0: a single step at t≈0 arms no arena hazard (and no enemy has acted yet).
+    const w0 = new World(0xf00);
+    w0.start();
+    w0.countdown = 0;
+    w0.step(DT);
+    expect(w0.enemyAttacks.hazards.count).toBe(0);
+
+    // Tier 3: the run-phase hazard fires on the first eligible step (timer starts 0).
+    const w3 = new World(0xf00);
+    w3.start();
+    w3.countdown = 0;
+    w3.stats.bossKills = 3;
+    w3.step(DT);
+    expect(w3.enemyAttacks.hazards.count).toBeGreaterThan(0);
+  });
+
+  it('Overrun keeps the run going (no win) and flips the director endless', () => {
+    const w = new World(0xac8);
+    w.start();
+    w.countdown = 0;
+    killBossAndClaim(w, FOREMAN_KRILL);
+    killBossAndClaim(w, REPO_SOVEREIGN);
+    killBossAndClaim(w, BOSS_GATEKEEPER);
+    expect(w.conclusion).toBe(true);
+
+    w.chooseConclusion(false); // OVERRUN
+    expect(w.conclusion).toBe(false);
+    expect(w.ended).toBe(false);
+    expect(w.infinite).toBe(true);
   });
 });
 

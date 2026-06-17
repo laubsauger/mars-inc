@@ -2,6 +2,7 @@
 // skill tree. Extracted from MainMenu.tsx (~700 lines) for maintainability.
 import { useEffect, useRef, useState } from 'react';
 import { useUiStore } from '../../store';
+import { PermanentTooltipBody } from '../../components/PermanentTooltipBody';
 import { PERMANENT_UPGRADES } from '../../../content/permanent/index';
 
 type GloryBranch = 'arsenal' | 'biology' | 'mobility' | 'command' | 'arena' | 'infamy';
@@ -228,8 +229,12 @@ export function GloryTree() {
   const buy = useUiStore((s) => s.buyPermanent);
   const setMenuView = useUiStore((s) => s.setMenuView);
   const resetPermanents = useUiStore((s) => s.resetPermanents);
+  const prestige = useUiStore((s) => s.prestige);
+  const buyPrestigeNode = useUiStore((s) => s.buyPrestigeNode);
 
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showPrestige, setShowPrestige] = useState(false);
+  const [confirmPrestige, setConfirmPrestige] = useState(false);
   // Dev affordance: reveal the WHOLE tree to study it. Off (production) reveals
   // step-by-step from the frontier, so first-time players don't see the far ends.
   // Defaults ON in dev builds, hidden + off in production.
@@ -364,6 +369,29 @@ export function GloryTree() {
               &#9670; {meta.glory}
             </span>
           </div>
+          {/* Prestige (T72) — END-GAME ONLY. Hidden until the last act is cleared; it
+              gates NOTHING core (difficulty unlocks from the final boss, not this). */}
+          {meta.prestigeUnlocked ? (
+            <>
+              <div className="flex items-center gap-1.5 border border-bleed/50 bg-pit/60 px-3 py-1">
+                <span className="text-[10px] uppercase tracking-widest text-dust">Red Dust</span>
+                <span className="text-base font-black tabular-nums text-bleed">
+                  &#10070; {meta.redDust}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowPrestige((v) => !v)}
+                title="End-game prestige: sacrifice the tree for Red Dust + rule-breaking nodes"
+                className={`rounded-sm border px-4 py-1.5 text-sm font-bold uppercase tracking-widest transition focus:outline-none ${
+                  showPrestige
+                    ? 'border-bleed bg-bleed/20 text-bleed'
+                    : 'border-rust bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
+                }`}
+              >
+                Prestige
+              </button>
+            </>
+          ) : null}
           {import.meta.env.DEV ? (
             <button
               onClick={() => setRevealAll((v) => !v)}
@@ -405,6 +433,72 @@ export function GloryTree() {
           </button>
         </div>
       </header>
+
+      {/* Prestige panel (T72) — end-game replayability extension. Sacrifice the tree
+          for Red Dust, spend it on rule-breaking nodes. Optional; never required. */}
+      {showPrestige && meta.prestigeUnlocked ? (
+        <div className="absolute inset-x-0 top-[3.4rem] z-20 mx-auto w-[44rem] max-w-[94vw] rounded-b-md border-2 border-bleed/50 bg-pit/95 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.7)]">
+          <div className="mb-1 text-xs uppercase tracking-[0.4em] text-bleed">
+            Prestige · End Game
+          </div>
+          <div className="mb-3 text-[11px] leading-tight text-bone/55">
+            Sacrifice the entire Glory tree to mint <span className="text-bleed">Red Dust</span> —
+            no Glory refund. Spend it on rule-breakers below, then rebuild deeper. Prestiged{' '}
+            <span className="text-bone/80">{meta.prestigeCount}×</span>.
+          </div>
+          <button
+            disabled={meta.prestigeReady <= 0}
+            onClick={() => {
+              if (confirmPrestige) {
+                prestige();
+                setConfirmPrestige(false);
+              } else {
+                setConfirmPrestige(true);
+              }
+            }}
+            onBlur={() => setConfirmPrestige(false)}
+            className={`mb-3 w-full rounded-sm border-2 px-4 py-2 text-sm font-black uppercase tracking-widest transition focus:outline-none disabled:opacity-30 ${
+              confirmPrestige
+                ? 'border-bleed bg-bleed/25 text-bleed'
+                : 'border-bleed/70 bg-bleed/10 text-bleed hover:bg-bleed/20'
+            }`}
+          >
+            {meta.prestigeReady <= 0
+              ? 'Invest Glory first, then sacrifice'
+              : confirmPrestige
+                ? `CONFIRM — SACRIFICE TREE → +${meta.prestigeReady} ❖`
+                : `SACRIFICE TREE → +${meta.prestigeReady} ❖ RED DUST`}
+          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            {meta.prestigeNodes.map((n) => (
+              <button
+                key={n.id}
+                disabled={!n.affordable}
+                onClick={() => buyPrestigeNode(n.id)}
+                title={n.description}
+                className={`flex flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition focus:outline-none disabled:cursor-default ${
+                  n.owned >= n.maxLevel
+                    ? 'border-bleed bg-bleed/15 text-bleed'
+                    : n.affordable
+                      ? 'border-bleed/60 bg-umber/80 text-bone hover:border-bleed'
+                      : 'border-rust/40 bg-pit/60 text-bone/40'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] font-black">{n.name}</span>
+                  <span className="text-[10px] tabular-nums text-bone/60">
+                    {n.owned}/{n.maxLevel}
+                  </span>
+                </div>
+                <div className="text-[10px] leading-tight text-bone/55">{n.description}</div>
+                <div className="text-[10px] font-bold text-bleed">
+                  {n.owned >= n.maxLevel ? 'MAX' : `❖ ${n.cost}`}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div
         ref={viewportRef}
@@ -527,9 +621,12 @@ export function GloryTree() {
             const maxed = p.owned >= p.maxLevel;
             const owned = p.owned > 0;
             const reachable = isUnlocked(p.id);
-            const buyable = reachable && p.affordable && !maxed;
+            // Boss-gated node not yet unlocked (T47/V25): tree-reachable but locked
+            // behind a boss kill / mastery — reads LOCKED, not just unaffordable.
+            const bossLocked = p.locked === true;
+            const buyable = reachable && p.affordable && !maxed && !bossLocked;
             // Unlocked + available to buy, but you can't afford it right now.
-            const pricedOut = reachable && !maxed && !owned && !p.affordable;
+            const pricedOut = reachable && !maxed && !owned && !p.affordable && !bossLocked;
             const rarity = p.rarity;
             // Show the icon one step past the frontier (and always for keystones)
             // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
@@ -570,16 +667,19 @@ export function GloryTree() {
             // "can't path here yet" with "can't afford yet".
             const stateClass = !reachable
               ? 'border-dashed border-bone/12 bg-pit/85 text-bone/15 opacity-45 saturate-0'
-              : maxed
-                ? 'border-gold bg-[radial-gradient(circle_at_35%_30%,rgba(255,210,63,0.28),rgba(7,5,4,0.92)_62%)] text-gold shadow-[0_0_26px_rgba(255,210,63,0.4)]'
-                : owned
-                  ? `${style.border} ${style.text} ${style.ring} bg-pit`
-                  : buyable
-                    ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
-                    : `${style.border} ${style.text} bg-pit shadow-[0_0_0_1px_rgba(255,210,63,0.4),0_0_16px_rgba(255,210,63,0.2)]`;
+              : bossLocked
+                ? 'border-dashed border-gold/35 bg-pit/85 text-gold/40 opacity-70 saturate-50'
+                : maxed
+                  ? 'border-gold bg-[radial-gradient(circle_at_35%_30%,rgba(255,210,63,0.28),rgba(7,5,4,0.92)_62%)] text-gold shadow-[0_0_26px_rgba(255,210,63,0.4)]'
+                  : owned
+                    ? `${style.border} ${style.text} ${style.ring} bg-pit`
+                    : buyable
+                      ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
+                      : `${style.border} ${style.text} bg-pit shadow-[0_0_0_1px_rgba(255,210,63,0.4),0_0_16px_rgba(255,210,63,0.2)]`;
             return (
               <button
                 key={p.id}
+                title={bossLocked ? p.lockLabel : undefined}
                 onClick={() => buyable && buy(p.id)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseEnter={() => !drag.current && setHovered(p.id as TreeNodeId)}
@@ -590,7 +690,7 @@ export function GloryTree() {
               >
                 {/* Always keep the node icon visible — the maxed ★ rides a corner
                     badge, it never covers the glyph (only locked hides it). */}
-                {revealed ? node.icon : '⊘'}
+                {bossLocked ? '🔒' : revealed ? node.icon : '⊘'}
                 {maxed ? (
                   <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-gold bg-pit text-[11px] leading-none text-gold shadow-[0_0_10px_rgba(255,210,63,0.5)]">
                     ★
@@ -629,45 +729,18 @@ export function GloryTree() {
                 className={`w-64 border bg-pit/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] ${hoveredRevealed ? BRANCH_STYLE[hoveredBranch].border : 'border-bone/20'}`}
               >
                 {hoveredRevealed ? (
-                  <>
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-sm font-black uppercase ${BRANCH_STYLE[hoveredBranch].text}`}
-                      >
-                        {hoveredP.name}
-                      </span>
-                      <span className="shrink-0 text-xs text-bone/70">
-                        {hoveredP.owned}/{hoveredP.maxLevel}
-                      </span>
-                    </div>
-                    <div
-                      className={`mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${
-                        hoveredP.rarity === 'legendary'
-                          ? 'text-legendary'
-                          : hoveredP.rarity === 'rare'
-                            ? 'text-bone/70'
-                            : 'text-bone/40'
-                      }`}
-                    >
-                      {hoveredP.rarity === 'legendary'
-                        ? '◆ Keystone'
-                        : hoveredP.rarity === 'rare'
-                          ? '◈ Rare'
-                          : 'Common'}
-                    </div>
-                    <div className="mt-1 text-[11px] leading-4 text-bone/75">
-                      {hoveredP.description}
-                    </div>
-                    <div className="mt-2 text-[11px] font-bold text-gold">
-                      {hoveredLocked
+                  <PermanentTooltipBody
+                    permanent={hoveredP}
+                    action={
+                      hoveredLocked
                         ? `Locked — buy ${hoveredParent ? (byId.get(hoveredParent)?.name ?? 'the prior node') : 'the prior node'} first`
                         : hoveredP.owned >= hoveredP.maxLevel
                           ? 'MAXED'
                           : hoveredP.affordable
                             ? `Click to buy — ${hoveredP.cost} ◆`
-                            : `Costs ${hoveredP.cost} ◆ (insufficient)`}
-                    </div>
-                  </>
+                            : `Costs ${hoveredP.cost} ◆ (insufficient)`
+                    }
+                  />
                 ) : (
                   <>
                     <div className="text-sm font-black uppercase tracking-widest text-bone/55">

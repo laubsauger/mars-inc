@@ -15,9 +15,10 @@ export type FxKind =
   | 'bounty'
   | 'ember' // visual-only status flecks (burn) — NEVER plays a sound
   | 'corpseblast' // overkill-corpse detonation — TOXIC-GREEN so it reads ⊥ gold explosions
-  | 'meteor' // Moonshot orbital strike telegraph — render drops a rock that lands on the fuse
+  | 'meteor' // orbital strike telegraph — render drops a rock that lands on the fuse. dx = fall time, dz = blast radius. variant: 0 = player Moonshot (orange), 1 = HOSTILE boss meteor (violet) so the two never read alike
   | 'laser' // player hitscan beam — x,z = origin; dx,dz = END point (absolute, not a dir)
-  | 'toxiccloud'; // Toxic Bloom — a lingering green gas puff (dx = radius)
+  | 'toxiccloud' // Toxic Bloom — a lingering green gas puff (dx = radius)
+  | 'bloodburst'; // boss death (T77/V38) — massively scaled gore eruption + ground splatter (dx = boss radius)
 
 /** High bit OR'd into a 'blood' event's `variant` to flag a CRIT hit → the view
  *  sprays a more violent, further, tighter directional jet (coup-de-grâce read).

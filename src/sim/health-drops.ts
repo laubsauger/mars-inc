@@ -12,7 +12,7 @@ export const MAX_HEALTH_DROPS = 24;
 
 const DROP_CHANCE = 0.02; // per ordinary kill
 const HEAL = 25; // flat heal per pickup (clamped to maxHealth)
-const PICKUP_RADIUS = 1.8;
+const PICKUP_RADIUS = 2.8; // generous walk-over collect (was 1.8 — felt too tight to grab)
 /** Seconds a medkit lingers before it decays. */
 export const HEALTH_TTL = 16;
 export const HEALTH_FADE = 4; // last seconds: the view flashes a fade warning
@@ -52,12 +52,21 @@ export class HealthDropSystem {
     this.healedThisStep = 0;
   }
 
-  step(player: Player, kills: readonly KillEvent[], rng: Rng, fx: FxQueue, dt: number): void {
+  step(
+    player: Player,
+    kills: readonly KillEvent[],
+    rng: Rng,
+    fx: FxQueue,
+    dt: number,
+    dropMult = 1, // run-phase: more medkits at higher tiers (T44/V23)
+  ): void {
     this.healedThisStep = 0;
 
-    // Drop medkits from this step's kills (chance-gated, bounded pool).
+    // Drop medkits from this step's kills (chance-gated, bounded pool). Higher run
+    // tiers (boss kills) drop more so survivability keeps pace with the escalation.
+    const chance = DROP_CHANCE * dropMult;
     for (const k of kills) {
-      if (rng.next() < DROP_CHANCE) this.pool.spawn(k.x, k.z);
+      if (rng.next() < chance) this.pool.spawn(k.x, k.z);
     }
 
     // Age out ignored kits so the floor stays clean.

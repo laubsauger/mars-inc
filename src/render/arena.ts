@@ -47,13 +47,14 @@ const STEEL_DARK = new Color('#23262c');
 const STEEL = new Color('#363b44');
 const STEEL_LIT = new Color('#525a66');
 const WALL = new Color('#3a2d28'); // warm-tinted iron so wall ties floor to steel
+const DOOR = new Color('#1c2230'); // blast doors — cold dark gunmetal, distinct ⊥ the warm wall
 const CROWD = new Color('#140f0d');
-const PORTAL_FLOOR = new Color('#0c0a0b'); // near-black tunnel floor (reads as depth)
-const PORTAL_BACK = new Color('#1a0f0c'); // dim back wall
+const PORTAL_FLOOR = new Color('#060507'); // near-black tunnel floor (reads as depth)
+const PORTAL_BACK = new Color('#0a0706'); // very dim back wall — a dark hallway, not a lit alcove
 const PORTAL_GLOW = new Color('#ff5a2a'); // ominous warm light enemies emerge from
 // Gate-ROOM interior (ceiling + side walls): darker than the steel/WALL so the
 // recess reads as a shadowed hole behind the opening, not a lit alcove.
-const PORTAL_ROOM = new Color('#15171c');
+const PORTAL_ROOM = new Color('#070809'); // near-black gate-room walls/ceiling (dark hallway read)
 
 const GATE_GAP = 0.14; // angular half-gap cut in the wall at each gate (portal opening)
 const PORTAL_DEPTH = 9; // how far the spawn chamber extends out through the wall
@@ -61,6 +62,8 @@ const PORTAL_DEPTH = 9; // how far the spawn chamber extends out through the wal
 const GATE_HALF_WIDTH = 4.6; // opening half-width — wide enough for the boss (r 2.4)
 const GATE_HEIGHT = 6.5;
 const DOOR_OPEN_RANGE = 7; // a telegraphing enemy within this of a gate opens it
+const DOOR_HOLD = 1.8; // standby seconds a gate stays open after the last spawn clears,
+// so brief gaps BETWEEN sub-spawns of one wave don't slam it shut + reopen (screen hectic)
 
 function mat(color: Color, roughness = 0.85, metalness = 0.12): MeshStandardMaterial {
   return new MeshStandardMaterial({ color, roughness, metalness });
@@ -128,11 +131,17 @@ interface GateDoors {
   leftPivot: Group; // each door half pulls OUTWARD along ±tangent to open
   rightPivot: Group;
   open: number; // 0 closed … 1 open (animated)
+  hold: number; // standby seconds left to stay open after the last spawn (anti-flicker)
+  alert: number; // 0 base-colour … 1 red, SNAPS up when opening starts, eases back on close
+  /** Emissive bits that blare red as the gate opens: door seams + the floor-edge sill.
+   *  Each carries its own resting `base` colour + `intensity` so it lerps base→alert. */
+  glowMats: { mat: MeshStandardMaterial; base: Color; intensity: number }[];
 }
 
 export class ArenaView {
   readonly group = new Group();
   private gates: GateDoors[] = [];
+  private gateGlowT = 0; // time accumulator for the gate-open red-alert pulse
   private lights: Object3D[] = []; // scene-parented lights, tracked for dispose()
   private accent = new Color(activeArena().accent);
 
@@ -211,18 +220,28 @@ export class ArenaView {
       roughness: 0.4,
       metalness: 0.2,
     });
-    const rimT = 0.5;
+    const rimT = 0.25; // band thickness — halved (was 0.5, read too chunky)
     const rimH = 0.35;
-    const rims: [number, number, number, number][] = [
-      [0, halfZ, halfW * 2 + rimT, rimT], // +z / −z run along x
-      [0, -halfZ, halfW * 2 + rimT, rimT],
-      [halfW, 0, rimT, halfZ * 2 + rimT], // ±x run along z (swap dims below)
-      [-halfW, 0, rimT, halfZ * 2 + rimT],
-    ];
-    for (const [x, z, w, d] of rims) {
+    const gateHalf = 5; // opening half-width at each side midpoint (rim + walls break here)
+    // The accent rim BREAKS at each gate (a gap of ±gateHalf at every side midpoint)
+    // instead of running unbroken around the floor — so the gate + its doors read as
+    // their own thing, not buried under the perimeter band. Two segments per side.
+    const rimSeg = (x: number, z: number, w: number, d: number): void => {
       const r = new Mesh(new BoxGeometry(w, rimH, d), rimMat);
       r.position.set(x, rimH / 2, z);
       this.group.add(r);
+    };
+    const segX = halfW + rimT / 2 - gateHalf; // side-along-x segment length (corner → gate)
+    const cX = (gateHalf + halfW + rimT / 2) / 2;
+    for (const sz of [halfZ, -halfZ]) {
+      rimSeg(cX, sz, segX, rimT);
+      rimSeg(-cX, sz, segX, rimT);
+    }
+    const segZ = halfZ + rimT / 2 - gateHalf; // side-along-z segment length
+    const cZ = (gateHalf + halfZ + rimT / 2) / 2;
+    for (const sx of [halfW, -halfW]) {
+      rimSeg(sx, cZ, rimT, segZ);
+      rimSeg(sx, -cZ, rimT, segZ);
     }
 
     // Perimeter walls (gunmetal slabs just outside the rim), with gate gaps at the
@@ -230,7 +249,6 @@ export class ArenaView {
     // down and in.
     const wallMat = litMat(new Color('#2b3038'), 0.85, 0.25);
     const wallH = 5;
-    const gateHalf = 5; // opening half-width at each side midpoint
     const wallSeg = (cx: number, cz: number, w: number, d: number): void => {
       const m = new Mesh(new BoxGeometry(w, wallH, d), wallMat);
       m.position.set(cx, wallH / 2, cz);
@@ -239,16 +257,22 @@ export class ArenaView {
     };
     const t = 1.2; // wall thickness
     const off = 0.9; // sit just beyond the rim
-    // Top/bottom walls (along x) split around the centre gate.
+    // Top/bottom walls (along x) split around the centre gate. The NEAR side (+z, the
+    // camera sits south of the pit) is CULLED — its tall slabs occluded the south gate
+    // + buried the near floor edge. The south GATEHOUSE still stands (built below), so
+    // the gate reads; only the flanking wall slabs are dropped (fixed-cam, the missing
+    // near wall never frames into view — the far wall is the backdrop).
     for (const sz of [halfZ + off, -(halfZ + off)]) {
+      if (sz > 0) continue; // skip the near (south) wall — camera looks in over it
       const segW = halfW - gateHalf;
       wallSeg((halfW + gateHalf) / 2, sz, segW, t);
       wallSeg(-(halfW + gateHalf) / 2, sz, segW, t);
     }
-    // Left/right walls (along z) split around the centre gate.
+    // Left/right walls (along z) split around the centre gate. The NEAR (+z) halves are
+    // culled too so the south corners open up and the near floor edge reads; the far
+    // (−z) halves stay as the backdrop frame.
     for (const sx of [halfW + off, -(halfW + off)]) {
       const segD = halfZ - gateHalf;
-      wallSeg(sx, (halfZ + gateHalf) / 2, t, segD);
       wallSeg(sx, -(halfZ + gateHalf) / 2, t, segD);
     }
     // Detailed gatehouses at the four side midpoints (gate 0=+x,1=+z,2=−x,3=−z).
@@ -271,6 +295,11 @@ export class ArenaView {
   ): void {
     const horizontal = gate === 1 || gate === 3; // +z / −z gates run along x
     const sign = gate === 0 || gate === 1 ? 1 : -1;
+    // The +z gate (1) is the CAMERA-SIDE gate: its roof (lintel) + back wall sit
+    // between the oblique camera and the opening, hiding the seam + floor glow. Drop
+    // those occluders for this one gate so its red-alert glow reads (the pillars + sills
+    // + doors stay, so it's still clearly a gate).
+    const nearGate = gate === 1;
     const g = new Group();
     // Local frame: opening faces −z (toward arena centre), gap spans local x =
     // ±gateHalf, tunnel depth runs +z (outward). Rotate each gate so −z points in.
@@ -283,7 +312,7 @@ export class ArenaView {
     }
 
     const steel = mat(new Color('#2b3038'), 0.8, 0.3);
-    const dark = mat(new Color('#0b0e12'), 0.7, 0.2);
+    const dark = mat(new Color('#050608'), 0.7, 0.2); // near-black recess — a dark hallway behind the gate
     const glowMat = new MeshStandardMaterial({
       color: this.accent,
       emissive: this.accent,
@@ -292,10 +321,13 @@ export class ArenaView {
       metalness: 0.3,
     });
 
-    // Recessed tunnel behind the wall (reads as depth).
-    const back = new Mesh(new BoxGeometry(gateHalf * 2, wallH, 0.6), dark);
-    back.position.set(0, wallH / 2, 3.4);
-    g.add(back);
+    // Recessed tunnel behind the wall (reads as depth). Skipped on the near gate —
+    // it's a tall camera-side occluder for that one.
+    if (!nearGate) {
+      const back = new Mesh(new BoxGeometry(gateHalf * 2, wallH, 0.6), dark);
+      back.position.set(0, wallH / 2, 3.4);
+      g.add(back);
+    }
     const tunFloor = new Mesh(new PlaneGeometry(gateHalf * 2, 3.6), dark);
     tunFloor.rotation.x = -Math.PI / 2;
     tunFloor.position.set(0, 0.06, 1.7);
@@ -311,32 +343,37 @@ export class ArenaView {
     }
 
     // Lintel: INTERSECTS the pillars (overlapping solids, no shared face) so its
-    // bottom (wallH−0.3) sits inside them and its top is clear above.
-    const lintel = new Mesh(new BoxGeometry(gateHalf * 2 + 2.8, 1.4, 1.8), steel);
-    lintel.position.set(0, wallH + 0.4, 0.4);
-    lintel.castShadow = true;
-    this.outlineProp(lintel);
-    g.add(lintel);
-    // Accent glow bar floating just ABOVE the lintel top (top = wallH+1.1) — clear
-    // gap, never coplanar.
-    const cap = new Mesh(new BoxGeometry(gateHalf * 2 + 1.0, 0.16, 0.5), glowMat);
-    cap.position.set(0, wallH + 1.35, 0.4);
-    g.add(cap);
+    // bottom (wallH−0.3) sits inside them and its top is clear above. Skipped on the
+    // near gate — it's the "roof" that hid this gate's glow from the camera.
+    if (!nearGate) {
+      const lintel = new Mesh(new BoxGeometry(gateHalf * 2 + 2.8, 1.4, 1.8), steel);
+      lintel.position.set(0, wallH + 0.4, 0.4);
+      lintel.castShadow = true;
+      this.outlineProp(lintel);
+      g.add(lintel);
+    }
+    // (Removed the top accent glow bar over the lintel — it read as a bright edge on
+    // the inner gate frame; the seam stripes + sill carry the accent now.)
     // Accent strip on the INWARD face of the lintel (offset in −z past the face).
-    const strip = new Mesh(new BoxGeometry(gateHalf * 2, 0.16, 0.1), glowMat);
-    strip.position.set(0, wallH + 0.1, -0.56);
-    g.add(strip);
-    // Floor threshold glow where the tunnel meets the arena (raised above the floor).
+    // (Removed the top inward-face accent strip — another glowing top edge on the
+    // gate frame; the seam stripes + sill carry the accent now.)
+    // Floor + ceiling threshold glow where the tunnel meets the arena. SAME material
+    // (glowMat) so both inherit the open/close blue→red tint from one source.
     const sill = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
     sill.position.set(0, 0.1, -0.2);
+    sill.userData.batchDynamic = true; // live material (per-gate red tint) — never batch
     g.add(sill);
+    const sillTop = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
+    sillTop.position.set(0, wallH - 0.4, -0.2); // just under the lintel — mirrors the floor sill
+    sillTop.userData.batchDynamic = true;
+    g.add(sillTop);
 
     // Two sliding door halves over the gap. Parented to the gate group (already
     // oriented), so in LOCAL space the slide axis is +x and faceY = 0. World mouth
     // point (just inside the wall) drives the open/close animation.
     const mx = horizontal ? 0 : sign * (halfW - 1.5);
     const mz = horizontal ? sign * (halfZ - 1.5) : 0;
-    this.addSlidingDoors({
+    const gateDoors = this.addSlidingDoors({
       parent: g,
       cx: 0,
       cz: -0.3, // sit at the arena-side face of the gap
@@ -344,11 +381,16 @@ export class ArenaView {
       tz: 0,
       y: wallH / 2,
       doorW: gateHalf + 0.2,
-      doorH: wallH,
+      doorH: wallH - 0.5, // a touch shorter than the wall so the door TOP face never
+      // sits coplanar with the wall top as it slides under (z-fight on top); the lintel
+      // covers the small gap.
       faceY: 0,
+      localXSign: 1, // g-local: local +x = +tangent (no rotation flip)
       mx,
       mz,
     });
+    // The floor-edge sill blares red with the doors (shares the open/close tint).
+    gateDoors.glowMats.push({ mat: glowMat, base: this.accent.clone(), intensity: 1.0 });
 
     this.group.add(g);
   }
@@ -588,18 +630,27 @@ export class ArenaView {
 
     // Glowing threshold strip on the room floor at the door line — marks where
     // they emerge, and adds a warm read to the chamber.
-    const sill = new Mesh(
-      new BoxGeometry(GATE_HALF_WIDTH * 2, 0.05, 0.5),
-      new MeshStandardMaterial({
-        color: PORTAL_GLOW,
-        emissive: PORTAL_GLOW,
-        emissiveIntensity: 0.6,
-      }),
-    );
+    const sillMat = new MeshStandardMaterial({
+      color: new Color(PORTAL_GLOW),
+      emissive: new Color(PORTAL_GLOW),
+      emissiveIntensity: 0.6,
+    });
+    const sill = new Mesh(new BoxGeometry(GATE_HALF_WIDTH * 2, 0.05, 0.5), sillMat);
     sill.position.set(cos * (ARENA_RADIUS + 1.4), 0.045, sin * (ARENA_RADIUS + 1.4));
     sill.rotation.y = faceY;
     asFloorDecal(sill);
+    sill.userData.batchDynamic = true; // live material (per-gate red tint) — never batch
     this.group.add(sill);
+    // Matching CEILING strip at the top of the opening — same material → same tint.
+    const sillTop = new Mesh(new BoxGeometry(GATE_HALF_WIDTH * 2, 0.05, 0.5), sillMat);
+    sillTop.position.set(
+      cos * (ARENA_RADIUS + 1.4),
+      GATE_HEIGHT - 0.45,
+      sin * (ARENA_RADIUS + 1.4),
+    );
+    sillTop.rotation.y = faceY;
+    sillTop.userData.batchDynamic = true;
+    this.group.add(sillTop);
 
     const ceil = new Mesh(
       new BoxGeometry(roomHalf * 2 + 0.8, 0.8, PORTAL_DEPTH),
@@ -630,7 +681,7 @@ export class ArenaView {
       new MeshStandardMaterial({
         color: PORTAL_BACK,
         emissive: PORTAL_GLOW,
-        emissiveIntensity: 0.55,
+        emissiveIntensity: 0.28, // faint ember at the end of the dark hallway
         roughness: 1,
       }),
     );
@@ -638,9 +689,10 @@ export class ArenaView {
     back.rotation.y = faceY;
     this.group.add(back);
 
-    // Inner light: ominous warm pool deep in the chamber that backlights enemies
-    // as they walk out (alive arena, §3.1). Short range so it stays a local glow.
-    const portalLight = new PointLight(PORTAL_GLOW, 18, 20, 2);
+    // Inner light: a FAINT ominous ember deep in the chamber that just backlights
+    // enemies as they emerge — kept low so the gate reads as a DARK hallway, not a
+    // lit alcove (was 18 → washed the recess out to wall brightness).
+    const portalLight = new PointLight(PORTAL_GLOW, 5, 18, 2);
     portalLight.position.set(cos * (backR - 1.8), GATE_HEIGHT * 0.5, sin * (backR - 1.8));
     this.group.add(portalLight);
 
@@ -663,10 +715,10 @@ export class ArenaView {
     }
 
     const lintel = new Mesh(
-      new BoxGeometry(GATE_HALF_WIDTH * 2 + 2.8, 1.6, 2.6),
+      new BoxGeometry(GATE_HALF_WIDTH * 2 + 2.8, 1.0, 2.6), // slimmer roof beam (was 1.6 — too thick)
       mat(STEEL_LIT, 0.7, 0.5),
     );
-    lintel.position.set(cx, GATE_HEIGHT + 0.3, cz);
+    lintel.position.set(cx, GATE_HEIGHT + 0.1, cz);
     lintel.rotation.y = faceY;
     lintel.castShadow = true;
     outlineHull(lintel, OUTLINE_W.prop);
@@ -684,7 +736,7 @@ export class ArenaView {
     // Two blast-door halves that PULL APART along the tangent (one ±, one ∓) to open
     // and meet at the centre to close. The inner (seam) edges carry the accent stripe.
     const mouthR = ARENA_RADIUS - 1.5;
-    this.addSlidingDoors({
+    const gate = this.addSlidingDoors({
       parent: this.group,
       cx,
       cz,
@@ -692,11 +744,14 @@ export class ArenaView {
       tz,
       y: GATE_HEIGHT / 2,
       doorW: GATE_HALF_WIDTH + 0.2,
-      doorH: GATE_HEIGHT,
+      doorH: GATE_HEIGHT - 0.4, // door TOP stays below the frame top → no coplanar z-fight
       faceY,
+      localXSign: -1, // faceY = π/2 − angle flips local +x → −tangent
       mx: cos * mouthR,
       mz: sin * mouthR,
     });
+    // The floor-edge threshold sill blares red with the doors (resting warm portal glow).
+    gate.glowMats.push({ mat: sillMat, base: new Color(PORTAL_GLOW), intensity: 0.6 });
 
     // Two angled spotlights from the gate's arena-facing top corners, coning down
     // onto the approach plate — fakes volumetric beams + lights the entry so new
@@ -735,37 +790,39 @@ export class ArenaView {
     doorW: number;
     doorH: number;
     faceY: number;
+    /** Sign mapping the door's LOCAL +x to the +tangent direction (circle's faceY
+     *  flips it, the rect's doesn't). Used to place the seam on the inner edge — the
+     *  door itself is centred on the pivot so coverage is sign-independent. */
+    localXSign: number;
     mx: number; // mouth point is WORLD (compared against enemy positions)
     mz: number;
-  }): void {
+  }): GateDoors {
+    const glowMats: GateDoors['glowMats'] = []; // door seams (+ caller's sill) for the tint
     const makeDoor = (sideSign: number): Group => {
       const pivot = new Group();
       pivot.userData.batchDynamic = true; // animated (slides open) — never batch it
       pivot.rotation.y = o.faceY; // position is set by placeDoors
-      const d = new Mesh(new BoxGeometry(o.doorW, o.doorH, 1), mat(STEEL, 0.7, 0.55));
+      const d = new Mesh(new BoxGeometry(o.doorW, o.doorH, 1), mat(DOOR, 0.6, 0.65));
       d.castShadow = true;
       d.receiveShadow = true;
-      d.position.x = (sideSign * o.doorW) / 2; // door centre, inward from the pivot
-      // gold hazard chevrons across the face (scaled to the door height)
-      for (const f of [-0.25, 0, 0.25]) {
-        const chev = new Mesh(new BoxGeometry(o.doorW - 0.6, 0.35, 0.12), mat(TRIM, 0.65, 0.2));
-        chev.position.set(0, f * o.doorH, 0.55);
-        d.add(chev);
-      }
+      d.position.x = 0; // CENTRED on the pivot → placeDoors puts the pivot at the door
+      // centre, so both halves meet at the gate centre when closed (no rotation-sign trap)
+      // (Removed the gold hazard chevrons on the door face — read as flat clutter.)
       // Emissive arena-accent stripe down the door's INNER (seam) edge — the key
       // open/close read: CLOSED, the two stripes meet at the centre as one bright bar;
       // as the halves pull apart the bars separate + travel to the pillars. Slightly
       // proud of the door (depth 1.06 vs 1) so it reads as a lit edge from any angle.
-      const seam = new Mesh(
-        new BoxGeometry(0.2, o.doorH - 0.2, 1.06),
-        new MeshStandardMaterial({
-          color: this.accent,
-          emissive: this.accent,
-          emissiveIntensity: 1.2,
-          roughness: 0.4,
-        }),
-      );
-      seam.position.set((-sideSign * o.doorW) / 2, 0, 0); // inner edge (toward gate centre)
+      const seamMat = new MeshStandardMaterial({
+        color: this.accent.clone(),
+        emissive: this.accent.clone(),
+        emissiveIntensity: 1.2,
+        roughness: 0.4,
+      });
+      glowMats.push({ mat: seamMat, base: this.accent.clone(), intensity: 1.2 });
+      const seam = new Mesh(new BoxGeometry(0.2, o.doorH - 0.2, 1.06), seamMat);
+      // Inner (gate-centre-facing) edge in LOCAL x: the +tangent edge for the left
+      // half, −tangent for the right, mapped through localXSign.
+      seam.position.set((-sideSign * o.localXSign * o.doorW) / 2, 0, 0);
       d.add(seam);
       outlineHull(d, OUTLINE_W.prop);
       pivot.add(d);
@@ -784,24 +841,36 @@ export class ArenaView {
       leftPivot: makeDoor(-1),
       rightPivot: makeDoor(1),
       open: 0,
+      hold: 0,
+      alert: 0,
+      glowMats,
     };
     this.gates.push(gate);
     this.placeDoors(gate, 0);
+    return gate;
   }
 
   /** Open amount (0 closed → 1 open) slides each half OUTWARD along the tangent by up
    *  to a full door-width, so the two pieces part from the centre and tuck toward the
    *  pillars. The seam stripes travel with them, selling the pull-apart. */
   private placeDoors(g: GateDoors, open: number): void {
-    const slide = open * g.doorW; // 0 closed (meet at centre) → doorW fully open
-    const lo = -(g.doorW + slide); // left half outer offset along the tangent
-    const ro = g.doorW + slide; // right half
+    // Each pivot sits at its door's CENTRE along the tangent. Closed (slide 0): the
+    // centres are ∓doorW/2, so each half (width doorW, centred) spans out to the gate
+    // centre — the two MEET at 0. Opening slides each centre out by the OPENING half-
+    // width (doorW − 0.2, the 0.2 being the closed overlap), so the inner edge + its
+    // glowing seam stop exactly AT the opening edge — never sliding past into the wall
+    // (which over-slid by a notch + buried the seam, and z-fought the coplanar wall).
+    const half = g.doorW / 2;
+    const slide = open * (g.doorW - 0.2);
+    const lo = -(half + slide); // left door centre
+    const ro = half + slide; // right door centre
     g.leftPivot.position.set(g.cx + g.tx * lo, g.y, g.cz + g.tz * lo);
     g.rightPivot.position.set(g.cx + g.tx * ro, g.y, g.cz + g.tz * ro);
   }
 
   /** Animate gate doors: open while an enemy is telegraphing near the gate (T37). */
   update(enemies: EnemyPool, dt: number): void {
+    this.gateGlowT += dt; // drives the red-alert pulse while a gate is ajar
     for (const g of this.gates) {
       let wantOpen = false;
       const r2 = DOOR_OPEN_RANGE * DOOR_OPEN_RANGE;
@@ -809,22 +878,49 @@ export class ArenaView {
       const mx = g.mx;
       const mz = g.mz;
       for (let i = 0; i < enemies.count; i++) {
-        // Any telegraphing enemy near this gate keeps it open; so do active
-        // enemies still inside the mouth (walking through).
         const dx = enemies.posX[i]! - mx;
         const dz = enemies.posZ[i]! - mz;
-        if (dx * dx + dz * dz < r2) {
-          if (enemies.state[i] === EnemyState.Telegraph) {
-            wantOpen = true;
-            break;
-          }
-          wantOpen = true; // active & still in the mouth → keep open
+        if (dx * dx + dz * dz >= r2) continue;
+        // Hold the gate open ONLY for THIS emission: enemies still spawning
+        // (Telegraph) or freshly active and still MARCHING IN from the gate
+        // (entryEase > 0). Once the last spawned unit has cleared the throat its
+        // ease expires → close. An enemy merely FIGHTING near the gate (entryEase 0)
+        // no longer pins it open (that's why it lingered).
+        if (enemies.state[i] === EnemyState.Telegraph) {
+          wantOpen = true;
+          break;
         }
+        if (enemies.entryEase[i]! > 0) wantOpen = true; // still walking through
       }
-      const target = wantOpen ? 1 : 0;
-      const speed = wantOpen ? 5 : 2.2; // open fast, close slower
+      // STANDBY hold: keep the gate open for DOOR_HOLD seconds after the last spawn
+      // clears, so the brief gaps between sub-spawns of one wave don't slam it shut +
+      // reopen (the hectic flicker). Only a real lull closes it.
+      if (wantOpen) g.hold = DOOR_HOLD;
+      else g.hold = Math.max(0, g.hold - dt);
+      const effOpen = wantOpen || g.hold > 0;
+
+      const target = effOpen ? 1 : 0;
+      const speed = effOpen ? 5 : 3.4; // open fast, snap shut once the hold expires
       g.open += (target - g.open) * Math.min(1, speed * dt);
       this.placeDoors(g, g.open);
+
+      // Alert tint is DECOUPLED from the door slide: it snaps to red the instant the
+      // opening starts (super-short fade) and eases back to base while closing — not a
+      // gradual ramp tied to how far the door has slid. Stays red through the hold.
+      const alertSpeed = effOpen ? 18 : 4;
+      g.alert += ((effOpen ? 1 : 0) - g.alert) * Math.min(1, alertSpeed * dt);
+
+      // Seam glow: the defined arena accent (calm blue) when shut → a blaring red
+      // alert as it opens to spawn, hottest a touch before fully open, with a pulse
+      // while ajar. Lerps back to blue as it closes. Sells the incoming-enemies cue.
+      const heat = g.alert; // snaps red on open, eases to base on close
+      // Slow, shallow breathe — present but not attention-grabbing (was fast + deep).
+      const pulse = g.alert > 0.04 ? 0.92 + 0.08 * Math.sin(this.gateGlowT * 3.4) : 1;
+      for (const gm of g.glowMats) {
+        gm.mat.emissive.copy(gm.base).lerp(COL.gateAlert, heat);
+        gm.mat.color.copy(gm.mat.emissive);
+        gm.mat.emissiveIntensity = gm.intensity * (1 + 0.75 * g.open) * pulse;
+      }
     }
   }
 

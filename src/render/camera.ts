@@ -6,8 +6,11 @@ import { PerspectiveCamera, Vector3, Raycaster, Plane, Vector2 } from 'three';
 import { activeArena, arenaExtent } from '../sim/arena';
 
 const FOV_DEG = 45;
-const TILT_RAD = (62 * Math.PI) / 180; // 0 = straight down, 90 = horizon
-const MARGIN = 1.4; // start fully zoomed out (whole arena + breathing room) — players zoom IN from here
+const TILT_RAD = (58 * Math.PI) / 180; // 0 = straight down, 90 = horizon. Nudged a touch
+// more overhead (was 62°) so the near/south edge + gate clear the foreground (paired with
+// culling the camera-side walls in the rect arena).
+const MARGIN = 1.22; // start with the whole arena + a little breathing room (was 1.4 — a touch
+// too far; ~13% closer reads better while still framing the full inner arena). Players zoom from here.
 // Perspective foreshortens the far (top) half, so the arena centroid projects
 // below screen center → it drifts down. Aim slightly toward the near side to
 // recenter (V7). Scaled by the active arena's depth half-extent (live, so it

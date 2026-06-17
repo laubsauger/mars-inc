@@ -45,6 +45,55 @@
 .draft-deal {
   animation: draft-deal 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
+/* On select: the picked card is GRABBED (quick pop + lift, holds), the others are
+   DISCARDED (fade + drop away). Snappy — the screen commits ~240ms later. */
+@keyframes draft-grab {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-12px) scale(1.075);
+  }
+  100% {
+    transform: translateY(-7px) scale(1.045);
+  }
+}
+.draft-grab {
+  z-index: 20;
+  animation: draft-grab 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes draft-discard {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+  }
+}
+.draft-discard {
+  animation: draft-discard 0.22s ease-in forwards;
+  pointer-events: none;
+}
+/* Achievement toast: a quick slide-down + settle, then it holds (auto-dismissed by JS). */
+@keyframes ach-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(3px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ach-toast {
+  animation: ach-toast 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
 @keyframes draft-flash {
   0% {
     opacity: 0;

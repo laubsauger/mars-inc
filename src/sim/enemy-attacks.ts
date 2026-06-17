@@ -147,6 +147,10 @@ export class BeamPool {
   readonly damage = new Float32Array(MAX_BEAMS);
   readonly state = new Uint8Array(MAX_BEAMS);
   readonly style = new Uint8Array(MAX_BEAMS); // BeamStyle — render-only appearance tweak
+  // Owner link so a CHARGING beam tracks the unit (knockback / shove moves the line
+  // with the body until it fires). -1 = unowned (fixed, e.g. boss charge braces).
+  readonly owner = new Int32Array(MAX_BEAMS);
+  readonly ownerVariant = new Uint8Array(MAX_BEAMS); // validates the index wasn't reused
 
   spawn(
     ox: number,
@@ -158,6 +162,8 @@ export class BeamPool {
     charge: number,
     damage: number,
     style: number = BeamStyle.Sentinel,
+    owner = -1,
+    ownerVariant = 0,
   ): number {
     if (this.count >= MAX_BEAMS) return -1;
     const i = this.count++;
@@ -172,6 +178,8 @@ export class BeamPool {
     this.damage[i] = damage;
     this.state[i] = BeamState.Charging;
     this.style[i] = style;
+    this.owner[i] = owner;
+    this.ownerVariant[i] = ownerVariant;
     return i;
   }
 
@@ -189,6 +197,8 @@ export class BeamPool {
       this.damage[i] = this.damage[last]!;
       this.state[i] = this.state[last]!;
       this.style[i] = this.style[last]!;
+      this.owner[i] = this.owner[last]!;
+      this.ownerVariant[i] = this.ownerVariant[last]!;
     }
   }
 
@@ -214,9 +224,32 @@ export class EnemyAttackSystem {
 
   step(enemies: EnemyPool, player: Player, rng: Rng, dt: number, fx: FxQueue): void {
     this.initiate(enemies, player, rng, dt, fx);
+    this.followCharging(enemies); // charging beams track their (possibly shoved) owner
     this.advanceProjectiles(player, dt, fx);
     this.stepHazards(player, dt, fx);
     this.stepBeams(player, dt, fx);
+  }
+
+  /** While a beam is CHARGING, keep its origin on the owner's CURRENT position (a
+   *  knockback shove drags the telegraph line with the body). The locked DIRECTION
+   *  stays (you still dodge off the committed line); only the origin + length follow.
+   *  Fired beams are locked. Validates the owner index wasn't reused by a swap-remove. */
+  private followCharging(enemies: EnemyPool): void {
+    const b = this.beams;
+    for (let i = 0; i < b.count; i++) {
+      if (b.state[i] !== BeamState.Charging) continue;
+      const o = b.owner[i]!;
+      if (o < 0 || o >= enemies.count) continue;
+      if (enemies.variant[o] !== b.ownerVariant[i] || enemies.state[o] !== EnemyState.Active) {
+        continue; // owner gone / index reused → leave the line where it last was
+      }
+      const muzzle = enemies.radius[o]! + 0.2; // emit from the hull edge
+      const ox = enemies.posX[o]! + b.dirX[i]! * muzzle;
+      const oz = enemies.posZ[o]! + b.dirZ[i]! * muzzle;
+      b.ox[i] = ox;
+      b.oz[i] = oz;
+      b.len[i] = wallDistance(ox, oz, b.dirX[i]!, b.dirZ[i]!, 120);
+    }
   }
 
   /** Active enemies with a ranged profile fire when in range + off cooldown. */
@@ -247,8 +280,23 @@ export class EnemyAttackSystem {
         const ox = ex + ax * muzzle;
         const oz = ez + az * muzzle;
         const len = wallDistance(ox, oz, ax, az, 120);
-        this.beams.spawn(ox, oz, ax, az, len, attack.width, attack.charge, attack.damage);
+        this.beams.spawn(
+          ox,
+          oz,
+          ax,
+          az,
+          len,
+          attack.width,
+          attack.charge,
+          attack.damage,
+          BeamStyle.Sentinel,
+          e, // owner → the charging line tracks the body if it gets shoved
+          enemies.variant[e]!,
+        );
         enemies.attackCd[e] = attack.cooldown + attack.charge + attack.beamLife;
+        // PLANT while it aims + fires (stop → aim → shoot → move). Knockback still
+        // applies, so a shove can still slide it — and the beam follows (above).
+        enemies.anchorTime[e] = attack.charge + attack.beamLife;
         fx.push('muzzle', ox, oz, ax, az); // charge tell at the muzzle
         continue;
       }

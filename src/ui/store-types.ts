@@ -39,6 +39,18 @@ export interface ProfileView {
   /** Weapon ids DISCOVERED (started with or picked up in a run); the Arsenal shows
    *  ??? for the rest until found (discovery progression). */
   discoveredWeapons: string[];
+  /** Earned achievement ids → unlock timestamp (presence = earned). */
+  achievements: Record<string, number>;
+}
+
+/** Rich achievement-unlock toast (T-ach). `id` bumps per unlock so the HUD/menu
+ *  overlay re-triggers + auto-dismisses, queueing if several land together. */
+export interface AchievementToast {
+  id: number;
+  name: string;
+  desc: string;
+  icon: string;
+  tier: 'expected' | 'hard' | 'weird';
 }
 
 /** Settings + accessibility, mirrored from the profile and editable (T36). */
@@ -104,6 +116,7 @@ export interface HudState {
   sprintMax: number; // max sprint charges (slot pips)
   grenade01: number; // 0..1 grenade cooldown progress (1 = ready to throw)
   autoShoot: boolean; // persistent auto-fire toggle state (Space)
+  runGlory: number; // Martian Glory this run would bank SO FAR (live estimate)
 }
 
 /** Hovered-enemy inspect panel (mini character sheet). Computed render-side from
@@ -121,11 +134,13 @@ export interface InspectView {
   statuses: string[]; // active status labels (Burn/Chill/Shock/…)
 }
 
-/** Transient combat announcement (T33): boss warning / new-enemy intro. The
- *  `id` bumps per event so the HUD can re-trigger + auto-dismiss. */
+/** Transient combat announcement (T33/T75). Each kind has its OWN banner text +
+ *  styling — they were once all shoved through 'boss' which mislabelled themed waves
+ *  and evolutions as "FINAL BOSS". `id` bumps per event so the HUD re-triggers +
+ *  auto-dismisses. `text` is the subject (boss/enemy/upgrade name, or wave label). */
 export interface AnnounceState {
   id: number;
-  kind: 'boss' | 'enemy';
+  kind: 'boss' | 'miniboss' | 'wave' | 'evolution' | 'enemy' | 'unlock';
   text: string;
 }
 
@@ -136,6 +151,15 @@ export interface BossView {
   phase: number;
   phases: number;
   name: string;
+  /** Boss tier — drives the distinct miniboss vs final HUD treatment (T78, V39). */
+  tier: 'miniboss' | 'final';
+}
+
+/** End-of-act conclusion prompt (T75/T50). Open after the act's final boss falls:
+ *  the player extracts (banks the win) or opts into the endless Overrun gauntlet. */
+export interface ConclusionState {
+  open: boolean;
+  id: number;
 }
 
 export interface DraftOption {
@@ -218,13 +242,36 @@ export interface PermanentView {
   owned: number;
   maxLevel: number;
   affordable: boolean;
+  /** Boss-gated node not yet unlocked (T47) — shown locked, unbuyable. */
+  locked?: boolean;
+  /** Why it's locked (e.g. "Defeat Foreman Krill"), shown on the locked node. */
+  lockLabel?: string;
 }
 
-/** Meta-progression slice (Martian Glory + permanent upgrades). */
+/** A Red-Dust prestige node as shown in the prestige panel (T72). */
+export interface PrestigeNodeView {
+  id: string;
+  name: string;
+  description: string;
+  cost: number; // Red Dust for the next level
+  owned: number;
+  maxLevel: number;
+  affordable: boolean;
+}
+
+/** Meta-progression slice (Martian Glory + permanents + Red Dust prestige). */
 export interface MetaState {
   glory: number;
   lastEarned: number;
   permanents: PermanentView[];
+  /** Prestige (T72): Red Dust balance, prestige count, and the Red-Dust node shop. */
+  redDust: number;
+  prestigeCount: number;
+  /** True once the optional end-game prestige is available (last act cleared). */
+  prestigeUnlocked: boolean;
+  /** Glory the player would mint as Red Dust if they prestiged right now (0 = none). */
+  prestigeReady: number;
+  prestigeNodes: PrestigeNodeView[];
 }
 
 /** Dev control board bridge (T74) — set by boot glue. All actions route through
@@ -234,6 +281,7 @@ export interface DevBridge {
   upgrades: ReadonlyArray<{
     id: string;
     name: string;
+    description: string;
     rarity: string;
     maxLevel: number;
     tags: readonly string[];
@@ -257,7 +305,13 @@ export interface DevBridge {
   glory: () => number;
   ownedPermanent: (id: string) => number;
   grantGlory: (amount: number) => void;
+  /** Dev: grant/deduct Red Dust (prestige currency) for testing prestige nodes. */
+  grantRedDust: (amount: number) => void;
   setPermanent: (id: string, level: number, persist: boolean) => void;
+  /** Progression-gate unlocks (acts/arenas/difficulty). `isUnlocked` reads the live
+   *  save flag; `setUnlock` persists it so the menu's Act-2 / difficulty gates open. */
+  isUnlocked: (key: string) => boolean;
+  setUnlock: (key: string, on: boolean) => void;
   /** Serialize the current weapon + card levels + permanents to a portable JSON. */
   exportScenario: () => string;
   /** Reconstruct a scenario from JSON. Returns an error string, or null on success. */

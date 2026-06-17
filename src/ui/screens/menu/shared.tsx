@@ -55,7 +55,7 @@ export function LogoLockup() {
         <div className="h-1 flex-1 bg-bleed" />
       </div>
       <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-bone/78">
-        Arena entry terminal. Select a contract, survive the broadcast, invoice the survivors.
+        {/* Arena entry terminal. Select a contract, survive the broadcast, invoice the survivors. */}
       </p>
     </div>
   );

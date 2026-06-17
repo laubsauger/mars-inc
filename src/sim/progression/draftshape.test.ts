@@ -96,4 +96,20 @@ describe('draft rarity bias (Premium Contracts / Connoisseur)', () => {
     }
     expect(rarePicks).toBeGreaterThan(34); // rare base 0.3 × 100 ≫ common base 1
   });
+
+  it('rarityLevelBonus (boss-kill run-phase lift) raises rare odds (T44/V23)', () => {
+    const count = (bonus: number): number => {
+      let rares = 0;
+      for (let seed = 0; seed < 80; seed++) {
+        const [first] = rollDraft(RARITY_POOL, {}, new Rng(seed), {
+          count: 1,
+          rarityLevelBonus: bonus,
+        });
+        if (first?.id === 'r') rares++;
+      }
+      return rares;
+    };
+    // A big run-phase bonus (≈ several boss kills) lifts rare appearances vs none.
+    expect(count(40)).toBeGreaterThan(count(0));
+  });
 });
