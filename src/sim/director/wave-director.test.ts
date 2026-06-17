@@ -189,3 +189,38 @@ describe('WaveDirector (V8 bounded spawns)', () => {
     }
   });
 });
+
+describe('themed milestone waves (T-themes)', () => {
+  it('drops a scripted burst + a HUD banner once when the milestone is crossed', () => {
+    const d = new WaveDirector();
+    d.reset(); // builds the Act-1 (default cold-vault) theme schedule
+    const pool = new EnemyPool();
+    const rng = new Rng(5);
+    const fx = new FxQueue();
+    // First Act-1 theme is MITE SWARM at escalation 30s → real 30 × TIMELINE_STRETCH.
+    // Step a window straddling it; assert the banner fires + a big burst lands.
+    let banner: string | null = null;
+    const before = pool.count;
+    for (let t = 55; t < 75; t += 1 / 60) {
+      d.step(pool, rng, t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
+      if (d.waveEvent) banner = d.waveEvent;
+    }
+    expect(banner).toBe('MITE SWARM');
+    expect(pool.count - before).toBeGreaterThan(15); // the ~22-mite swarm landed
+  });
+
+  it('only fires each theme once (cursor advances, no repeat)', () => {
+    const d = new WaveDirector();
+    d.reset();
+    const pool = new EnemyPool();
+    const rng = new Rng(6);
+    let fires = 0;
+    let last: string | null = null;
+    for (let t = 55; t < 75; t += 1 / 60) {
+      d.step(pool, rng, t, 1 / 60, NEUTRAL_ADAPT, 1);
+      if (d.waveEvent && d.waveEvent !== last) fires++;
+      last = d.waveEvent;
+    }
+    expect(fires).toBe(1); // MITE SWARM fires exactly once across the window
+  });
+});

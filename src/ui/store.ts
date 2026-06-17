@@ -139,6 +139,7 @@ const INITIAL_HUD: HudState = {
   sprintCooldown01: 1,
   paused: false,
   elapsed: 0,
+  wave: 0,
   level: 1,
   xp01: 0,
   countdown: 3,

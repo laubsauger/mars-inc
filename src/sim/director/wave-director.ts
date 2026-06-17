@@ -47,6 +47,34 @@ export const TIMELINE_STRETCH = 2;
 const WAVE_GAP_START = 1.2; // seconds between waves at the open — snappy, ⊥ draggy
 const WAVE_GAP_MIN = 0.45; // late-game floor — waves crash in fast deep in the run
 
+// THEMED milestone waves (T-themes): scripted bursts that punctuate the run — a sudden
+// swarm of mites, a pack of splitters, a gun line — so progress has texture and beats,
+// not a smooth fill. Each fires ONCE when the escalation clock crosses `at` (same slowed
+// time as every threshold). Spawned FREE (not from the bank) in a surround burst, scaled
+// by the run's live hpScale. `act` selects which arena fields it (different feel per Act).
+interface ThemedWave {
+  at: number; // escalation seconds (pre-TIMELINE_STRETCH, like BOSS_AT)
+  act: number; // which Act fields it (1 = Cold Vault, 2 = Rust Crown)
+  type: EnemyType;
+  count: number;
+  label: string; // HUD banner shown when it lands
+}
+const THEMED_WAVES: readonly ThemedWave[] = [
+  // ── ACT 1 — learn the beats: a swarm, a split, a pack, a wall. ──
+  { at: 30, act: 1, type: RUST_MITE, count: 22, label: 'MITE SWARM' },
+  { at: 70, act: 1, type: LIABILITY_BLOB, count: 6, label: 'SPLITTER PACK' },
+  { at: 110, act: 1, type: DEBT_HOUND, count: 14, label: 'HOUND PACK' },
+  { at: 150, act: 1, type: AUDIT_BRUTE, count: 5, label: 'BRUTE SQUAD' },
+  // ── ACT 2 — bigger, sooner, deadlier comp. Opens on a HOUND BLITZ (fast melee
+  //    pressure), NOT a mite swarm — a distinct first beat from Act 1. ──
+  { at: 22, act: 2, type: DEBT_HOUND, count: 16, label: 'HOUND BLITZ' },
+  { at: 55, act: 2, type: LIABILITY_BLOB, count: 10, label: 'SPLITTER BLOOM' },
+  { at: 90, act: 2, type: REPO_MARSHAL, count: 8, label: 'GUN LINE' },
+  { at: 125, act: 2, type: GARGANTUAN, count: 2, label: 'DEVOURERS INBOUND' },
+  { at: 160, act: 2, type: AUDIT_BRUTE, count: 9, label: 'BRUTE WALL' },
+];
+const RECUR_INTERVAL = 38; // escalation s between RECURRING themed waves (post-schedule)
+
 // Directional spawn patterns. Kiting makes WHERE enemies come from the real
 // pressure dial: a wave from one gate is easy to lead away from; opposing gates
 // pincer you; a clockwise sweep keeps rotating the threat; surround removes the
@@ -136,6 +164,22 @@ export class WaveDirector {
   private bossesSpawned = 0; // how many bosses fielded → escalates each one's HP
   private waveTimer = 0.4; // first wave lands quickly — no slow empty open
   private sweepGate = 0; // clockwise cursor for the Sweep pattern
+  private lastSentinelGate = -1; // last gate a sentinel used → spread them across gates
+  /** Wave pulse counter (HUD): one per released gate-wave pulse, 1-based once the run
+   *  starts. The director's rhythm is continuous threat, but each pulse IS a "wave". */
+  waveNumber = 0;
+  /** Themed milestone waves for THIS run's Act, sorted by `at`; `themeIdx` is the cursor. */
+  private themes: ThemedWave[] = [];
+  private themeIdx = 0;
+  /** Once the AUTHORED schedule is spent, themed waves RECUR every RECUR_INTERVAL —
+   *  cycling the act's pool with escalating counts — so the run stays punctuated past
+   *  the last milestone (and past boss 1, since runs continue). `recurAt` = next fire
+   *  time (∞ until the schedule exhausts), `recurCount` = how many have recurred. */
+  private recurAt = Infinity;
+  private recurCount = 0;
+  /** Set to a themed wave's label the step it lands; HUD reads it for a banner, then it
+   *  persists until the next theme (de-duped by the reader, mirrors `world.justEvolved`). */
+  waveEvent: string | null = null;
 
   reset(): void {
     this.bank = 0;
@@ -145,7 +189,16 @@ export class WaveDirector {
     this.bossesSpawned = 0;
     this.waveTimer = 0.4;
     this.sweepGate = 0;
+    this.lastSentinelGate = -1;
     this.teleTimer = TELE_PERIOD;
+    this.waveNumber = 0;
+    // Build this run's themed schedule for the active Act (set before reset, T-Act).
+    const act = activeArena().act;
+    this.themes = THEMED_WAVES.filter((t) => t.act === act).sort((a, b) => a.at - b.at);
+    this.themeIdx = 0;
+    this.recurAt = Infinity;
+    this.recurCount = 0;
+    this.waveEvent = null;
   }
 
   /** Current bank of unspent threat points (dev overlay). */
@@ -276,6 +329,32 @@ export class WaveDirector {
       }
     }
 
+    // Themed milestone waves (T-themes): when the escalation clock crosses the next
+    // scheduled theme, drop its scripted burst (FREE, surround) + flag a HUD banner.
+    // Catches up if several thresholds passed in one big dt (while still ≤ capacity).
+    while (this.themeIdx < this.themes.length && elapsed >= this.themes[this.themeIdx]!.at) {
+      const t = this.themes[this.themeIdx]!;
+      this.themeIdx++;
+      this.spawnBurst(pool, rng, t.type, t.count);
+      this.waveEvent = t.label;
+      if (fx) fx.push('levelup', 0, 0); // a celebratory cue (no bespoke fx needed)
+      // Authored schedule just emptied → arm the RECURRING phase from here.
+      if (this.themeIdx >= this.themes.length) this.recurAt = t.at + RECUR_INTERVAL;
+    }
+    // RECURRING themed waves (post-schedule): keep the run punctuated past the last
+    // milestone (and past boss 1 — runs continue). Cycle the act's pool with counts
+    // that GROW each cycle, so late-game beats escalate rather than repeat flat.
+    while (this.themes.length > 0 && elapsed >= this.recurAt) {
+      const t = this.themes[this.recurCount % this.themes.length]!;
+      const tier = 2 + Math.floor(this.recurCount / this.themes.length); // ×2, ×3, … per full cycle
+      const count = Math.round(t.count * (1 + this.recurCount * 0.18));
+      this.recurCount++;
+      this.recurAt += RECUR_INTERVAL;
+      this.spawnBurst(pool, rng, t.type, count);
+      this.waveEvent = `${t.label} ×${tier}`;
+      if (fx) fx.push('levelup', 0, 0);
+    }
+
     // Wave rhythm: hold spawns between pulses (the breather), then release a
     // clustered burst from a growing subset of gates. The bank built up during
     // the breather is what funds the burst — so waves naturally scale with the
@@ -283,6 +362,7 @@ export class WaveDirector {
     this.waveTimer -= dt;
     if (this.waveTimer <= 0) {
       this.waveTimer = waveGap(elapsed);
+      this.waveNumber++;
       this.spawnWave(pool, rng, elapsed, houndBias, cap);
     }
 
@@ -323,6 +403,18 @@ export class WaveDirector {
         if (!this.spawnCluster(pool, rng, gate, type)) return; // pool full
         this.bank -= type.threat;
       }
+    }
+  }
+
+  /** A scripted THEMED burst: `count` of one type, telegraphed in from gates around
+   *  the ring (surround), scaled by the run's live hpScale. FREE (not from the bank) —
+   *  it's a milestone beat, not a budgeted wave. Bounded by pool capacity (V8). */
+  private spawnBurst(pool: EnemyPool, rng: Rng, type: EnemyType, count: number): void {
+    for (let k = 0; k < count; k++) {
+      // Spread across all gates so the burst surrounds — a gate per enemy, rotating.
+      const gate = k % GATE_COUNT;
+      const p = gateOuterPoint(gate, rng.range(-1.4, 1.4), 2.5);
+      if (pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++, this.hpScale) < 0) return; // pool full
     }
   }
 
@@ -382,9 +474,23 @@ export class WaveDirector {
 
   /** Spawn one enemy tightly clustered at a single gate (small arc + depth jitter). */
   private spawnCluster(pool: EnemyPool, rng: Rng, gate: number, type: EnemyType): boolean {
-    // Tight cluster at one gate: small along-edge jitter + a depth stagger so
-    // they don't overlap. The telegraph walk marches them out (shape-aware).
-    const p = gateOuterPoint(gate, rng.range(-0.4, 0.4), 2.5 - rng.range(0, 1.5));
+    // Sentinels (beam turrets) read poorly bunched out ONE gate shooting from one
+    // spot — so they OVERRIDE the wave's gate to a different one each time (avoid the
+    // previous sentinel's gate) and use a WIDE along/depth jitter so each emerges from
+    // its own spot. Other enemies keep the tight cluster at the wave's gate.
+    let along = rng.range(-0.4, 0.4);
+    let depth = 2.5 - rng.range(0, 1.5);
+    if (type.attack?.kind === 'beam' && GATE_COUNT > 1) {
+      let g = rng.int(0, GATE_COUNT - 1);
+      let tries = 0;
+      while (g === this.lastSentinelGate && tries++ < 4) g = rng.int(0, GATE_COUNT - 1);
+      this.lastSentinelGate = g;
+      gate = g;
+      along = rng.range(-1, 1); // full edge spread
+      depth = 2.5 + rng.range(0, 2.5); // staggered emergence depth
+    }
+    // The telegraph walk marches them out (shape-aware).
+    const p = gateOuterPoint(gate, along, depth);
     return pool.spawn(type, p.x, p.z, TELEGRAPH, this.phase++, this.hpScale) >= 0;
   }
 

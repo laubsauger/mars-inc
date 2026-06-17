@@ -26,6 +26,14 @@ export const enum BeamState {
   Firing = 1,
 }
 
+/** Telegraphed-danger-lane look (render picks a colour set per style). The BeamPool
+ *  is the GENERIC telegraph primitive — any heavy "get off this line" attack spawns
+ *  a beam; `style` only tweaks appearance, all charge/lock/fire logic is shared. */
+export const enum BeamStyle {
+  Sentinel = 0, // hot crimson laser
+  Charge = 1, // heavy amber lunge lane (boss charge)
+}
+
 const enum ProjKind {
   Lob = 0,
   Gun = 1,
@@ -138,6 +146,7 @@ export class BeamPool {
   readonly total = new Float32Array(MAX_BEAMS); // charge duration (render progress)
   readonly damage = new Float32Array(MAX_BEAMS);
   readonly state = new Uint8Array(MAX_BEAMS);
+  readonly style = new Uint8Array(MAX_BEAMS); // BeamStyle — render-only appearance tweak
 
   spawn(
     ox: number,
@@ -148,6 +157,7 @@ export class BeamPool {
     width: number,
     charge: number,
     damage: number,
+    style: number = BeamStyle.Sentinel,
   ): number {
     if (this.count >= MAX_BEAMS) return -1;
     const i = this.count++;
@@ -161,6 +171,7 @@ export class BeamPool {
     this.total[i] = charge;
     this.damage[i] = damage;
     this.state[i] = BeamState.Charging;
+    this.style[i] = style;
     return i;
   }
 
@@ -177,6 +188,7 @@ export class BeamPool {
       this.total[i] = this.total[last]!;
       this.damage[i] = this.damage[last]!;
       this.state[i] = this.state[last]!;
+      this.style[i] = this.style[last]!;
     }
   }
 
@@ -228,12 +240,16 @@ export class EnemyAttackSystem {
       const ax = dx / (dist || 1);
       const az = dz / (dist || 1);
       if (attack.kind === 'beam') {
-        // Charge a beam: lock the aim line to the wall, then hold the cooldown long
-        // enough to cover the full charge + flash so it never re-triggers mid-beam.
-        const len = wallDistance(ex, ez, ax, az, 120);
-        this.beams.spawn(ex, ez, ax, az, len, attack.width, attack.charge, attack.damage);
+        // Emit from the HULL EDGE (centre + dir × radius), not the centre — else the
+        // beam starts inside the saucer and paints over the whole body. Lock the line
+        // to the wall from there; hold the cooldown over the full charge + flash.
+        const muzzle = enemies.radius[e]! + 0.2;
+        const ox = ex + ax * muzzle;
+        const oz = ez + az * muzzle;
+        const len = wallDistance(ox, oz, ax, az, 120);
+        this.beams.spawn(ox, oz, ax, az, len, attack.width, attack.charge, attack.damage);
         enemies.attackCd[e] = attack.cooldown + attack.charge + attack.beamLife;
-        fx.push('muzzle', ex + ax * 0.6, ez + az * 0.6, ax, az); // charge tell
+        fx.push('muzzle', ox, oz, ax, az); // charge tell at the muzzle
         continue;
       }
       enemies.attackCd[e] = attack.cooldown;

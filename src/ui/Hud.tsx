@@ -81,10 +81,16 @@ function BossCountdown() {
 
 function Timer() {
   const elapsed = useUiStore((s) => s.hud.elapsed);
+  const wave = useUiStore((s) => s.hud.wave);
   const m = Math.floor(elapsed / 60);
   const sec = Math.floor(elapsed % 60);
   return (
     <div className="absolute top-4 left-1/2 flex -translate-x-1/2 items-center gap-3 font-mono">
+      {wave > 0 ? (
+        <span className="rounded-sm border border-rust/70 bg-pit/60 px-2 py-0.5 text-[11px] uppercase tracking-widest text-dust">
+          Wave <span className="font-black tabular-nums text-bone/90">{wave}</span>
+        </span>
+      ) : null}
       <span className="text-lg tracking-widest text-bone/90">
         {m}:{sec.toString().padStart(2, '0')}
       </span>

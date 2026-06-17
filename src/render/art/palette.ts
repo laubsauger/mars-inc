@@ -33,6 +33,7 @@ export const ACCENT = {
   eliteMagenta: '#d84cff',
   laserRed: '#ff2a3a', // Lance Sentinel turret + its charging laser beam
   devourerViolet: '#7b3fd6', // Gargantuan — deep violet, hulking + ⊥ the other crowds
+  chargeAmber: '#ff7a1a', // boss charge lunge-lane telegraph — heavy amber ⊥ the red laser
 } as const;
 
 /** Toon ramp band thresholds (lit fraction → next band). For TSL material at T37. */
@@ -65,4 +66,5 @@ export const COL = {
   eliteMagenta: new Color(ACCENT.eliteMagenta),
   laserRed: new Color(ACCENT.laserRed),
   devourerViolet: new Color(ACCENT.devourerViolet),
+  chargeAmber: new Color(ACCENT.chargeAmber),
 } as const;

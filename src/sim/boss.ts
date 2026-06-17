@@ -10,14 +10,14 @@ import { type EnemyPool, EnemyState, RUST_MITE, BOSS_GATEKEEPER } from './enemie
 import { type Player, hitPlayer } from './player';
 import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
-import type { EnemyAttackSystem } from './enemy-attacks';
+import { type EnemyAttackSystem, BeamStyle } from './enemy-attacks';
 import { interiorPoint, wallDistance } from './arena';
 
 // Charge attack (T-boss): a brief telegraph (a danger LINE drawn by a damage-0 beam)
 // then a snap-slide of the boss body along it — keep moving or get run over.
-const CHARGE_TELE = 0.85; // telegraph window (you read the line + dodge off it)
+const CHARGE_TELE = 0.95; // telegraph window (read the lane + dodge off it before it lunges)
 const CHARGE_SLIDE = 0.26; // the snap-slide is FAST (a lunge, not a walk)
-const CHARGE_DMG = 30; // a heavy hit if the slide catches you
+const CHARGE_DMG = 44; // HEAVY — a long telegraph means getting run over really hurts
 const CHARGE_LANE = 1.5; // danger-line half-width (≈ the boss body)
 
 export const BOSS_NAME = 'Gatekeeper of Phobos';
@@ -149,7 +149,7 @@ export class BossController {
     this.chargeHit = false;
     // Danger line: a damage-0 telegraph beam (the render thickens it as it "charges",
     // and flashes when the boss launches) — reuses the laser-sentinel beam visual.
-    attacks.beams.spawn(ex, ez, dx, dz, dist, CHARGE_LANE, CHARGE_TELE, 0);
+    attacks.beams.spawn(ex, ez, dx, dz, dist, CHARGE_LANE, CHARGE_TELE, 0, BeamStyle.Charge);
     fx.push('muzzle', ex, ez, dx, dz);
   }
 

@@ -576,7 +576,7 @@ export const FROSTBITE_AUDITOR: EnemyType = {
  *  to keep moving off its firing line. */
 export const LANCE_SENTINEL: EnemyType = {
   id: 'lance-sentinel',
-  radius: 0.85,
+  radius: 1.1, // bigger — a real hovering hulk, not fodder-sized
   maxHealth: 140, // hefty — a real obstacle, not fodder
   speed: 1.4, // slow creeping turret, but mobile enough to reposition between shots
   separationWeight: 0.7,
@@ -589,9 +589,9 @@ export const LANCE_SENTINEL: EnemyType = {
     kind: 'beam',
     range: 20, // detection/fire range — must close in somewhat, can't snipe the whole pit
     cooldown: 4.5,
-    charge: 1.3, // generous telegraph: lock + thicken, you dodge off the line
+    charge: 1.7, // generous telegraph: long loading + a clear lock tell before it fires
     width: 0.7, // beam half-width that catches the player
-    damage: 26,
+    damage: 48, // a long telegraph → eating it HURTS (you had time to clear the line)
     beamLife: 0.22, // brief lethal flash once it fires
   },
 };

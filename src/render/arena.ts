@@ -117,12 +117,15 @@ function outlineHull(mesh: Mesh, thickness: number): void {
 }
 
 interface GateDoors {
-  angle: number;
-  cx: number;
+  cx: number; // opening centre at the wall (world)
   cz: number;
-  tx: number; // tangent (slide axis)
+  tx: number; // tangent / slide axis (unit)
   tz: number;
-  leftPivot: Group; // pivot at the outer (pillar-side) edge of each door
+  y: number; // vertical centre of the doors
+  doorW: number; // half-width of each door (= its slide distance when fully open)
+  mx: number; // inner mouth point (where enemies appear) — drives open detection
+  mz: number;
+  leftPivot: Group; // each door half pulls OUTWARD along ±tangent to open
   rightPivot: Group;
   open: number; // 0 closed … 1 open (animated)
 }
@@ -299,17 +302,12 @@ export class ArenaView {
     g.add(tunFloor);
 
     // Side pillars flanking the gap (inner face at ±gateHalf), sitting in the wall.
-    // Each gets an emissive arena-accent stripe down its INNER vertical edge so the
-    // opening reads as a framed doorway (matches the Act-1 gate-seam treatment).
     for (const sx of [-1, 1]) {
       const pillar = new Mesh(new BoxGeometry(1.2, wallH, 1.6), steel);
       pillar.position.set(sx * (gateHalf + 0.6), wallH / 2, 0.4);
       pillar.castShadow = true;
       this.outlineProp(pillar);
       g.add(pillar);
-      const edge = new Mesh(new BoxGeometry(0.18, wallH - 0.3, 0.22), glowMat);
-      edge.position.set(sx * gateHalf, wallH / 2, -0.32); // inner edge, arena-facing
-      g.add(edge);
     }
 
     // Lintel: INTERSECTS the pillars (overlapping solids, no shared face) so its
@@ -332,6 +330,25 @@ export class ArenaView {
     const sill = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
     sill.position.set(0, 0.1, -0.2);
     g.add(sill);
+
+    // Two sliding door halves over the gap. Parented to the gate group (already
+    // oriented), so in LOCAL space the slide axis is +x and faceY = 0. World mouth
+    // point (just inside the wall) drives the open/close animation.
+    const mx = horizontal ? 0 : sign * (halfW - 1.5);
+    const mz = horizontal ? sign * (halfZ - 1.5) : 0;
+    this.addSlidingDoors({
+      parent: g,
+      cx: 0,
+      cz: -0.3, // sit at the arena-side face of the gap
+      tx: 1,
+      tz: 0,
+      y: wallH / 2,
+      doorW: gateHalf + 0.2,
+      doorH: wallH,
+      faceY: 0,
+      mx,
+      mz,
+    });
 
     this.group.add(g);
   }
@@ -664,59 +681,22 @@ export class ArenaView {
     plate.rotation.y = faceY;
     this.group.add(plate);
 
-    // Two blast doors that RETRACT into the pillars by scaling toward their outer
-    // edge (no sliding past the frame → nothing to hide). Each door lives in a
-    // pivot Group anchored at its outer (pillar-side) edge; scaling the pivot's
-    // tangent axis to ~0 collapses the door into the pillar (T40).
-    const doorW = GATE_HALF_WIDTH + 0.2;
-    const doorGeo = new BoxGeometry(doorW, GATE_HEIGHT, 1);
-    const doorMat = (): MeshStandardMaterial => mat(STEEL, 0.7, 0.55);
-    const makeDoor = (sideSign: number): Group => {
-      const pivot = new Group();
-      pivot.userData.batchDynamic = true; // animated (scales open) — never batch it
-      const outer = sideSign * doorW; // tangent offset of the outer (pillar) edge
-      pivot.position.set(cx + tx * outer, GATE_HEIGHT / 2, cz + tz * outer);
-      pivot.rotation.y = faceY;
-      const d = new Mesh(doorGeo, doorMat());
-      d.castShadow = true;
-      d.receiveShadow = true;
-      d.position.x = (sideSign * doorW) / 2; // door centre, inward from the pivot
-      // gold hazard chevrons (a couple of thin trims on the face)
-      for (const cy of [-1.6, 0, 1.6]) {
-        const chev = new Mesh(
-          new BoxGeometry(GATE_HALF_WIDTH - 0.4, 0.35, 0.12),
-          mat(TRIM, 0.65, 0.2),
-        );
-        chev.position.set(0, cy, 0.55);
-        d.add(chev);
-      }
-      // Emissive arena-accent stripe down the door's INNER (seam) edge — the key
-      // open/closed read: CLOSED, the two stripes meet at the centre as one bright
-      // bar; as the doors retract into the pillars the bars split + shrink away, so
-      // the gate visibly "opens". Slightly proud of the door (depth 1.06 vs 1) so it
-      // reads as a lit edge from any camera angle.
-      const seam = new Mesh(
-        new BoxGeometry(0.2, GATE_HEIGHT - 0.2, 1.06),
-        new MeshStandardMaterial({
-          color: this.accent,
-          emissive: this.accent,
-          emissiveIntensity: 1.2,
-          roughness: 0.4,
-        }),
-      );
-      seam.position.set((-sideSign * doorW) / 2, 0, 0); // inner edge (toward gate centre)
-      d.add(seam);
-      outlineHull(d, OUTLINE_W.prop);
-      pivot.add(d);
-      this.group.add(pivot);
-      return pivot;
-    };
-    const leftPivot = makeDoor(-1);
-    const rightPivot = makeDoor(1);
-
-    const gate: GateDoors = { angle, cx, cz, tx, tz, leftPivot, rightPivot, open: 0 };
-    this.gates.push(gate);
-    this.placeDoors(gate, 0);
+    // Two blast-door halves that PULL APART along the tangent (one ±, one ∓) to open
+    // and meet at the centre to close. The inner (seam) edges carry the accent stripe.
+    const mouthR = ARENA_RADIUS - 1.5;
+    this.addSlidingDoors({
+      parent: this.group,
+      cx,
+      cz,
+      tx,
+      tz,
+      y: GATE_HEIGHT / 2,
+      doorW: GATE_HALF_WIDTH + 0.2,
+      doorH: GATE_HEIGHT,
+      faceY,
+      mx: cos * mouthR,
+      mz: sin * mouthR,
+    });
 
     // Two angled spotlights from the gate's arena-facing top corners, coning down
     // onto the approach plate — fakes volumetric beams + lights the entry so new
@@ -741,13 +721,83 @@ export class ArenaView {
     }
   }
 
-  /** Open amount (0 closed → 1 open) retracts each door into its pillar by
-   *  scaling the pivot's tangent axis toward zero — no geometry slides past the
-   *  frame, so nothing pokes out the sides. */
+  /** Build the two sliding door halves for ONE gate (either arena) and register it
+   *  for animation. Each half is a pivot Group placed at its closed position; opening
+   *  pulls it OUTWARD along ±tangent (placeDoors). The inner (seam) edge of each half
+   *  carries the emissive accent stripe so the two-piece open/close reads clearly. */
+  private addSlidingDoors(o: {
+    parent: Group; // world group (circle) OR the gate's local group (rect, pre-oriented)
+    cx: number; // all coords below are in the PARENT'S frame
+    cz: number;
+    tx: number;
+    tz: number;
+    y: number;
+    doorW: number;
+    doorH: number;
+    faceY: number;
+    mx: number; // mouth point is WORLD (compared against enemy positions)
+    mz: number;
+  }): void {
+    const makeDoor = (sideSign: number): Group => {
+      const pivot = new Group();
+      pivot.userData.batchDynamic = true; // animated (slides open) — never batch it
+      pivot.rotation.y = o.faceY; // position is set by placeDoors
+      const d = new Mesh(new BoxGeometry(o.doorW, o.doorH, 1), mat(STEEL, 0.7, 0.55));
+      d.castShadow = true;
+      d.receiveShadow = true;
+      d.position.x = (sideSign * o.doorW) / 2; // door centre, inward from the pivot
+      // gold hazard chevrons across the face (scaled to the door height)
+      for (const f of [-0.25, 0, 0.25]) {
+        const chev = new Mesh(new BoxGeometry(o.doorW - 0.6, 0.35, 0.12), mat(TRIM, 0.65, 0.2));
+        chev.position.set(0, f * o.doorH, 0.55);
+        d.add(chev);
+      }
+      // Emissive arena-accent stripe down the door's INNER (seam) edge — the key
+      // open/close read: CLOSED, the two stripes meet at the centre as one bright bar;
+      // as the halves pull apart the bars separate + travel to the pillars. Slightly
+      // proud of the door (depth 1.06 vs 1) so it reads as a lit edge from any angle.
+      const seam = new Mesh(
+        new BoxGeometry(0.2, o.doorH - 0.2, 1.06),
+        new MeshStandardMaterial({
+          color: this.accent,
+          emissive: this.accent,
+          emissiveIntensity: 1.2,
+          roughness: 0.4,
+        }),
+      );
+      seam.position.set((-sideSign * o.doorW) / 2, 0, 0); // inner edge (toward gate centre)
+      d.add(seam);
+      outlineHull(d, OUTLINE_W.prop);
+      pivot.add(d);
+      o.parent.add(pivot);
+      return pivot;
+    };
+    const gate: GateDoors = {
+      cx: o.cx,
+      cz: o.cz,
+      tx: o.tx,
+      tz: o.tz,
+      y: o.y,
+      doorW: o.doorW,
+      mx: o.mx,
+      mz: o.mz,
+      leftPivot: makeDoor(-1),
+      rightPivot: makeDoor(1),
+      open: 0,
+    };
+    this.gates.push(gate);
+    this.placeDoors(gate, 0);
+  }
+
+  /** Open amount (0 closed → 1 open) slides each half OUTWARD along the tangent by up
+   *  to a full door-width, so the two pieces part from the centre and tuck toward the
+   *  pillars. The seam stripes travel with them, selling the pull-apart. */
   private placeDoors(g: GateDoors, open: number): void {
-    const s = Math.max(0.02, 1 - open * 0.96); // never fully 0 (avoids degenerate scale)
-    g.leftPivot.scale.x = s;
-    g.rightPivot.scale.x = s;
+    const slide = open * g.doorW; // 0 closed (meet at centre) → doorW fully open
+    const lo = -(g.doorW + slide); // left half outer offset along the tangent
+    const ro = g.doorW + slide; // right half
+    g.leftPivot.position.set(g.cx + g.tx * lo, g.y, g.cz + g.tz * lo);
+    g.rightPivot.position.set(g.cx + g.tx * ro, g.y, g.cz + g.tz * ro);
   }
 
   /** Animate gate doors: open while an enemy is telegraphing near the gate (T37). */
@@ -755,10 +805,9 @@ export class ArenaView {
     for (const g of this.gates) {
       let wantOpen = false;
       const r2 = DOOR_OPEN_RANGE * DOOR_OPEN_RANGE;
-      // Inner mouth of the gate (where enemies appear).
-      const mouthR = ARENA_RADIUS - 1.5;
-      const mx = (g.cx / (ARENA_RADIUS + 1.2)) * mouthR;
-      const mz = (g.cz / (ARENA_RADIUS + 1.2)) * mouthR;
+      // Inner mouth of the gate (where enemies appear) — stored per gate (shape-agnostic).
+      const mx = g.mx;
+      const mz = g.mz;
       for (let i = 0; i < enemies.count; i++) {
         // Any telegraphing enemy near this gate keeps it open; so do active
         // enemies still inside the mouth (walking through).

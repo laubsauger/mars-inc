@@ -14,7 +14,8 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'conductive-ammunition',
     name: 'Conductive Ammunition',
-    description: 'Hits build Shock charge on enemies (primer).',
+    description:
+      'PRIMER: each hit applies 1 Shock stack (3s, max 6). Shock deals NO damage by itself — it ARMS the target. Pair it with a reaction converter (e.g. with Burn/Chill) to detonate it.',
     tags: ['shock', 'status'],
     grantsTags: ['shock'],
     rarity: 'uncommon',
@@ -23,6 +24,10 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
+    previewStats: () => [
+      { label: 'Shock on hit', from: '—', to: '+1 stack, 3s (max 6)' },
+      { label: 'Damage alone', from: '—', to: 'none — needs a converter' },
+    ],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
         ctx.applyStatus(ctx.targetIndex, 'shock', { duration: 3, stacks: 1 }),
@@ -31,7 +36,8 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'corrosive-rounds',
     name: 'Corrosive Rounds',
-    description: 'Hits corrode armor — corroded enemies take more damage (primer).',
+    description:
+      'PRIMER: each hit applies 1 Corrode stack (4s, max 6). A corroded enemy takes +6% damage per stack — up to +36% — from ALL your sources. Works on its own; stacks faster with high fire rate.',
     tags: ['corrode', 'status'],
     grantsTags: ['corrode'],
     rarity: 'uncommon',
@@ -40,6 +46,10 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
+    previewStats: () => [
+      { label: 'Corrode on hit', from: '—', to: '+1 stack, 4s (max 6)' },
+      { label: 'Damage taken', from: '—', to: '+6% per stack (up to +36%)' },
+    ],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
         ctx.applyStatus(ctx.targetIndex, 'corrode', { duration: 4, stacks: 1 }),
@@ -48,7 +58,8 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'serrated-rounds',
     name: 'Serrated Rounds',
-    description: 'Hits cause stacking Bleed (primer).',
+    description:
+      'PRIMER: each hit adds 1 Bleed stack (4s). Bleed is a damage-over-time: each stack deals 70% of the triggering hit, spread over 4s. Stacks add up — great with high fire rate. Works on its own.',
     tags: ['bleed', 'status'],
     grantsTags: ['bleed'],
     rarity: 'uncommon',
@@ -57,6 +68,10 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
+    previewStats: () => [
+      { label: 'Bleed on hit', from: '—', to: '+1 stack, 4s' },
+      { label: 'DoT per stack', from: '—', to: '70% of the hit over 4s' },
+    ],
     // Bleed DoT scales with the hit (T70, V33): dps = 0.7 × hitDamage / 4s per stack.
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>

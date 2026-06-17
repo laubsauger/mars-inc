@@ -331,6 +331,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   let lastAnnTick = 0;
   let annId = 0;
   let lastEvolved: string | null = null;
+  let lastWaveEvent: string | null = null;
   const seenVariants = new Set<number>();
   let lastGlory = 0; // glory earned on the most recent run (for the panel)
 
@@ -652,7 +653,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       eliteMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
-      accumulateLights(lightBuffer, world, alpha); // all emitters → the projectile light buffer
+      accumulateLights(lightBuffer, world, alpha, laserView); // all emitters → the projectile light buffer
       grenadeView.sync(world.grenades);
       floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
@@ -746,6 +747,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       if (world.tick < lastAnnTick) {
         seenVariants.clear(); // run restarted (tick reset) → re-announce
         bossAnnounced = false;
+        lastWaveEvent = null;
       }
       lastAnnTick = world.tick;
       if (world.boss.active && !bossAnnounced) {
@@ -774,6 +776,11 @@ async function boot(parent: HTMLElement): Promise<void> {
         });
       } else if (!world.justEvolved) {
         lastEvolved = null;
+      }
+      // Themed milestone wave (T-themes): banner when a scripted burst lands.
+      if (world.director.waveEvent && world.director.waveEvent !== lastWaveEvent) {
+        lastWaveEvent = world.director.waveEvent;
+        uiActions.setAnnounce({ id: ++annId, kind: 'boss', text: world.director.waveEvent });
       }
 
       // Death → award Martian Glory (T26), record the run, show the game-over

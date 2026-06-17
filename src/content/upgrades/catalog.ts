@@ -264,7 +264,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'restraining-order',
     name: 'Restraining Order',
-    description: '+35% damage to enemies kept beyond arm’s reach.',
+    description: '+35% damage per level while the nearest enemy is beyond 9m — reward for kiting.',
     tags: ['conditional', 'damage', 'precision'],
     rarity: 'rare',
     maxLevel: 2,
@@ -396,16 +396,19 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'unstable-overclock',
     name: 'Unstable Overclock',
-    description: 'EXPERIMENTAL: +50% damage & fire rate, wild spread.',
+    description: 'EXPERIMENTAL: +50% damage and +50% fire rate — but recoil kicks 70% harder.',
     tags: ['damage', 'fire-rate', 'risk'],
     rarity: 'prototype',
     maxLevel: 1,
     baseWeight: 2,
     synergyWeight: 2,
+    // Was "+wild spread" via mods.spreadArc — DEAD: the weapon's own spreadArc wins
+    // (weapon-system `?? mods.spreadArc`) and arc only fans MULTI-shot, so a single-shot
+    // gun showed nothing. Recoil is a real, visible, numbered downside that fits the name.
     apply: ({ mods }) => {
       mods.damageMult += 0.5;
-      mods.fireRateMult += 0.25;
-      mods.spreadArc += 0.25;
+      mods.fireRateMult += 0.5;
+      mods.recoilMult += 0.7;
     },
   },
   {

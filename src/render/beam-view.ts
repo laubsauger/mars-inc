@@ -19,13 +19,19 @@ import { type BeamPool, BeamState, MAX_BEAMS } from '../sim/enemy-attacks';
 import { COL } from './art/palette';
 
 const Y = 0.2; // hovers just over the floor so it reads over inlays
-const CHARGE_COL = COL.laserRed; // menacing crimson telegraph (dimmed via the ramp)
-const FIRE_COL = COL.laserRed.clone().multiplyScalar(1.7); // hot lethal flash (additive → blooms white)
+// Per BeamStyle colour set [loading tint, fire flash]. Index = beam.style[i] so each
+// telegraphed-danger source reads distinctly while sharing the charge/lock/fire logic.
+const CHARGE_COLS = [COL.laserRed, COL.chargeAmber]; // [Sentinel crimson, Charge amber]
+const FIRE_COLS = [
+  COL.laserRed.clone().multiplyScalar(1.7),
+  COL.chargeAmber.clone().multiplyScalar(1.6),
+];
 
 export class BeamView {
   private mesh: InstancedMesh;
   private dummy = new Object3D();
   private tmp = new Color();
+  private phase = 0; // drives the charge pulse / lock strobe
 
   constructor(scene: Scene) {
     const geo = new PlaneGeometry(1, 1); // unit quad, scaled per beam, laid flat
@@ -49,6 +55,7 @@ export class BeamView {
   }
 
   sync(beams: BeamPool): void {
+    this.phase += 0.05;
     const n = beams.count;
     for (let i = 0; i < n; i++) {
       const firing = beams.state[i] === BeamState.Firing;
@@ -58,13 +65,35 @@ export class BeamView {
       const dz = beams.dirZ[i]!;
       const ox = beams.ox[i]!;
       const oz = beams.oz[i]!;
-      // Width: a thin hairline at charge start that thickens (t²) toward the lethal
-      // width; the FIRE flash is the full beam, a touch wider for punch.
+      // Three readable states so "loading" vs "about to hurt" is obvious:
+      //  • LOADING  (dim CHARGE red, thin, grows to ~55% width, pulse speeds up)
+      //  • LOCK     (final ~18%: snaps bright FIRE red + full width + fast strobe →
+      //             the unmistakable "it's firing NOW" tell, your cue to be off the line)
+      //  • FIRING   (full bright solid lethal beam)
       const full = beams.width[i]! * 2; // width is a half-width; *2 = the lethal band
-      const w = firing ? full * 1.15 : 0.06 + t * t * full;
-      // Brightness ramps with the charge so the tell "charges up"; fire is full.
-      const k = firing ? 1 : 0.25 + 0.75 * t;
-      const col = firing ? FIRE_COL : CHARGE_COL;
+      const LOCK = 0.82; // chargeT past which it's locked + about to fire
+      const s = beams.style[i]!; // per-source colour set
+      const chargeCol = CHARGE_COLS[s] ?? CHARGE_COLS[0]!;
+      const fireCol = FIRE_COLS[s] ?? FIRE_COLS[0]!;
+      let w: number;
+      let k: number;
+      let col: Color;
+      if (firing) {
+        w = full * 1.15;
+        k = 1;
+        col = fireCol;
+      } else if (t < LOCK) {
+        const u = t / LOCK; // 0..1 through the loading phase
+        w = 0.06 + u * u * full * 0.55; // clearly thinner than the lethal beam
+        const pulseHz = 7 + 16 * u; // beats faster as it nears the lock
+        k = (0.22 + 0.33 * u) * (0.7 + 0.3 * Math.sin(this.phase * pulseHz + i));
+        col = chargeCol; // dim warning = "just aiming, no damage yet"
+      } else {
+        const v = (t - LOCK) / (1 - LOCK); // 0..1 across the lock window
+        w = full * (0.6 + 0.45 * v); // snap toward full width
+        k = (0.85 + 0.45 * v) * (0.7 + 0.3 * Math.sin(this.phase * 40 + i)); // bright strobe
+        col = fireCol; // bright = "ARMED" — shares the firing colour so it reads as live
+      }
       const mid = len / 2;
       this.dummy.position.set(ox + dx * mid, Y, oz + dz * mid);
       // Flatten (−π/2 about X), spin in-plane (about Z) so the quad's long axis (X)

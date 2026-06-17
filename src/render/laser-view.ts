@@ -67,6 +67,14 @@ export class LaserView {
     }
   }
 
+  /** Visit each live lance (origin → end + fade 0..1) so the light accumulator can
+   *  splat floor glow along the beam, matching projectiles/grenades. */
+  eachActive(cb: (ox: number, oz: number, ex: number, ez: number, fade: number) => void): void {
+    for (let i = 0; i < this.n; i++) {
+      cb(this.ox[i]!, this.oz[i]!, this.ex[i]!, this.ez[i]!, 1 - this.age[i]! / LIFE);
+    }
+  }
+
   update(dt: number): void {
     for (let i = this.n - 1; i >= 0; i--) {
       this.age[i]! += dt;

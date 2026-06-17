@@ -91,6 +91,7 @@ export interface HudState {
   sprintCooldown01: number; // 0..1 recharge progress of next charge
   paused: boolean;
   elapsed: number;
+  wave: number; // current wave-pulse number (HUD readout)
   level: number;
   xp01: number; // 0..1 progress to next level
   countdown: number; // > 0 → pre-combat countdown showing (T20)
@@ -186,6 +187,7 @@ export interface FloatingLabel {
   opacity: number;
   kind: 'dmg' | 'pickup';
   crit?: boolean;
+  dot?: boolean;
   prompt?: boolean;
   active?: boolean;
 }

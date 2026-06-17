@@ -74,7 +74,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'bounty-marker',
     name: 'Bounty Marker',
-    description: 'Hits have a chance to MARK the target: +50% status damage on it.',
+    description:
+      'PRIMER: each hit has a 25% chance to MARK the target for 4s. A marked enemy takes +50% from your damage-over-time (burn/bleed). Best paired with a DoT primer.',
     tags: ['mark', 'status'],
     grantsTags: ['mark'],
     rarity: 'uncommon',
@@ -83,6 +84,10 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'primer',
     riskTier: 0,
+    previewStats: () => [
+      { label: 'Mark chance', from: '—', to: '25% on hit, 4s' },
+      { label: 'DoT vs marked', from: '—', to: '+50%' },
+    ],
     apply: ({ effects }) =>
       effects.on('hit', (c) => {
         if (c.targetIndex >= 0 && c.rng.next() < 0.25) {

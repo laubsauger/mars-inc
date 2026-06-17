@@ -67,12 +67,13 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'incendiary-rounds',
     name: 'Incendiary Rounds',
-    description: 'Hits set enemies on fire (burns for 90% of the hit over 3s).',
+    description: 'Hits set enemies on fire — Burn deals 90% of the hit as damage over 3s.',
     tags: ['burn', 'status'],
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 5,
     synergyWeight: 2,
+    previewStats: () => [{ label: 'Burn on hit', from: '—', to: '90% of hit over 3s' }],
     // DoT scales with the hit (T70, V33): dps = 0.9 × hitDamage / 3s.
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
@@ -83,12 +84,13 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'cryo-rounds',
     name: 'Cryo Rounds',
-    description: 'Hits chill enemies (40% slow for 2s).',
+    description: 'Hits Chill enemies — 40% movement slow for 2s.',
     tags: ['chill', 'status', 'control'],
     rarity: 'uncommon',
     maxLevel: 2,
     baseWeight: 5,
     synergyWeight: 2,
+    previewStats: () => [{ label: 'Chill on hit', from: '—', to: '40% slow, 2s' }],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
         ctx.applyStatus(ctx.targetIndex, 'chill', { duration: 2, slowMult: 0.6 }),

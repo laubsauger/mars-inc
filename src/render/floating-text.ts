@@ -16,6 +16,10 @@ const MAX_DMG = 160; // hard cap on concurrent damage numbers (bounded DOM). Rai
 // from 48 now that every hit gets its OWN number — a fast multishot build sprays
 // far more at once, and 48 recycled them away before they could read.
 const TTL = 0.9; // lifetime of a damage number (s)
+// DoT ticks (flag 3) fire many times/sec on one enemy → tally them into a nearby
+// recent DoT number instead of spamming "1"s. Hits/crits stay per-instance.
+const DOT_AGG_R2 = 1.0 * 1.0; // same-enemy radius
+const DOT_AGG_WINDOW = 0.55; // ...and this recent
 
 export interface ScreenLabel {
   id: string;
@@ -26,8 +30,10 @@ export interface ScreenLabel {
   size: number; // font px
   opacity: number;
   kind: 'dmg' | 'pickup';
-  /** Damage labels: a critical hit (gold + "!" + glow). */
+  /** Damage labels: a critical hit (gold + glow). */
   crit?: boolean;
+  /** Damage labels: a damage-over-time tick (small, dim, light backdrop). */
+  dot?: boolean;
   /** Pickup labels: show the "E" key chip (always true for crates). */
   prompt?: boolean;
   /** Pickup labels: true for the crate in equip range (the bright candidate). */
@@ -44,7 +50,7 @@ export class FloatingText {
   private vx = new Float32Array(MAX_DMG);
   private vz = new Float32Array(MAX_DMG);
   private vy = new Float32Array(MAX_DMG);
-  // 0 = normal enemy damage, 1 = crit, 2 = damage TO the player (self).
+  // 0 = normal enemy damage, 1 = crit, 2 = damage TO the player (self), 3 = DoT tick.
   private flag = new Uint8Array(MAX_DMG);
   private count = 0;
   private v = new Vector3();
@@ -54,6 +60,20 @@ export class FloatingText {
    *  per-hit damage than the build actually does, which was misleading. */
   addDamage(x: number, z: number, amount: number, flag: number): void {
     if (amount <= 0) return;
+    // DoT ticks accumulate into a nearby recent DoT number (one rising tally per
+    // enemy) instead of a stream of "1"s. Hits/crits/self always get their own.
+    if (flag === 3) {
+      for (let i = 0; i < this.count; i++) {
+        if (this.flag[i] !== 3 || this.age[i]! >= DOT_AGG_WINDOW) continue;
+        const ddx = this.dx[i]! - x;
+        const ddz = this.dz[i]! - z;
+        if (ddx * ddx + ddz * ddz < DOT_AGG_R2) {
+          this.amt[i]! += amount;
+          this.age[i] = 0; // keep it alive + rising while ticking
+          return;
+        }
+      }
+    }
     let slot = this.count;
     if (this.count >= MAX_DMG) {
       slot = 0; // recycle the oldest
@@ -66,16 +86,18 @@ export class FloatingText {
     this.amt[slot] = amount;
     this.age[slot] = 0;
     this.flag[slot] = flag;
-    // Launch: a random horizontal direction (deterministic hash, no Math.random
-    // in the hot path) + an upward pop. Gravity in collect() pulls it back into
-    // an arc. Self-hits (flag 2) pop straight up so they read as "you took dmg".
+    // Launch: a random horizontal direction (deterministic hash, no Math.random in
+    // the hot path) + an upward pop. Gravity in collect() pulls it into an arc.
+    // Numbers fly UP + to the SIDE harder now so the spawn point clears fast for the
+    // next number. Self-hits (flag 2) pop straight up ("you took dmg"); DoT ticks
+    // (3) drift gently so the rising tally stays readable.
     const hash = Math.sin(slot * 12.9898 + x * 4.1414 + z * 2.7182) * 43758.5453;
     const r = hash - Math.floor(hash);
     const ang = r * Math.PI * 2;
-    const spd = flag === 2 ? 0.2 : 0.9 + r * 0.7;
+    const spd = flag === 2 ? 0.2 : flag === 3 ? 0.7 + r * 0.5 : 1.5 + r * 1.2;
     this.vx[slot] = Math.cos(ang) * spd;
     this.vz[slot] = Math.sin(ang) * spd;
-    this.vy[slot] = 3.2; // upward pop; G applied over age
+    this.vy[slot] = flag === 3 ? 3.0 : 4.4; // upward pop; G applied over age
   }
 
   update(dt: number): void {
@@ -120,21 +142,31 @@ export class FloatingText {
       const f = this.flag[i];
       const isCrit = f === 1;
       const isSelf = f === 2;
-      // Spring pop: overshoot the size on spawn, settle fast. Crits punch harder.
-      const pop = 1 + (isCrit ? 0.45 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
-      const base = isCrit ? 12 : isSelf ? 11 : 10;
+      const isDot = f === 3;
+      // Spring pop: overshoot the size on spawn, settle fast. Crits punch harder; DoT
+      // ticks barely pop (they're a quiet background tally).
+      const pop = 1 + (isDot ? 0.15 : isCrit ? 0.45 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
+      const base = isCrit ? 12 : isSelf ? 11 : isDot ? 7 : 10; // DoT noticeably smaller
       const val = Math.round(this.amt[i]!);
       out.push({
         id: `d${i}`,
         x: (this.v.x * 0.5 + 0.5) * w,
         y: (-this.v.y * 0.5 + 0.5) * h,
-        // Crit gets a "!" so it reads as a crit even out of the corner of your eye.
-        text: isSelf ? `-${val}` : isCrit ? `${val}!` : `${val}`,
-        color: isSelf ? ACCENT.healthRed : isCrit ? ACCENT.kineticGold : '#f3e6c0',
+        // Crit reads from its gold colour (+ slightly larger) — no "!" needed. DoT is
+        // a dim ember so it recedes vs. direct hits.
+        text: isSelf ? `-${val}` : `${val}`,
+        color: isSelf
+          ? ACCENT.healthRed
+          : isCrit
+            ? ACCENT.kineticGold
+            : isDot
+              ? '#e07a3a'
+              : '#f3e6c0',
         size: base * pop,
         opacity: 1 - t * t,
         kind: 'dmg',
         crit: isCrit,
+        dot: isDot,
       });
     }
     for (let i = 0; i < drops.count; i++) {

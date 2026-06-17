@@ -92,11 +92,25 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
       return (leaves[k] = s);
     };
     countLeaves(0);
+    // SMART packing via a FORK-AWARE radial step + monotonic radius: a child whose
+    // parent FORKS (≥2 kids) steps out farther (more arc length at the same angle, so
+    // diverging siblings don't bunch), while a CHAIN (single child) takes a small step
+    // (no dead space). Radius never goes inside the parent, so no edge points inward.
     let maxDepth = 0;
-    const place = (k: number, a0: number, a1: number, depth: number) => {
+    const place = (
+      k: number,
+      a0: number,
+      a1: number,
+      depth: number,
+      parentR: number,
+      sibCount: number,
+    ) => {
       if (depth > maxDepth) maxDepth = depth;
+      // Step from the parent: a fork needs spread (siblings share the parent's wedge,
+      // so push them out to gain arc); a chain hugs tight.
+      const step = sibCount > 1 ? 13 : 7.5;
+      const radius = Math.max(radiusAt(depth, lenMul), parentR + step);
       const a = (a0 + a1) / 2; // node sits at the centre of its wedge
-      const radius = radiusAt(depth, lenMul);
       TREE_NODES[nodes[k]!.id] = {
         x: 50 + Math.cos(a) * radius * XS,
         y: 50 + Math.sin(a) * radius,
@@ -112,11 +126,11 @@ const TREE_ORBITS: Array<{ x: number; y: number; r: number; branch: GloryBranch 
       let a0c = a0;
       for (const c of ch) {
         const span = (a1 - a0) * (leaves[c]! / total);
-        place(c, a0c, a0c + span, depth + 1);
+        place(c, a0c, a0c + span, depth + 1, radius, ch.length);
         a0c += span;
       }
     };
-    place(0, center - sector / 2, center + sector / 2, 0);
+    place(0, center - sector / 2, center + sector / 2, 0, 0, 1);
     const midR = radiusAt(maxDepth, lenMul) / 2;
     TREE_ORBITS.push({
       x: 50 + Math.cos(center) * midR * XS,
@@ -531,10 +545,10 @@ export function GloryTree() {
             //  • legendary  → biggest, hex-cut feel + permanent glow (a KEYSTONE)
             const sizeClass =
               rarity === 'legendary'
-                ? 'h-[3.3rem] w-[3.3rem] text-xl'
+                ? 'h-[2.9rem] w-[2.9rem] text-lg'
                 : rarity === 'rare'
-                  ? 'h-[2.7rem] w-[2.7rem] text-base'
-                  : 'h-[2.2rem] w-[2.2rem] text-sm';
+                  ? 'h-[2.4rem] w-[2.4rem] text-sm'
+                  : 'h-[1.9rem] w-[1.9rem] text-xs';
             // Rarity rim: rare gets an inner ring, legendary an animated outer glow
             // (only once owned/buyable — locked legendaries stay quiet).
             const rarityRim =

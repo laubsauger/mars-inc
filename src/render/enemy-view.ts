@@ -64,8 +64,9 @@ const enum Shape {
   Brute, // big asymmetric melee mass
   Ooze, // squashed blob
   Boss, // arena machinery (core + crown ring)
+  Saucer, // hovering UFO turret: flat disc hull + cockpit dome
 }
-export const SHAPE_COUNT = 8;
+export const SHAPE_COUNT = 9;
 
 // variant → silhouette family.
 export const VARIANT_SHAPE: number[] = [
@@ -81,7 +82,7 @@ export const VARIANT_SHAPE: number[] = [
   Shape.Ooze, // 9 blob
   Shape.Ooze, // 10 blobling
   Shape.Runner, // 11 phase stalker (fast chaser silhouette)
-  Shape.Rifle, // 12 lance sentinel (turret/barrel silhouette)
+  Shape.Saucer, // 12 lance sentinel (hovering UFO turret)
   Shape.Brute, // 13 gargantuan (big asymmetric mass)
 ];
 // Per-variant silhouette tweak [widthMul, heightMul] on top of the radius scale —
@@ -94,7 +95,7 @@ const VARIANT_SIZE: ReadonlyArray<readonly [number, number]> = [
 ];
 const UNIT_SIZE: readonly [number, number] = [1, 1]; // every other variant — unchanged
 // Shapes whose silhouette has a clear front → rotate to face movement direction.
-const SHAPE_FACES = [true, true, true, true, true, false, false, false];
+const SHAPE_FACES = [true, true, true, true, true, false, false, false, false];
 
 /** Build each shape as ONE merged, ground-seated geometry (base at y=0), sized to
  *  a ~0.5-radius reference so an instance scale of radius/0.5 fits it to the enemy.
@@ -174,7 +175,22 @@ export function buildShapes(): BufferGeometry[] {
     return merge([core, crown]);
   })();
 
-  return [wedge, runner, tube, rifle, shield, brute, ooze, boss];
+  // Saucer: a wide flat lens hull + a small cockpit dome on top — a little UFO that
+  // hovers (raised off the floor) and reads radially (no clear "front").
+  const saucer = (() => {
+    const hull = new SphereGeometry(0.62, 18, 9);
+    hull.scale(1, 0.26, 1); // flatten into a disc/lens
+    hull.translate(0, 0.35, 0); // float it off the ground (hovering)
+    const rim = new TorusGeometry(0.6, 0.07, 8, 22); // crisp saucer edge
+    rim.rotateX(Math.PI / 2);
+    rim.translate(0, 0.35, 0);
+    const dome = new SphereGeometry(0.27, 14, 9);
+    dome.scale(1, 0.85, 1);
+    dome.translate(0, 0.5, 0); // cockpit bubble
+    return merge([hull, rim, dome]);
+  })();
+
+  return [wedge, runner, tube, rifle, shield, brute, ooze, boss, saucer];
 }
 
 export class EnemyView {

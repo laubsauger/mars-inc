@@ -377,27 +377,27 @@ export class Effects {
           });
           break;
         case 'corpseblast': {
-          // Overkill detonation — a green read (its own identity vs the gold blast),
-          // but TONED DOWN: a tighter, shorter-lived ring + a dim dust scuff, not a
-          // big saturated green flash. Dimmed green so bloom doesn't blow it out.
-          const corpseGreen = COL.toxicGreen.clone().multiplyScalar(0.55);
+          // Overkill detonation — VISCERA, but LIGHT (it fires a LOT). Just an expanding
+          // blood-red OUTLINE ring (the impact pool is a thin annulus, not a filled disc)
+          // with a quick bone-white inner ring for the "burst apart" read. No fill, no
+          // green, short-lived — a whole field detonating reads clean, not a strobe.
           this.impact.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.6,
-            s1: 2.4,
-            life: 0.28,
+            s0: 0.4,
+            s1: 2,
+            life: 0.22,
             spin: 0,
-            color: corpseGreen,
+            color: COL.healthRed.clone().multiplyScalar(0.5), // dark blood red
           });
-          this.dust.spawn({
+          this.impact.spawn({
             x: e.x,
             z: e.z,
-            s0: 1.0,
-            s1: 2.2,
-            life: 0.32,
-            spin: 3,
-            color: corpseGreen,
+            s0: 0.3,
+            s1: 1,
+            life: 0.14,
+            spin: 0,
+            color: COL.bone.clone().multiplyScalar(0.7), // quick bone shrapnel ring
           });
           break;
         }

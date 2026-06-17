@@ -7,6 +7,10 @@ import { useUiStore } from './store';
 
 // Soft elliptical drop-shadow behind the glyphs — the readability backdrop.
 const BACKDROP = 'radial-gradient(ellipse at center, rgba(7,5,4,0.82) 0%, rgba(7,5,4,0) 72%)';
+// DoT ticks are frequent + low-value → a much lighter backdrop/shadow so they stay
+// legible but recede into the background instead of crowding the direct-hit numbers.
+const DOT_BACKDROP = 'radial-gradient(ellipse at center, rgba(7,5,4,0.4) 0%, rgba(7,5,4,0) 68%)';
+const DOT_SHADOW = '0 1px 4px rgba(0,0,0,0.8)';
 const SHADOW = '0 2px 7px rgba(0,0,0,0.95), 0 0 3px rgba(0,0,0,0.95)';
 // Crit numbers get a hot gold halo on top of the legibility shadow so they pop.
 const CRIT_SHADOW = `${SHADOW}, 0 0 10px rgba(255,210,63,0.9), 0 0 20px rgba(255,210,63,0.55)`;
@@ -30,9 +34,9 @@ export function FloatingLayer() {
               color: l.color,
               fontSize: l.size,
               opacity: l.opacity,
-              textShadow: l.crit ? CRIT_SHADOW : SHADOW,
-              background: BACKDROP, // every label gets the readability backdrop
-              padding: isPickup ? '2px 9px' : '0 8px',
+              textShadow: l.crit ? CRIT_SHADOW : l.dot ? DOT_SHADOW : SHADOW,
+              background: l.dot ? DOT_BACKDROP : BACKDROP, // lighter backdrop for DoT
+              padding: isPickup ? '2px 9px' : l.dot ? '0 4px' : '0 8px',
               borderRadius: 4,
               letterSpacing: isPickup ? '0.06em' : undefined,
               // The in-range crate gets a glowing border so "ready to equip" reads.

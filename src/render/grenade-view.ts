@@ -74,15 +74,16 @@ export class GrenadeView {
     this.trail.count = 0;
     scene.add(this.trail);
 
-    // Slim red reticle laid flat on the floor — the predicted impact zone.
-    const rg = new RingGeometry(0.93, 1.0, 44);
+    // Slim red reticle laid flat on the floor — the predicted impact zone. Thin +
+    // translucent so it reads as a guide, not a hard painted ring.
+    const rg = new RingGeometry(0.96, 1.0, 44);
     rg.rotateX(-Math.PI / 2);
     this.ring = new InstancedMesh(
       rg,
       new MeshBasicMaterial({
         color: RED,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.5,
         depthWrite: false,
         depthTest: false,
         toneMapped: false,

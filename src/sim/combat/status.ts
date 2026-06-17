@@ -166,7 +166,7 @@ export function tickStatus(
         const removed = Math.min(amt, pool.health[i]!);
         pool.health[i]! -= removed;
         dealt += removed;
-        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 3); // 3 = DoT tick
         if (pool.burnTime[i]! > 0 && rng.next() < 0.5) {
           // Visual-only ember fleck — 'ember' never triggers a sound.
           fx.push('ember', pool.posX[i]!, pool.posZ[i]!);
@@ -194,7 +194,7 @@ export function tickStatus(
         const removed = Math.min(amt, pool.health[i]!);
         pool.health[i]! -= removed;
         dealt += removed;
-        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 0);
+        fx.push('dmg', pool.posX[i]!, pool.posZ[i]!, removed, 0, 3); // 3 = DoT tick
       }
       if (pool.bleedTime[i]! <= 0) {
         pool.bleedTime[i] = 0;

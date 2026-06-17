@@ -16,6 +16,7 @@ export function buildHudState(world: World): HudState {
       sp.charges >= sp.maxCharges ? 1 : 1 - Math.max(0, sp.cooldown) / p.stats.sprintCooldown,
     paused: world.paused,
     elapsed: world.elapsed,
+    wave: world.director.waveNumber,
     level: p.level,
     xp01: p.xp / p.xpToNext,
     countdown: world.countdown,
