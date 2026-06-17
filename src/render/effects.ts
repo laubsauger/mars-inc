@@ -12,9 +12,9 @@ import {
   Color,
   DynamicDrawUsage,
   InstancedBufferAttribute,
-  BufferAttribute,
+  Float32BufferAttribute,
   AdditiveBlending,
-  type BufferGeometry,
+  BufferGeometry,
   type Scene,
 } from 'three';
 import { COL } from './art/palette';
@@ -175,15 +175,36 @@ class EffectPool {
   }
 }
 
-/** A unit disc whose CENTRE vertex is white and RIM vertices are black. Under
- *  additive blending this reads as a soft radial glow that fades to nothing at the
- *  edge — a gradient without a texture (§B1). Colour comes from instanceColor. */
-function softDiscGeo(segments = 28): CircleGeometry {
-  const g = new CircleGeometry(0.5, segments);
-  const n = g.attributes.position!.count; // centre vertex (0) + rim ring
-  const colors = new Float32Array(n * 3); // rim stays (0,0,0) → fades out
-  colors[0] = colors[1] = colors[2] = 1; // centre = full bright
-  g.setAttribute('color', new BufferAttribute(colors, 3));
+/** A unit disc with an ANNULAR gradient: dark at the centre, brightest at a mid
+ *  radius, fading to nothing at the rim (vertex brightness = sin(t·π)). Reads as a
+ *  blast SHOCKWAVE/smoke-ring whose middle stays open — not a flat filled flash. */
+function softRingGeo(rings = 7, seg = 30): BufferGeometry {
+  const pos: number[] = [0, 0, 0];
+  const col: number[] = [0, 0, 0]; // centre vertex DARK → hollow middle
+  for (let r = 1; r <= rings; r++) {
+    const rad = (r / rings) * 0.5;
+    const t = r / rings;
+    const b = Math.sin(t * Math.PI); // 0 centre → peak mid → 0 rim
+    for (let s = 0; s < seg; s++) {
+      const a = (s / seg) * Math.PI * 2;
+      pos.push(Math.cos(a) * rad, Math.sin(a) * rad, 0);
+      col.push(b, b, b);
+    }
+  }
+  const idx: number[] = [];
+  for (let s = 0; s < seg; s++) idx.push(0, 1 + s, 1 + ((s + 1) % seg)); // centre fan
+  for (let r = 1; r < rings; r++) {
+    const a0 = 1 + (r - 1) * seg;
+    const b0 = 1 + r * seg;
+    for (let s = 0; s < seg; s++) {
+      const nx = (s + 1) % seg;
+      idx.push(a0 + s, b0 + s, a0 + nx, a0 + nx, b0 + s, b0 + nx);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
   return g;
 }
 
@@ -198,12 +219,12 @@ const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
 // orange embers of fire. Reserved for the Blast profile (explosive weapons) only.
 // Dimmed muzzle gold — the full-bright flash was too hot/wide. Precomputed (a
 // per-shot clone would allocate in the hot FX path, V5).
-const MUZZLE_COL = COL.kineticGold.clone().multiplyScalar(0.6);
+const MUZZLE_COL = COL.kineticGold.clone().multiplyScalar(0.5);
 // Subdued explosive palette: a soft ember GLOW (radial gradient) carries the body
 // of the blast; a faint thin ring marks the zone edge. Kept dim — it's a starter
 // crowd tool, not a screen-eating fireball. Additive + bloom amplify, so base
 // values stay low.
-const BLAST_GLOW = new Color(0.6, 0.26, 0.09);
+const BLAST_GLOW = new Color(0.5, 0.22, 0.08);
 const BLAST_RING = new Color(0.5, 0.22, 0.07);
 const BLAST_DUST = new Color(0.2, 0.1, 0.05);
 
@@ -227,7 +248,9 @@ export class Effects {
     this.impact = new EffectPool(scene, new RingGeometry(0.34, 0.5, 40), 512, 0.7, false);
     this.dust = new EffectPool(scene, new CircleGeometry(0.5, 16), 1024, 0.3);
     // Soft-edged radial glow (vertex gradient) for subdued explosion bodies.
-    this.glow = new EffectPool(scene, softDiscGeo(28), 128, 0.32, true, true);
+    // Annular gradient (hollow centre) so the blast reads as a shockwave/smoke ring
+    // — not a flat colour-filled disc flashing the whole zone.
+    this.glow = new EffectPool(scene, softRingGeo(), 128, 0.32, true, true);
   }
 
   /** Spawn from drained sim FX events. */
@@ -242,9 +265,9 @@ export class Effects {
           this.muzzle.spawn({
             x: e.x,
             z: e.z,
-            s0: 1.2,
-            s1: 0.5,
-            life: 0.12,
+            s0: 1.0,
+            s1: 0.42,
+            life: 0.11,
             spin: 6,
             color: MUZZLE_COL,
           });

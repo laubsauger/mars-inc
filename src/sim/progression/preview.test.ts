@@ -40,7 +40,16 @@ describe('previewUpgrade', () => {
     expect(labels).toContain('Pulse Damage');
   });
 
-  it('returns empty for pure effect-engine cards (no tracked delta)', () => {
-    expect(previewUpgrade(find('apex-hunter'), defaultMods(), createPlayer())).toEqual([]);
+  it('surfaces a CONDITIONAL card peak (situational damage) as from→to', () => {
+    // Restraining Order: +35% damage while the nearest enemy is far → a peak the
+    // static-field diff misses. With live effects it stacks on what's owned.
+    const changes = previewUpgrade(find('restraining-order'), defaultMods(), createPlayer());
+    const dmg = changes.find((c) => c.label === 'Damage (peak)');
+    expect(dmg).toEqual({ label: 'Damage (peak)', from: '×1.00', to: '×1.35' });
+  });
+
+  it('returns empty for pure TRIGGER cards (on-kill AoE — no preview-able number)', () => {
+    // Singularity Protocol only registers an on-kill area-damage trigger.
+    expect(previewUpgrade(find('singularity-protocol'), defaultMods(), createPlayer())).toEqual([]);
   });
 });

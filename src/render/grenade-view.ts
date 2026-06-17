@@ -20,7 +20,9 @@ import type { GrenadeSystem } from '../sim/combat/grenades';
 
 const CAP = 8;
 const RED = new Color(1.0, 0.26, 0.2);
-const TRAIL = new Color(1.0, 0.46, 0.18); // hot orange head colour for the trail
+// Hot RED head for the trail — pulls the grenade clearly out of the gold/orange
+// bolt family so the two read as different objects (esp. with floor light on both).
+const TRAIL = new Color(1.0, 0.22, 0.12);
 // Trail samples per grenade. Each rides the arc a fixed step behind the head, so
 // the funnel curves with the lob instead of cutting a straight chord.
 const TRAIL_SEG = 8;
@@ -40,7 +42,7 @@ export class GrenadeView {
   constructor(scene: Scene) {
     this.body = new InstancedMesh(
       new SphereGeometry(0.34, 10, 8),
-      new MeshBasicMaterial({ color: 0xff6a36, depthTest: false, toneMapped: false }),
+      new MeshBasicMaterial({ color: 0xff3320, depthTest: false, toneMapped: false }),
       CAP,
     );
     this.body.instanceMatrix.setUsage(DynamicDrawUsage);

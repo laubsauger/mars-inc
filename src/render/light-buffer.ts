@@ -49,6 +49,18 @@ export const PROJ_LIGHT_COLS: Color[] = [
   COL.kineticGold, // orbital — gold
 ];
 
+/** Per-family light GAIN (glow radius scale × brightness). The default blaster is
+ *  deliberately TAME so flashier weapons (plasma/energy, heavy orbital) have room
+ *  to read as a step up. Tune per weapon family here. Index = projectile style. */
+export const PROJ_LIGHT_GAIN: { scale: number; intensity: number }[] = [
+  { scale: 0.8, intensity: 0.5 }, // sidearm — tame baseline
+  { scale: 0.85, intensity: 0.55 }, // rotary — small fast tracers (many on screen)
+  { scale: 1.15, intensity: 0.95 }, // explosive — chunky
+  { scale: 0.95, intensity: 0.7 }, // drone — modest
+  { scale: 1.25, intensity: 1.1 }, // energy — bright plasma pop
+  { scale: 1.35, intensity: 1.2 }, // orbital — heavy slug, flashiest
+];
+
 /** A unit disc (radius 0.5) whose vertex brightness falls off on a SMOOTH curve
  *  from centre to rim — multiple concentric rings, brightness = (1−t)² so the core
  *  isn't a hard hot point and the edge eases to nothing (a single-ring linear ramp

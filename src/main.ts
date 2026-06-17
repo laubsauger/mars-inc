@@ -6,7 +6,7 @@ import { createPostProcessing } from './render/post';
 import { createCamera, screenToGround, frameArena } from './render/camera';
 import { createControls } from './render/controls';
 import { ArenaView, setArenaLightBuffer } from './render/arena';
-import { LightBuffer, PROJ_LIGHT_COLS } from './render/light-buffer';
+import { LightBuffer, PROJ_LIGHT_COLS, PROJ_LIGHT_GAIN } from './render/light-buffer';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { StatusMarkerView } from './render/status-marker-view';
@@ -201,7 +201,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   // One accumulation pass (begin → add… → commit); cost is the sprite count, not a
   // light per source. Airborne sources (grenade, lobbed enemy shots) shrink + dim
   // their FLOOR glow with height so the light reads as lifting off the ground.
-  const LIGHT_GRENADE = new Color(1.0, 0.5, 0.18); // orange
+  const LIGHT_GRENADE = new Color(1.0, 0.28, 0.14); // hot red — distinct from gold bolts
   const LIGHT_ENEMY = new Color(0.85, 0.3, 0.95); // hostile magenta
   const LIGHT_SHARD = new Color(0.3, 0.85, 0.7); // xp cyan-green
   const LIGHT_BOUNTY = new Color(1.0, 0.78, 0.32); // relic gold
@@ -214,7 +214,9 @@ async function boot(parent: HTMLElement): Promise<void> {
     for (let i = 0; i < pp.count; i++) {
       const x = pp.prevX[i]! + (pp.posX[i]! - pp.prevX[i]!) * alpha;
       const z = pp.prevZ[i]! + (pp.posZ[i]! - pp.prevZ[i]!) * alpha;
-      lightBuffer.add(x, z, PROJ_LIGHT_COLS[pp.style[i]!] ?? PROJ_LIGHT_COLS[0]!, 1, 1);
+      const style = pp.style[i]!;
+      const g = PROJ_LIGHT_GAIN[style] ?? PROJ_LIGHT_GAIN[0]!;
+      lightBuffer.add(x, z, PROJ_LIGHT_COLS[style] ?? PROJ_LIGHT_COLS[0]!, g.scale, g.intensity);
     }
     // Grenades — floor glow shrinks/dims as the lob rises (peak ≈ 2.6 over base 0.4).
     const gr = world.grenades;

@@ -95,24 +95,91 @@ const PLAYER_BOOL_FIELDS: ReadonlyArray<[string, (p: Player) => boolean]> = [
   ['Pulse Pull', (p) => p.novaPull],
 ];
 
+// A conditional's PEAK depends on which way its trigger leans — Restraining Order
+// wants the nearest enemy FAR, Apex Hunter wants FEW enemies, crowd cards want
+// MANY. No single probe satisfies all, so we evaluate a handful of opposite-leaning
+// battlefields and take, per metric, the one that deviates most from neutral.
+const PROBES: ReadonlyArray<{
+  enemiesOnScreen: number;
+  nearestDist: number;
+  firingRampSec: number;
+  hpFrac: number;
+  recentCrit: boolean;
+  recoilActive: boolean;
+  stationarySec: number;
+}> = [
+  // Far + sparse + hurt + ramped (Restraining, Apex, lowHp, ramp, recoil, turret).
+  {
+    enemiesOnScreen: 1,
+    nearestDist: 999,
+    firingRampSec: 12,
+    hpFrac: 0.01,
+    recentCrit: true,
+    recoilActive: true,
+    stationarySec: 12,
+  },
+  // Near + swarmed + healthy (crowd / point-blank conditionals).
+  {
+    enemiesOnScreen: 99,
+    nearestDist: 0.5,
+    firingRampSec: 0,
+    hpFrac: 1,
+    recentCrit: false,
+    recoilActive: false,
+    stationarySec: 0,
+  },
+];
+
 /** Field changes an upgrade would make to the live build, as {label, from, to}.
- *  Empty when the upgrade only registers conditionals/triggers (no tracked delta). */
+ *  Includes CONDITIONAL contributions (peak value) when `liveEffects` is supplied,
+ *  so situational cards (Restraining Order etc.) still show their stacked effect.
+ *  Empty only when the upgrade is a pure TRIGGER (on-kill AoE — no preview-able number). */
 export function previewUpgrade(
   def: UpgradeDefinition,
   mods: RunMods,
   player: Player,
+  liveEffects?: BuildEffects,
 ): UpgradeChange[] {
   let sandboxMods: RunMods;
   let sandboxPlayer: Player;
+  // A fresh effects layer captures THIS level's conditional contribution in isolation.
+  const levelEffects = new BuildEffects();
   try {
     sandboxMods = structuredClone(mods);
     sandboxPlayer = structuredClone(player);
-    def.apply({ mods: sandboxMods, player: sandboxPlayer, effects: new BuildEffects() });
+    def.apply({ mods: sandboxMods, player: sandboxPlayer, effects: levelEffects });
   } catch {
     return []; // un-cloneable state or an apply that needs more context → no preview
   }
 
   const changes: UpgradeChange[] = [];
+
+  // Conditional cards move no static field — derive their peak contribution across
+  // the probes. For each metric pick the probe where THIS level deviates most from
+  // neutral; `from` = what's already active there (owned levels), `to` = combined
+  // (multiplicative damage/fire-rate, additive crit).
+  const peak = (
+    metric: 'damageMult' | 'critAdd' | 'fireRateMult',
+    neutral: number,
+  ): { from: number; to: number } | null => {
+    let best: { from: number; to: number } | null = null;
+    let bestDev = 1e-4;
+    for (const probe of PROBES) {
+      const c = levelEffects.evalConditionals(probe)[metric];
+      const dev = Math.abs(c - neutral);
+      if (dev <= bestDev) continue;
+      bestDev = dev;
+      const b = liveEffects?.evalConditionals(probe)[metric] ?? neutral;
+      best = neutral === 0 ? { from: b, to: b + c } : { from: b, to: b * c };
+    }
+    return best;
+  };
+  const dmg = peak('damageMult', 1);
+  if (dmg) changes.push({ label: 'Damage (peak)', from: x2(dmg.from), to: x2(dmg.to) });
+  const crit = peak('critAdd', 0);
+  if (crit) changes.push({ label: 'Crit (peak)', from: `+${pct(crit.from)}`, to: `+${pct(crit.to)}` });
+  const fr = peak('fireRateMult', 1);
+  if (fr) changes.push({ label: 'Fire Rate (peak)', from: x2(fr.from), to: x2(fr.to) });
   // Walk EVERY mod key so no numeric/boolean field is silently dropped (root cause
   // of "level-ups show nothing" — fields like pulse/spread/blast weren't listed).
   for (const key of Object.keys(sandboxMods) as (keyof RunMods)[]) {

@@ -926,7 +926,7 @@ export class World {
     return {
       level: taken(this.upgradeLevels, def.id),
       maxLevel: def.maxLevel,
-      changes: previewUpgrade(def, this.mods, this.player),
+      changes: previewUpgrade(def, this.mods, this.player, this.effects),
     };
   }
 

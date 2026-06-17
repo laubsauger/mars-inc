@@ -617,20 +617,20 @@ function GloryTree() {
     const parent = TREE_PARENT[id];
     return parent === undefined || ownedOf(parent) > 0;
   };
-  // Planning lookahead: a node's icon is REVEALED if it's buyable now OR sits one
-  // step past a buyable node (its parent is itself unlocked) — so you can see a bit
-  // further than the immediate frontier and route your Glory. Deeper nodes stay a
-  // ⊘ mystery until you advance. (Legendary keystones reveal regardless — they're
-  // the goals you build toward.)
-  const isRevealed = (id: TreeNodeId): boolean => {
-    if (isUnlocked(id)) return true;
+  // Fog of war (discovery): only REACHABLE nodes show their identity. The NEXT
+  // layer (children of reachable nodes) renders as a ⊘ mystery — visible but
+  // unknown. Anything DEEPER isn't drawn at all; a fading connector merely HINTS
+  // it exists. So the tree reveals itself a layer at a time instead of dumping the
+  // whole sprawl at once. Dev "Reveal: All" overrides everything.
+  const isFrontier = (id: TreeNodeId): boolean => {
     const parent = TREE_PARENT[id];
-    return parent !== undefined && isUnlocked(parent);
+    return parent !== undefined && isUnlocked(parent); // parent reachable, self not
   };
-  // Dev "Reveal: All" overrides the frontier reveal. A node that is NOT revealed
-  // stays a true mystery — its identity, cost, and tooltip are all hidden.
-  const nodeRevealed = (id: TreeNodeId): boolean => revealAll || isRevealed(id);
-  const hoveredRevealed = hovered ? nodeRevealed(hovered) : false;
+  // A node is DRAWN if reachable or one-past (the mystery layer).
+  const nodeVisible = (id: TreeNodeId): boolean => revealAll || isUnlocked(id) || isFrontier(id);
+  // A node shows its real icon/identity only when reachable; the mystery layer is ⊘.
+  const iconRevealed = (id: TreeNodeId): boolean => revealAll || isUnlocked(id);
+  const hoveredRevealed = hovered ? iconRevealed(hovered) : false;
   const hoveredP = hovered ? byId.get(hovered) : undefined;
   const hoveredBranch = hovered ? gloryBranch(TREE_NODES[hovered]!.branch) : 'mobility';
   const hoveredLocked = hovered ? !isUnlocked(hovered) : false;
@@ -815,9 +815,31 @@ function GloryTree() {
               );
             })}
             {TREE_EDGES.map(([a, b]) => {
+              const aVis = a === 'root' || nodeVisible(a);
+              const bVis = nodeVisible(b);
+              if (!aVis && !bVis) return null; // both past the veil → draw nothing
               const from = proj(TREE_NODES[a]!);
               const to = proj(TREE_NODES[b]!);
               const style = BRANCH_STYLE[TREE_NODES[b]!.branch];
+              // HINT stub: the child is hidden (beyond the mystery layer) → trail a
+              // faint dotted connector partway toward it and let it fade into the
+              // dark, suggesting "there's more out here" without revealing the shape.
+              if (aVis && !bVis) {
+                const hx = from.x + (to.x - from.x) * 0.4;
+                const hy = from.y + (to.y - from.y) * 0.4;
+                return (
+                  <path
+                    key={`${a}-${b}`}
+                    d={`M ${from.x} ${from.y} L ${hx} ${hy}`}
+                    fill="none"
+                    stroke={style.stroke}
+                    strokeWidth={0.3}
+                    opacity={0.13}
+                    strokeLinecap="round"
+                    strokeDasharray="0.8 1.8"
+                  />
+                );
+              }
               const open = ownedOf(a) > 0; // prerequisite met → branch edge is "live"
               const lit = hovered === a || hovered === b;
               return (
@@ -858,6 +880,9 @@ function GloryTree() {
 
           {meta.permanents.map((p) => {
             if (!isTreeNodeId(p.id)) return null;
+            // Fog of war: don't render nodes deeper than the mystery layer — beyond
+            // the frontier the tree is only HINTED by fading connectors (below).
+            if (!nodeVisible(p.id)) return null;
             const node = TREE_NODES[p.id]!;
             const maxed = p.owned >= p.maxLevel;
             const owned = p.owned > 0;
@@ -870,7 +895,7 @@ function GloryTree() {
             // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
             // Production: frontier step-by-step reveal (far ends stay a ⊘ mystery,
             // including deep legendaries — preserve the surprise). Dev: reveal all.
-            const revealed = nodeRevealed(p.id);
+            const revealed = iconRevealed(p.id);
             // Legendary keystones recolour to ORANGE; everything else takes its
             // branch colour (red / green / blue).
             const style = rarity === 'legendary' ? LEGENDARY_STYLE : BRANCH_STYLE[node.branch];
