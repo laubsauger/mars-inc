@@ -53,79 +53,85 @@ export function GameOverScreen() {
   const won = result.won;
 
   return (
-    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-0 overflow-y-auto bg-pit/90 py-6 font-mono">
-      {/* Verdict */}
-      <div className={`text-xs tracking-[0.45em] ${won ? 'text-gold' : 'text-ember'}`}>
-        {won ? 'GATEKEEPER SLAIN' : 'YOU DIED'}
-      </div>
-      <div
-        className={`mb-4 text-4xl font-black tracking-widest ${won ? 'text-gold drop-shadow-[0_0_18px_rgba(255,210,63,0.5)]' : 'text-bone'}`}
-      >
-        {won ? 'VICTORY' : 'RUN OVER'}
-      </div>
-
-      {/* Spoils — what you banked, up front */}
-      <div className="mb-5 flex items-stretch gap-3">
-        <div className="flex flex-col items-center justify-center rounded-md border-2 border-gold bg-gold/10 px-6 py-2">
-          <span className="text-[10px] uppercase tracking-widest text-gold/80">Glory earned</span>
-          <span className="text-3xl font-black text-gold tabular-nums">
-            +{result.gloryEarned} ◆
-          </span>
+    // Scroll on the OUTER box; an inner min-h-full column does the centering. With
+    // plain `justify-center` on a scroll container, content taller than the viewport
+    // (a long abilities list) clips at the TOP and can't scroll up — this pattern
+    // centers when it fits and scrolls from the top when it overflows.
+    <div className="pointer-events-auto absolute inset-0 overflow-y-auto bg-pit/90 font-mono">
+      <div className="flex min-h-full flex-col items-center justify-center gap-0 py-6">
+        {/* Verdict */}
+        <div className={`text-xs tracking-[0.45em] ${won ? 'text-gold' : 'text-ember'}`}>
+          {won ? 'GATEKEEPER SLAIN' : 'YOU DIED'}
         </div>
-        <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
-          <span className="text-[10px] uppercase tracking-widest text-dust">Bosses slain</span>
-          <span className="text-3xl font-black text-bone tabular-nums">{result.bossKills}</span>
-        </div>
-        <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
-          <span className="text-[10px] uppercase tracking-widest text-dust">Reached</span>
-          <span className="text-3xl font-black text-cyan tabular-nums">Lv {result.level}</span>
-        </div>
-      </div>
-
-      {/* Body: numbers + kills + the reusable build sheet */}
-      <div className="flex w-[64rem] max-w-[94vw] flex-col gap-3">
-        <div className="grid grid-cols-3 gap-3">
-          <Panel title="SURVIVAL">
-            <Stat label="Time" value={fmtTime(result.durationSec)} />
-            <Stat label="Damage taken" value={`${Math.round(result.damageTaken)}`} />
-            <Stat label="Upgrades" value={`${result.upgradesTaken}`} />
-          </Panel>
-          <Panel title="OFFENSE">
-            <Stat label="Kills" value={`${result.kills}`} />
-            <Stat label="Damage" value={`${Math.round(result.damageDealt)}`} />
-            <Stat label="DPS" value={result.dps.toFixed(1)} />
-            <Stat label="Kills / min" value={result.killsPerMin.toFixed(1)} />
-          </Panel>
-          <Panel title="KILLS BY TYPE">
-            <div className="flex max-h-32 flex-col gap-1 overflow-y-auto pr-1">
-              {result.killsByType.map((k) => (
-                <div key={k.name} className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-bone/85">{k.name}</span>
-                  <span className="text-ember tabular-nums">×{k.count}</span>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
-        {sheet && <RunSheet sheet={sheet} compact />}
-      </div>
-
-      <div className="mt-6 flex gap-4">
-        <button
-          onClick={restart}
-          className="rounded-md border-2 border-gold bg-ember/20 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:bg-ember/30 focus:outline-none"
+        <div
+          className={`mb-4 text-4xl font-black tracking-widest ${won ? 'text-gold drop-shadow-[0_0_18px_rgba(255,210,63,0.5)]' : 'text-bone'}`}
         >
-          RESTART
-        </button>
-        <button
-          onClick={toMenu}
-          className="rounded-md border-2 border-rust bg-umber/90 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:border-gold focus:outline-none"
-        >
-          MENU
-        </button>
-      </div>
-      <div className="mt-3 text-xs text-bone/50">
-        Enter to restart · Esc for menu · spend Glory in the Glory Tree
+          {won ? 'VICTORY' : 'RUN OVER'}
+        </div>
+
+        {/* Spoils — what you banked, up front */}
+        <div className="mb-5 flex items-stretch gap-3">
+          <div className="flex flex-col items-center justify-center rounded-md border-2 border-gold bg-gold/10 px-6 py-2">
+            <span className="text-[10px] uppercase tracking-widest text-gold/80">Glory earned</span>
+            <span className="text-3xl font-black text-gold tabular-nums">
+              +{result.gloryEarned} ◆
+            </span>
+          </div>
+          <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
+            <span className="text-[10px] uppercase tracking-widest text-dust">Bosses slain</span>
+            <span className="text-3xl font-black text-bone tabular-nums">{result.bossKills}</span>
+          </div>
+          <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
+            <span className="text-[10px] uppercase tracking-widest text-dust">Reached</span>
+            <span className="text-3xl font-black text-cyan tabular-nums">Lv {result.level}</span>
+          </div>
+        </div>
+
+        {/* Body: numbers + kills + the reusable build sheet */}
+        <div className="flex w-[64rem] max-w-[94vw] flex-col gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Panel title="SURVIVAL">
+              <Stat label="Time" value={fmtTime(result.durationSec)} />
+              <Stat label="Damage taken" value={`${Math.round(result.damageTaken)}`} />
+              <Stat label="Upgrades" value={`${result.upgradesTaken}`} />
+            </Panel>
+            <Panel title="OFFENSE">
+              <Stat label="Kills" value={`${result.kills}`} />
+              <Stat label="Damage" value={`${Math.round(result.damageDealt)}`} />
+              <Stat label="DPS" value={result.dps.toFixed(1)} />
+              <Stat label="Kills / min" value={result.killsPerMin.toFixed(1)} />
+            </Panel>
+            <Panel title="KILLS BY TYPE">
+              <div className="flex max-h-32 flex-col gap-1 overflow-y-auto pr-1">
+                {result.killsByType.map((k) => (
+                  <div key={k.name} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="text-bone/85">{k.name}</span>
+                    <span className="text-ember tabular-nums">×{k.count}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </div>
+          {sheet && <RunSheet sheet={sheet} compact />}
+        </div>
+
+        <div className="mt-6 flex gap-4">
+          <button
+            onClick={restart}
+            className="rounded-md border-2 border-gold bg-ember/20 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:bg-ember/30 focus:outline-none"
+          >
+            RESTART
+          </button>
+          <button
+            onClick={toMenu}
+            className="rounded-md border-2 border-rust bg-umber/90 px-8 py-3 text-lg font-bold tracking-widest text-bone transition hover:-translate-y-0.5 hover:border-gold focus:outline-none"
+          >
+            MENU
+          </button>
+        </div>
+        <div className="mt-3 text-xs text-bone/50">
+          Enter to restart · Esc for menu · spend Glory in the Glory Tree
+        </div>
       </div>
     </div>
   );

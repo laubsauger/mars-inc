@@ -35,20 +35,10 @@ import { applyStatus, tickStatus } from './combat/status';
 import { applyStatusScaled, MAX_PROC_DEPTH, PROC_CHAIN_INHERIT } from './combat/proc';
 import { resolveReactions } from './combat/reactions';
 import { type RunStats, type RunResult, newRunStats, resetRunStats, computeResult } from './run';
-import {
-  type UpgradeDefinition,
-  type UpgradeLevels,
-  type DraftBoost,
-  rollDraft,
-  available,
-  applyUpgrade,
-  taken,
-  isOffense,
-  OFFENSE_TAGS,
-} from './progression/upgrades';
-import { previewUpgrade, type UpgradeChange } from './progression/preview';
+import { type UpgradeDefinition } from './progression/upgrades';
 import { DRAFT_POOL, DEV_UPGRADE_CATALOG } from './progression/draft-pool';
 import { type CharacterSheet, buildCharacterSheet } from './progression/character-sheet';
+import { DraftController } from './progression/draft-controller';
 import type { InputSnapshot } from '../core/input';
 
 export { DEV_UPGRADE_CATALOG }; // re-exported for the dev board (imported via ./sim/world)
@@ -63,12 +53,6 @@ export interface RunSummary {
 }
 
 const COUNTDOWN_SECONDS = 3;
-const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
-const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
-const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
-const STARTING_LOCKS = 1; // per-run draft locks — hold a card for the next draft (T71)
-const STARTING_TAG_BANISHES = 1; // per-run tag banishes — drop a whole tag from the pool (T71)
-const SKIP_HEAL_FRAC = 0.15; // skipping a draft heals this fraction of max HP
 
 const ZERO_INPUT: InputSnapshot = {
   moveX: 0,
@@ -158,27 +142,16 @@ export class World {
   ended = false;
   result: RunResult | null = null;
 
-  // Leveling / draft (T18/T41). While `leveling`, the sim freezes for the choice.
-  leveling = false;
-  draft: UpgradeDefinition[] = [];
-  draftId = 0; // bumps each time a draft opens / re-rolls (UI refresh key)
-  pendingLevelUps = 0;
-  // Brief flourish window (s) between earning a level and the draft freezing the
-  // sim — lets the render-side level-up burst read before the overlay covers it.
-  private levelUpDelay = 0;
-
   // Boss reward (T43, V22). While `bossReward`, the sim freezes for the 3-choice.
   bossReward = false;
   bossRewardChoices: BossReward[] = [];
   bossRewardId = 0; // bumps when the overlay opens (UI refresh key)
-  rerollsLeft = STARTING_REROLLS;
-  banishesLeft = STARTING_BANISHES;
-  locksLeft = STARTING_LOCKS;
-  tagBanishesLeft = STARTING_TAG_BANISHES;
-  /** Card id held by Lock for the NEXT draft (T71); null = none held. */
-  private lockedId: string | null = null;
-  private readonly banished = new Set<string>();
-  private readonly upgradeLevels: UpgradeLevels = {};
+
+  /** Level-up → upgrade-draft lifecycle (T18/T41/T71). Owns the pending-level queue,
+   *  rolled options, per-run draft resources, banished set, lock, and upgradeLevels.
+   *  The public draft API is delegated to it below so the UI surface is unchanged. */
+  readonly draftCtl: DraftController;
+
   /** Owned permanent (meta) upgrade levels, applied to the player at run start. */
   private permanents: PermanentLevels;
   /** Dev control board (T74): set true the moment any dev grant touches this run —
@@ -199,7 +172,62 @@ export class World {
     this.shards = new ShardPool();
     this.mods = defaultMods();
     this.director = new WaveDirector();
+    this.draftCtl = new DraftController({
+      player: this.player,
+      rng: this.rng,
+      mods: this.mods,
+      effects: this.effects,
+      stats: this.stats,
+      afterApply: () => this.maybeEvolve(), // a pick may complete a weapon-evolution combo
+    });
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
+  }
+
+  // ── Draft API — delegated to the DraftController (UI surface unchanged) ───────
+  get leveling(): boolean {
+    return this.draftCtl.leveling;
+  }
+  get draft(): UpgradeDefinition[] {
+    return this.draftCtl.draft;
+  }
+  get draftId(): number {
+    return this.draftCtl.draftId;
+  }
+  get rerollsLeft(): number {
+    return this.draftCtl.rerollsLeft;
+  }
+  get banishesLeft(): number {
+    return this.draftCtl.banishesLeft;
+  }
+  get locksLeft(): number {
+    return this.draftCtl.locksLeft;
+  }
+  get tagBanishesLeft(): number {
+    return this.draftCtl.tagBanishesLeft;
+  }
+  get heldLock(): string | null {
+    return this.draftCtl.heldLock;
+  }
+  upgradeInfo(def: UpgradeDefinition): ReturnType<DraftController['upgradeInfo']> {
+    return this.draftCtl.upgradeInfo(def);
+  }
+  choose(index: number): void {
+    this.draftCtl.choose(index);
+  }
+  reroll(lockedIds: readonly string[] = []): void {
+    this.draftCtl.reroll(lockedIds);
+  }
+  banish(index: number): void {
+    this.draftCtl.banish(index);
+  }
+  banishTag(tag: string): void {
+    this.draftCtl.banishTag(tag);
+  }
+  lockCard(index: number): void {
+    this.draftCtl.lockCard(index);
+  }
+  skipDraft(): void {
+    this.draftCtl.skipDraft();
   }
 
   /** Update owned permanents (e.g. after a Glory purchase); next run applies them. */
@@ -411,8 +439,7 @@ export class World {
     // a second upgrade source on top of XP). Feeds the level-up draft pipeline.
     this.bounties.step(this.player, this.rng, this.fx, dt);
     if (this.bounties.collectedThisStep > 0) {
-      this.pendingLevelUps += this.bounties.collectedThisStep;
-      if (!this.leveling) this.levelUpDelay = Math.max(this.levelUpDelay, LEVELUP_DELAY);
+      this.draftCtl.queueLevelUp(this.bounties.collectedThisStep);
       // Same ascension flourish as an XP level-up — the draft opens either way, so
       // the player gets the same "why did the card screen pop?" cue (T-levelfx).
       this.fx.push('levelup', this.player.pos.x, this.player.pos.z);
@@ -450,12 +477,11 @@ export class World {
       dt,
       sprintRising,
     );
-    this.pendingLevelUps += leveled;
     if (leveled > 0) {
       // Flourish around the player, then hold the draft briefly so it shows.
       this.fx.push('levelup', this.player.pos.x, this.player.pos.z);
-      if (!this.leveling) this.levelUpDelay = LEVELUP_DELAY;
     }
+    this.draftCtl.queueLevelUp(leveled);
 
     // Accumulate run stats from this step's authoritative events (V20).
     this.stats.kills += this.weaponSystem.kills.length;
@@ -487,10 +513,7 @@ export class World {
     this.stats.timeSurvived = this.elapsed;
     this.stats.level = this.player.level;
 
-    if (this.pendingLevelUps > 0 && !this.leveling) {
-      if (this.levelUpDelay > 0) this.levelUpDelay -= dt;
-      else this.openDraft();
-    }
+    this.draftCtl.update(dt); // tick the flourish delay → open the draft when due
 
     // Death ends the run (loss). EACH boss kill is a progression hinge: it opens a
     // major in-run reward (freezes the sim) and the run continues, harder — and a
@@ -767,18 +790,12 @@ export class World {
     this.paused = false;
     this.ended = false;
     this.result = null;
-    this.leveling = false;
-    this.draft = [];
-    this.pendingLevelUps = 0;
-    this.levelUpDelay = 0;
     this.bossReward = false;
     this.bossRewardChoices = [];
-    this.banished.clear();
     this.cheated = false; // a fresh run is clean until a dev grant touches it (T74/V35)
     this.devGodmode = false;
     this.countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
     this.started = false;
-    for (const k of Object.keys(this.upgradeLevels)) delete this.upgradeLevels[k];
 
     resetPlayer(this.player);
     // Reset the build layers BEFORE permanents so build-seeding nodes (Live Wire,
@@ -786,12 +803,9 @@ export class World {
     resetMods(this.mods);
     this.effects.reset();
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
-    // Draft resources include permanent bonuses applied above (T35).
-    this.rerollsLeft = STARTING_REROLLS + this.player.bonusRerolls;
-    this.banishesLeft = STARTING_BANISHES + this.player.bonusBanishes;
-    this.locksLeft = STARTING_LOCKS + this.player.bonusLocks;
-    this.tagBanishesLeft = STARTING_TAG_BANISHES + this.player.bonusTagBanishes;
-    this.lockedId = null;
+    // Draft resources read the permanent bonuses applied above (T35), so reset the
+    // draft controller AFTER permanents.
+    this.draftCtl.reset();
     this.enemies.count = 0;
     this.enemyAttacks.reset();
     this.weaponDrops.reset();
@@ -816,208 +830,12 @@ export class World {
     resetRunStats(this.stats);
   }
 
-  /** How many OFFENSIVE upgrades the build owns (kill-power foundations). */
-  private offenseOwned(): number {
-    let n = 0;
-    for (const id in this.upgradeLevels) {
-      if ((this.upgradeLevels[id] ?? 0) <= 0) continue;
-      const def = DRAFT_POOL.find((u) => u.id === id);
-      if (def && isOffense(def)) n++;
-    }
-    return n;
-  }
-
-  /** Foundation pity (T-pity): if the build has drafted little/no kill power by the
-   *  time the boss gearcheck looms, nudge the draft odds toward offence so the
-   *  player at least SEES a damage option. Soft — never forces a pick, and switches
-   *  off the moment they have a real offensive base. Returns undefined = no nudge.
-   *
-   *  Tuning: a build with ZERO offence ramps hard from L2 (×2) so unlucky players
-   *  don't stall before the boss; a single-offence build gets a light late nudge so
-   *  it isn't a one-trick going into the fight. */
-  private foundationBoost(): DraftBoost | undefined {
-    const offense = this.offenseOwned();
-    const lvl = this.player.level;
-    let mult = 1;
-    if (offense === 0 && lvl >= 2) {
-      mult = Math.min(5, 1 + (lvl - 1) * 1.5); // L2 ×2 · L3 ×3.5 · L4+ ×5 (capped)
-    } else if (offense === 1 && lvl >= 5) {
-      mult = 1.6; // mild diversification nudge deeper in
-    }
-    return mult > 1 ? { tags: OFFENSE_TAGS, mult } : undefined;
-  }
-
-  /** Roll a fresh draft, keeping any locked entries (T41). `keep` = upgrade ids
-   *  to preserve in place (for reroll); empty for a new level-up draft. */
-  private rollInto(keep: ReadonlySet<string>): UpgradeDefinition[] {
-    const size = this.player.draftSize;
-    const kept = this.draft.filter((d) => keep.has(d.id));
-    const need = size - kept.length;
-    if (need <= 0) return kept.slice(0, size);
-    // Exclude already-kept ids so the reroll brings genuinely new options.
-    const exclude = new Set(this.banished);
-    for (const d of kept) exclude.add(d.id);
-    const fresh = rollDraft(DRAFT_POOL, this.upgradeLevels, this.rng, {
-      count: need,
-      level: this.player.level,
-      luck: this.player.luck,
-      banished: exclude,
-      boost: this.foundationBoost(),
-    });
-    return [...kept, ...fresh];
-  }
-
-  /** Per-option draft detail for the UI (T51): owned level, max level, and the
-   *  numeric changes this pick would make to the live build. */
-  upgradeInfo(def: UpgradeDefinition): {
-    level: number;
-    maxLevel: number;
-    changes: UpgradeChange[];
-  } {
-    return {
-      level: taken(this.upgradeLevels, def.id),
-      maxLevel: def.maxLevel,
-      changes: previewUpgrade(def, this.mods, this.player, this.effects),
-    };
-  }
-
-  private openDraft(): void {
-    this.draft = this.rollFresh();
-    if (this.draft.length === 0) {
-      // Pool exhausted — nothing to offer; consume pending level-ups.
-      this.pendingLevelUps = 0;
-      this.leveling = false;
-      return;
-    }
-    this.draftId += 1;
-    this.leveling = true;
-  }
-
-  /** Build a NEW level-up draft (T71), seeding a Lock-held card into slot 0 if it
-   *  is still available, then rolling the rest. Consumes the held lock. */
-  private rollFresh(): UpgradeDefinition[] {
-    const forced: UpgradeDefinition[] = [];
-    const exclude = new Set(this.banished);
-    if (this.lockedId !== null) {
-      const def = available(DRAFT_POOL, this.upgradeLevels, this.banished).find(
-        (u) => u.id === this.lockedId,
-      );
-      if (def) {
-        forced.push(def);
-        exclude.add(def.id);
-      }
-      this.lockedId = null; // served (or no longer available) — released either way
-    }
-    const need = this.player.draftSize - forced.length;
-    const fresh =
-      need > 0
-        ? rollDraft(DRAFT_POOL, this.upgradeLevels, this.rng, {
-            count: need,
-            level: this.player.level,
-            luck: this.player.luck,
-            banished: exclude,
-            boost: this.foundationBoost(),
-          })
-        : [];
-    return [...forced, ...fresh];
-  }
-
-  /** Id of the card currently held by Lock for the next draft (UI), or null. */
-  get heldLock(): string | null {
-    return this.lockedId;
-  }
-
-  /** Hold an offered card for the NEXT draft (T71). Bounded per-run; one held at a
-   *  time. Survives the current pick/skip — guaranteed to reappear next level-up. */
-  lockCard(index: number): void {
-    if (!this.leveling || this.locksLeft <= 0 || this.lockedId !== null) return;
-    const def = this.draft[index];
-    if (!def) return;
-    this.locksLeft -= 1;
-    this.lockedId = def.id;
-    this.draftId += 1; // re-push the draft slice so the UI shows the held lock
-  }
-
-  /** Banish EVERY card carrying `tag` from the run pool (T71). Bounded; refuses if
-   *  it would shrink the pool below a full draft (V11). Re-rolls shown cards so any
-   *  now-banished options are replaced. Deterministic (V16). */
-  banishTag(tag: string): void {
-    if (!this.leveling || this.tagBanishesLeft <= 0) return;
-    const ids: string[] = [];
-    for (const u of DRAFT_POOL) {
-      if (u.tags.includes(tag) || u.grantsTags?.includes(tag)) ids.push(u.id);
-    }
-    if (ids.length === 0) return;
-    const next = new Set(this.banished);
-    for (const id of ids) next.add(id);
-    // V11: never starve the draft — keep at least a full hand available.
-    if (available(DRAFT_POOL, this.upgradeLevels, next).length < 3) return;
-    this.tagBanishesLeft -= 1;
-    for (const id of ids) this.banished.add(id);
-    if (this.lockedId !== null && ids.includes(this.lockedId)) this.lockedId = null; // drop held
-    const keep = new Set(this.draft.filter((d) => !ids.includes(d.id)).map((d) => d.id));
-    this.draft = this.rollInto(keep);
-    this.draftId += 1;
-  }
-
-  /** Re-roll the unlocked draft options (T41). `lockedIds` stay in place. */
-  reroll(lockedIds: readonly string[] = []): void {
-    if (!this.leveling || this.rerollsLeft <= 0) return;
-    this.rerollsLeft -= 1;
-    this.draft = this.rollInto(new Set(lockedIds));
-    this.draftId += 1;
-  }
-
-  /** Banish an option from the run (never offered again) and replace it (T41). */
-  banish(index: number): void {
-    if (!this.leveling || this.banishesLeft <= 0) return;
-    const def = this.draft[index];
-    if (!def) return;
-    this.banishesLeft -= 1;
-    this.banished.add(def.id);
-    // Keep the other two, roll one replacement that isn't banished/shown.
-    const keep = new Set(this.draft.filter((_, i) => i !== index).map((d) => d.id));
-    this.draft = this.rollInto(keep);
-    this.draftId += 1;
-  }
-
-  /** Skip the draft for a heal instead of an upgrade (T41). */
-  skipDraft(): void {
-    if (!this.leveling) return;
-    this.player.health = Math.min(
-      this.player.maxHealth,
-      this.player.health + this.player.maxHealth * SKIP_HEAL_FRAC,
-    );
-    this.pendingLevelUps -= 1;
-    this.draft = [];
-    this.leveling = false;
-    if (this.pendingLevelUps > 0) this.openDraft();
-  }
-
-  /** Apply the chosen draft option, then open the next draft or resume. */
-  choose(index: number): void {
-    if (!this.leveling) return;
-    const def = this.draft[index];
-    if (!def) return;
-    applyUpgrade(
-      def,
-      { player: this.player, mods: this.mods, effects: this.effects },
-      this.upgradeLevels,
-    );
-    this.stats.upgradesTaken += 1; // run stat (V20)
-    this.maybeEvolve(); // a pick may complete a weapon-evolution combo (T34, V18)
-    this.pendingLevelUps -= 1;
-    this.draft = [];
-    this.leveling = false;
-    if (this.pendingLevelUps > 0) this.openDraft();
-  }
-
   /** If the just-applied upgrade completes the primary weapon's evolution combo,
    *  transform it (V18: gated by the combo, never weapon level alone). */
   private maybeEvolve(): void {
     const id = this.weaponSystem.primaryId;
     if (!id) return;
-    const evo = availableEvolution(id, this.upgradeLevels);
+    const evo = availableEvolution(id, this.draftCtl.upgradeLevels);
     if (!evo) return;
     this.weaponSystem.setPrimary(evo.evolved);
     this.justEvolved = evo.evolved.displayName;
@@ -1039,20 +857,12 @@ export class World {
 
   /** Owned level of an upgrade — the board shows the current stack. */
   upgradeLevelOf(id: string): number {
-    return this.upgradeLevels[id] ?? 0;
+    return this.draftCtl.upgradeLevelOf(id);
   }
 
   /** Apply an upgrade by id at +1 level (bypasses the draft). False if id unknown. */
   devGrantUpgrade(id: string): boolean {
-    const def = DRAFT_POOL.find((u) => u.id === id);
-    if (!def) return false;
-    applyUpgrade(
-      def,
-      { player: this.player, mods: this.mods, effects: this.effects },
-      this.upgradeLevels,
-    );
-    this.stats.upgradesTaken += 1;
-    this.maybeEvolve(); // a grant may complete a weapon-evolution combo (T34)
+    if (!this.draftCtl.grant(id)) return false; // routes through applyUpgrade + maybeEvolve
     this.cheated = true;
     return true;
   }
@@ -1070,7 +880,7 @@ export class World {
   devTryEvolve(): boolean {
     const id = this.weaponSystem.primaryId;
     if (!id) return false;
-    const evo = availableEvolution(id, this.upgradeLevels);
+    const evo = availableEvolution(id, this.draftCtl.upgradeLevels);
     if (!evo) return false;
     this.weaponSystem.setPrimary(evo.evolved);
     this.justEvolved = evo.evolved.displayName;
@@ -1080,7 +890,7 @@ export class World {
 
   /** Queue N level-ups → the normal draft flow opens next step. */
   devAddLevels(n: number): void {
-    this.pendingLevelUps += Math.max(0, Math.floor(n));
+    this.draftCtl.queueLevelUp(Math.max(0, Math.floor(n)));
     this.cheated = true;
   }
 
@@ -1147,7 +957,7 @@ export class World {
       .map((count, v) => ({ name: ENEMY_DISPLAY_NAME[v] ?? `Variant ${v}`, count: count ?? 0 }))
       .filter((k) => k.count > 0)
       .sort((a, b) => b.count - a.count);
-    const upgrades = Object.entries(this.upgradeLevels)
+    const upgrades = Object.entries(this.draftCtl.upgradeLevels)
       .map(([id, level]) => ({ name: DRAFT_POOL.find((u) => u.id === id)?.name ?? id, level }))
       .sort((a, b) => b.level - a.level);
     return {
@@ -1168,7 +978,7 @@ export class World {
       effects: this.effects,
       firingRampSec: this.firingRampSec,
       stationarySec: this.stationarySec,
-      upgradeLevels: this.upgradeLevels,
+      upgradeLevels: this.draftCtl.upgradeLevels,
       weaponSystem: this.weaponSystem,
     });
   }
