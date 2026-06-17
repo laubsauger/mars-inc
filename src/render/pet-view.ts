@@ -1,6 +1,6 @@
 // Gravedigger pet view (T-necro). A risen pet uses the SAME silhouette as the enemy
-// it was raised from (reusing the enemy-view shape meshes by variant) but in a
-// friendly GHOST-GREEN with an emissive glow + a small billboarded health bar — so
+// it was raised from (reusing the enemy-view shape meshes by variant) but in a cold
+// SPECTRAL PERIWINKLE with an emissive glow + a small billboarded health bar — so
 // you instantly read "that one's mine" from across the arena. Pure view (V2): reads
 // the SoA pool, interpolates by alpha (V1), never mutates. §B1 instanced pattern.
 
@@ -19,8 +19,9 @@ import {
 } from 'three';
 import { MAX_PETS, type PetPool } from '../sim/combat/pets';
 import { buildShapes, VARIANT_SHAPE, SHAPE_COUNT } from './enemy-view';
+import { COL } from './art/palette';
 
-const FRIEND = new Color(0x2bff8a); // ghost-green — "this one fights for you"
+const FRIEND = COL.petSpectral; // spectral periwinkle — "this risen one fights for you"
 const BAR_H = 0.14;
 const BG = new Color(0.02, 0.03, 0.02);
 const HP_FULL = new Color(0.3, 0.95, 0.55);

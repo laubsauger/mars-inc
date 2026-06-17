@@ -17,6 +17,10 @@ const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
 const CONTACT_KNOCKBACK = 15; // base impulse (u/s) for a baseline-size enemy — punchy
 const KNOCKBACK_REF_RADIUS = 0.8; // enemy radius that maps to the base shove
 const MAX_PLAYER_RECOIL = 26; // hard cap on the impulse channel (V10 spirit)
+// Ceiling on an enemy's accumulated knockback impulse (u/s). radialPush ADDS, so
+// overlapping kill-shockwaves / nova / blasts could stack into a launch — this keeps
+// even a multi-blast pile-up a firm shove, not a rocket across the arena.
+const MAX_ENEMY_KB = 30;
 
 export class EnemySystem {
   readonly pool: EnemyPool;
@@ -122,9 +126,18 @@ export class EnemySystem {
 
       // Knockback impulse (crowd control, T42): added on top of steering and
       // decayed exponentially so a shove reads as a quick punch, not a slide.
-      const kx = p.kbX[i]!;
-      const kz = p.kbZ[i]!;
+      let kx = p.kbX[i]!;
+      let kz = p.kbZ[i]!;
       if (kx !== 0 || kz !== 0) {
+        // CLAMP the accumulated impulse: radialPush ADDS, so several shockwaves /
+        // kill-blasts hitting one enemy in a step stacked into a launch-across-the-
+        // arena shove. Cap the total so knockback stays a punch, never a rocket.
+        const mag = Math.hypot(kx, kz);
+        if (mag > MAX_ENEMY_KB) {
+          const s = MAX_ENEMY_KB / mag;
+          kx *= s;
+          kz *= s;
+        }
         p.posX[i]! += kx * dt;
         p.posZ[i]! += kz * dt;
         // Slow decay (~0.35s) → every shove pushes a long way for the same force,

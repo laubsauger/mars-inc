@@ -10,31 +10,37 @@ export const NECRO_UPGRADES: UpgradeDefinition[] = [
     id: 'gravediggers-pact',
     name: "Gravedigger's Pact",
     description:
-      'Slain enemies have a 12% chance to RISE as a pet that fights for you, then decays.',
+      'UNLOCK the Gravedigger: slain enemies gain a 3% chance to RISE as a pet that fights for you, then decays.',
     tags: ['necro', 'summon'],
     rarity: 'rare',
-    maxLevel: 4,
+    // One-time OPENER (maxLevel 1) — it unlocks the build, then leaves the pool so
+    // it never sits next to Mass Grave reading like a duplicate. Mass Grave is the
+    // repeatable scaler (raise chance + pet strength).
+    maxLevel: 1,
     baseWeight: 5,
     synergyWeight: 5,
     grantsTags: ['necro'],
     apply: ({ player }) => {
-      player.necroChance = Math.min(0.6, player.necroChance + 0.12);
+      player.necroChance = Math.min(0.22, player.necroChance + 0.03);
     },
   },
   {
     id: 'mass-grave',
     name: 'Mass Grave',
-    description: '+10% raise chance and your pets claw harder. Build a standing horde.',
+    description: '+3% raise chance AND your pets claw harder — grow a standing horde.',
     tags: ['necro', 'summon'],
     rarity: 'rare',
     maxLevel: 3,
     baseWeight: 4,
     synergyWeight: 6,
     grantsTags: ['necro'],
-    requiresAnyTags: ['necro'], // only after you can raise
+    requiresAnyTags: ['necro'], // only after the Gravedigger is unlocked
     apply: ({ player }) => {
-      player.necroChance = Math.min(0.6, player.necroChance + 0.1);
-      player.necroPower += 0.25;
+      // INCREMENTAL: starts at 3% and climbs in small +3% steps, capped 0.22 — a
+      // support layer that grows over many picks, never an instant screen-clearing
+      // wall of pets (the glory-tree-explodes problem). Pet POWER scales it too.
+      player.necroChance = Math.min(0.22, player.necroChance + 0.03);
+      player.necroPower += 0.18;
     },
   },
   {
@@ -49,8 +55,8 @@ export const NECRO_UPGRADES: UpgradeDefinition[] = [
     grantsTags: ['necro'],
     requiresAnyTags: ['necro'],
     apply: ({ player }) => {
-      player.necroPower += 0.8;
-      player.necroChance = Math.min(0.7, player.necroChance + 0.05);
+      player.necroPower += 0.6;
+      player.necroChance = Math.min(0.25, player.necroChance + 0.03);
     },
   },
 ];

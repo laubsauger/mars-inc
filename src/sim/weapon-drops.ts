@@ -13,7 +13,8 @@ import { WEAPONS } from '../content/weapons/index';
 export const MAX_WEAPON_DROPS = 32;
 
 const BOSS_VARIANT = 2;
-const DROP_CHANCE = 0.015; // per ordinary kill
+const DROP_CHANCE = 0.004; // per ordinary kill — rare enough that a find feels earned
+// (at high kill counts 1.5% buried the floor in crates; ~0.4% keeps them special)
 const PICKUP_RADIUS = 1.6; // how close you must stand to equip a crate
 /** Seconds a crate lingers before it decays — long enough to reach, not forever. */
 export const DROP_TTL = 20;

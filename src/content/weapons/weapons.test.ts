@@ -16,12 +16,18 @@ import { FxQueue } from '../../sim/fx';
 import { createPlayer } from '../../sim/player';
 
 describe('weapon catalog', () => {
-  it('has six weapons with unique ids and several families', () => {
-    expect(WEAPONS).toHaveLength(6);
+  it('has seven weapons with unique ids and several families', () => {
+    expect(WEAPONS).toHaveLength(7);
     const ids = new Set(WEAPONS.map((w) => w.id));
-    expect(ids.size).toBe(6);
+    expect(ids.size).toBe(7);
     const families = new Set(WEAPONS.map((w) => w.family));
     expect(families.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('the Ion Lance is a hitscan energy weapon', () => {
+    const lance = weaponById('ion-lance');
+    expect(lance?.hitscan?.width).toBeGreaterThan(0);
+    expect(lance?.family).toBe('energy');
   });
 
   it('looks up by id', () => {

@@ -13,9 +13,18 @@ import { type EnemyPool, EnemyState, ENEMY_BY_VARIANT } from './enemies';
 import { type Player, hitPlayer, applyChill } from './player';
 import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
+import { wallDistance } from './arena';
 
 export const MAX_ENEMY_PROJECTILES = 512;
 export const MAX_HAZARDS = 256;
+export const MAX_BEAMS = 16; // laser sentinels are rare → a small pool suffices (V5)
+
+/** Beam attack lifecycle (T-beam). Charging = telegraph (line thickens); Firing =
+ *  the lethal flash along the locked line. Render reads this to draw the tell. */
+export const enum BeamState {
+  Charging = 0,
+  Firing = 1,
+}
 
 const enum ProjKind {
   Lob = 0,
@@ -115,19 +124,87 @@ export class HazardPool {
   }
 }
 
+/** Active laser beams (charging telegraph → lethal flash). SoA + swap-remove (V5).
+ *  Origin/direction LOCK at charge start so the player can dodge off the line. */
+export class BeamPool {
+  count = 0;
+  readonly ox = new Float32Array(MAX_BEAMS); // locked origin
+  readonly oz = new Float32Array(MAX_BEAMS);
+  readonly dirX = new Float32Array(MAX_BEAMS); // locked unit direction
+  readonly dirZ = new Float32Array(MAX_BEAMS);
+  readonly len = new Float32Array(MAX_BEAMS); // distance to the wall along dir
+  readonly width = new Float32Array(MAX_BEAMS); // half-width that hits the player
+  readonly timer = new Float32Array(MAX_BEAMS); // remaining time in the current state
+  readonly total = new Float32Array(MAX_BEAMS); // charge duration (render progress)
+  readonly damage = new Float32Array(MAX_BEAMS);
+  readonly state = new Uint8Array(MAX_BEAMS);
+
+  spawn(
+    ox: number,
+    oz: number,
+    dirX: number,
+    dirZ: number,
+    len: number,
+    width: number,
+    charge: number,
+    damage: number,
+  ): number {
+    if (this.count >= MAX_BEAMS) return -1;
+    const i = this.count++;
+    this.ox[i] = ox;
+    this.oz[i] = oz;
+    this.dirX[i] = dirX;
+    this.dirZ[i] = dirZ;
+    this.len[i] = len;
+    this.width[i] = width;
+    this.timer[i] = charge;
+    this.total[i] = charge;
+    this.damage[i] = damage;
+    this.state[i] = BeamState.Charging;
+    return i;
+  }
+
+  kill(i: number): void {
+    const last = --this.count;
+    if (i !== last) {
+      this.ox[i] = this.ox[last]!;
+      this.oz[i] = this.oz[last]!;
+      this.dirX[i] = this.dirX[last]!;
+      this.dirZ[i] = this.dirZ[last]!;
+      this.len[i] = this.len[last]!;
+      this.width[i] = this.width[last]!;
+      this.timer[i] = this.timer[last]!;
+      this.total[i] = this.total[last]!;
+      this.damage[i] = this.damage[last]!;
+      this.state[i] = this.state[last]!;
+    }
+  }
+
+  /** Charge progress 0..1 (0 = just started, 1 = about to fire) — the render reads
+   *  this to thicken the telegraph line. Firing beams report 1. */
+  chargeT(i: number): number {
+    if (this.state[i] === BeamState.Firing) return 1;
+    const t = this.total[i]!;
+    return t > 0 ? 1 - this.timer[i]! / t : 1;
+  }
+}
+
 export class EnemyAttackSystem {
   readonly projectiles = new EnemyProjectilePool();
   readonly hazards = new HazardPool();
+  readonly beams = new BeamPool();
 
   reset(): void {
     this.projectiles.count = 0;
     this.hazards.count = 0;
+    this.beams.count = 0;
   }
 
   step(enemies: EnemyPool, player: Player, rng: Rng, dt: number, fx: FxQueue): void {
     this.initiate(enemies, player, rng, dt, fx);
     this.advanceProjectiles(player, dt, fx);
     this.stepHazards(player, dt, fx);
+    this.stepBeams(player, dt, fx);
   }
 
   /** Active enemies with a ranged profile fire when in range + off cooldown. */
@@ -148,12 +225,55 @@ export class EnemyAttackSystem {
       const dist = Math.hypot(dx, dz);
       if (dist > attack.range) continue;
 
-      enemies.attackCd[e] = attack.cooldown;
       const ax = dx / (dist || 1);
       const az = dz / (dist || 1);
+      if (attack.kind === 'beam') {
+        // Charge a beam: lock the aim line to the wall, then hold the cooldown long
+        // enough to cover the full charge + flash so it never re-triggers mid-beam.
+        const len = wallDistance(ex, ez, ax, az, 120);
+        this.beams.spawn(ex, ez, ax, az, len, attack.width, attack.charge, attack.damage);
+        enemies.attackCd[e] = attack.cooldown + attack.charge + attack.beamLife;
+        fx.push('muzzle', ex + ax * 0.6, ez + az * 0.6, ax, az); // charge tell
+        continue;
+      }
+      enemies.attackCd[e] = attack.cooldown;
       fx.push('muzzle', ex + ax * 0.6, ez + az * 0.6, ax, az); // shot tell (V9 spirit)
       if (attack.kind === 'lob') this.lob(ex, ez, player, attack, rng);
       else if (attack.kind === 'gun') this.gun(ex, ez, player, attack, rng);
+    }
+  }
+
+  /** Charge → fire laser beams. On fire, one hitscan check: the player takes the
+   *  hit if within `width` of the locked line segment (hitPlayer = i-frame aware). */
+  private stepBeams(player: Player, dt: number, fx: FxQueue): void {
+    const b = this.beams;
+    for (let i = b.count - 1; i >= 0; i--) {
+      b.timer[i]! -= dt;
+      if (b.timer[i]! > 0) continue;
+      if (b.state[i] === BeamState.Charging) {
+        // Telegraph elapsed → FIRE. Resolve the hitscan once at the fire instant.
+        b.state[i] = BeamState.Firing;
+        b.timer[i] = 0.22; // lethal flash window (matches the def's beamLife feel)
+        const ox = b.ox[i]!;
+        const oz = b.oz[i]!;
+        const dxp = player.pos.x - ox;
+        const dzp = player.pos.z - oz;
+        const t = Math.max(0, Math.min(b.len[i]!, dxp * b.dirX[i]! + dzp * b.dirZ[i]!));
+        const cx = ox + b.dirX[i]! * t;
+        const cz = oz + b.dirZ[i]! * t;
+        // damage 0 = a pure telegraph beam (e.g. the boss charge danger-line) — it
+        // flashes but never hits; the charging body deals the damage.
+        if (
+          b.damage[i]! > 0 &&
+          Math.hypot(player.pos.x - cx, player.pos.z - cz) <=
+            b.width[i]! + player.stats.collisionRadius
+        ) {
+          hitPlayer(player, b.damage[i]!);
+        }
+        fx.push('impact', cx, cz, b.dirX[i]!, b.dirZ[i]!); // beam scorch where it lands
+      } else {
+        b.kill(i); // flash done
+      }
     }
   }
 

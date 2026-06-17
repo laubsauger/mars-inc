@@ -36,7 +36,7 @@ describe('Glory-Tree permanents (T35 reweave — amplify, gate rules; no build-s
   it('Drone Overclock amplifies COMMAND drone damage', () => {
     const p = createPlayer();
     applyPermanents(p, { 'drone-overclock': 2 }, defaultMods(), new BuildEffects());
-    expect(p.droneDamageMult).toBeCloseTo(1.7); // 1 + 0.35×2
+    expect(p.droneDamageMult).toBeCloseTo(1.4); // 1 + 0.2×2 (rebalanced amplify tier)
   });
 
   it('Glass Protocol is an INFAMY rule-break: more damage, halved health', () => {
@@ -54,10 +54,10 @@ describe('Glory-Tree permanents (T35 reweave — amplify, gate rules; no build-s
     expect(p.gloryMult).toBeCloseTo(1.36); // 1 + 0.12×3
   });
 
-  it('Hunter Protocol starts the run with drones (now COMMAND branch)', () => {
+  it('Hunter Protocol commissions ONE standing drone (maxLevel 1, no casual stacking)', () => {
     const p = createPlayer();
-    applyPermanents(p, { 'hunter-protocol': 2 }, defaultMods(), new BuildEffects());
-    expect(p.droneCount).toBe(2);
+    applyPermanents(p, { 'hunter-protocol': 1 }, defaultMods(), new BuildEffects());
+    expect(p.droneCount).toBe(1);
   });
 
   it('no permanent seeds an on-hit status any more (the seeders were cut)', () => {

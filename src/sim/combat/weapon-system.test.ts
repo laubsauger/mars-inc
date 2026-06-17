@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { WeaponSystem } from './weapon-system';
 import { equip } from './weapon';
 import { contractualSidearm } from '../../content/weapons/contractual-sidearm';
+import { ionLance } from '../../content/weapons/ion-lance';
 import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
 import { SpatialHash } from '../spatial-hash';
 import { createPlayer } from '../player';
@@ -43,6 +44,35 @@ describe('WeaponSystem (T14 fire + collide + kill)', () => {
     const killed = run(ws, player, enemies);
     expect(killed).toBe(1);
     expect(enemies.count).toBe(0);
+  });
+
+  it('the Ion Lance hitscan beam damages enemies on the aim line + emits a laser FX', () => {
+    const enemies = new EnemyPool();
+    // Two mites in a line down +x (beam pierces 2) + one off the line. Give them
+    // plenty of HP so they SURVIVE the hit — otherwise compactDead swap-removes the
+    // dead ones and the index-based health check reads the wrong enemy.
+    const a = enemies.spawn(RUST_MITE, 5, 0, 0, 0);
+    const b = enemies.spawn(RUST_MITE, 9, 0, 0, 1);
+    const off = enemies.spawn(RUST_MITE, 7, 5, 0, 2);
+    for (const e of [a, b, off]) {
+      enemies.state[e] = EnemyState.Active;
+      enemies.health[e] = enemies.maxHp[e] = 200; // survive the beam
+    }
+
+    const player = createPlayer();
+    player.aim = { x: 5, z: 0, has: true };
+    const ws = new WeaponSystem();
+    ws.add(equip(ionLance));
+
+    const hash = new SpatialHash(2);
+    rebuild(hash, enemies);
+    const fx = new FxQueue();
+    ws.step(player, enemies, hash, defaultMods(), new Rng(1), 1 / 60, fx);
+
+    expect(fx.events.some((e) => e.kind === 'laser')).toBe(true); // drew the beam
+    expect(enemies.health[a]!).toBeLessThan(200); // on-line: hit
+    expect(enemies.health[b]!).toBeLessThan(200); // pierced to the 2nd
+    expect(enemies.health[off]!).toBe(200); // off the line: untouched
   });
 
   it('falls back to nearest enemy when no cursor aim', () => {

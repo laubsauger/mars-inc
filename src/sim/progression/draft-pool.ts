@@ -12,6 +12,7 @@ import { CORPSE_UPGRADES } from '../../content/upgrades/corpse';
 import { XP_RESOURCE_UPGRADES } from '../../content/upgrades/xp-resource';
 import { SYNERGY_UPGRADES } from '../../content/upgrades/synergy';
 import { NECRO_UPGRADES } from '../../content/upgrades/necro';
+import { DIRECTION_UPGRADES } from '../../content/upgrades/directions';
 
 /** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
  *  status-reaction primers/converters (T54) + recoil build family (T55). */
@@ -24,6 +25,7 @@ export const DRAFT_POOL: UpgradeDefinition[] = [
   ...XP_RESOURCE_UPGRADES,
   ...SYNERGY_UPGRADES,
   ...NECRO_UPGRADES,
+  ...DIRECTION_UPGRADES,
 ];
 
 /** Flat upgrade list for the dev control board (T74): exactly the ids the run can

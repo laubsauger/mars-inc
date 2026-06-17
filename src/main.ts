@@ -16,6 +16,7 @@ import { EnemyHealthbarView } from './render/enemy-healthbar-view';
 import { ProjectileView } from './render/projectile-view';
 import { EnemyProjectileView } from './render/enemy-projectile-view';
 import { HazardView } from './render/hazard-view';
+import { BeamView } from './render/beam-view';
 import { ThrowMarkerView } from './render/throw-marker-view';
 import { WeaponDropView } from './render/weapon-drop-view';
 import { HealthDropView } from './render/health-drop-view';
@@ -28,11 +29,11 @@ import { GrenadeView } from './render/grenade-view';
 import { PetView } from './render/pet-view';
 import { AimLineView } from './render/aim-line-view';
 import { GrenadeRangeView } from './render/grenade-range-view';
-import { GRENADE_MAX_THROW } from './sim/combat/grenades';
 import { Effects } from './render/effects';
 import { FloorReflectionView } from './render/floor-reflection-view';
 import { FloatingText } from './render/floating-text';
 import { ChainView } from './render/chain-view';
+import { LaserView } from './render/laser-view';
 import { BloodView } from './render/blood-view';
 import { GibView } from './render/gib-view';
 import { MeteorView } from './render/meteor-view';
@@ -209,6 +210,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const grenadeView = new GrenadeView(scene);
   const enemyProjectileView = new EnemyProjectileView(scene);
   const hazardView = new HazardView(scene);
+  const beamView = new BeamView(scene);
   const throwMarkerView = new ThrowMarkerView(scene);
   const weaponDropView = new WeaponDropView(scene);
   const healthDropView = new HealthDropView(scene);
@@ -225,6 +227,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const floorReflect = new FloorReflectionView(scene);
   const floating = new FloatingText();
   const chainView = new ChainView(scene);
+  const laserView = new LaserView(scene);
   const bloodView = new BloodView(scene);
   bloodView.setPlayer(playerView.group, world.player); // accumulating body gore (T39)
   const gibView = new GibView(scene); // flung mesh chunks on kills + corpse detonations
@@ -563,6 +566,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       if (fxEvents.length) {
         effects.consume(fxEvents);
         chainView.consume(fxEvents);
+        laserView.consume(fxEvents);
         bloodView.consume(fxEvents);
         gibView.consume(fxEvents);
         meteorView.consume(fxEvents);
@@ -600,10 +604,12 @@ async function boot(parent: HTMLElement): Promise<void> {
       effects.update(fxDt);
       floorReflect.update(fxDt);
       chainView.update(fxDt);
+      laserView.update(fxDt);
       bloodView.update(fxDt);
       gibView.update(fxDt);
       meteorView.update(fxDt);
       chainView.sync();
+      laserView.sync();
 
       // Orbit/zoom owns the camera pose; shake rides ON TOP. Undo last frame's
       // shake offset before update() so OrbitControls' spherical baseline stays
@@ -644,6 +650,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
       hazardView.sync(world.enemyAttacks.hazards);
+      beamView.sync(world.enemyAttacks.beams);
       throwMarkerView.sync(world.enemyAttacks.projectiles);
       weaponDropView.sync(world.weaponDrops.pool);
       healthDropView.sync(world.healthDrops.pool);
@@ -706,7 +713,7 @@ async function boot(parent: HTMLElement): Promise<void> {
           pl.pos.z,
           ax,
           az,
-          Math.min(cursorDist, GRENADE_MAX_THROW),
+          Math.min(cursorDist, world.grenadeMaxThrow),
           pl.aim.has,
         );
       } else {

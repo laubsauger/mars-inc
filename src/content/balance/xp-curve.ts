@@ -4,11 +4,12 @@
 export function xpRequired(level: number): number {
   // §9.1: frequent early choices, slower late. The exponent shapes the late ramp;
   // the linear/constant terms keep the FIRST ~3 levels fast (the build needs to
-  // come together without perfect rolls) — then 1.9 steepens HARD so late levels
-  // don't fly by (you were levelling too much past ~10) now that bounty relics add
-  // a second upgrade stream on top of XP. Pairs with threat-scaled XP income.
-  //  L3 21 · L5 41 · L8 79 · L10 113 · L15 209 · L20 327 (much steeper tail than 1.7).
-  return 4 + level * 3 + Math.floor(Math.pow(level, 1.9));
+  // come together without perfect rolls) — then 2.1 steepens HARD so late levels
+  // don't fly by. Late waves drop a FLOOD of shards, so the tail must climb faster
+  // than income or you ding every few seconds past ~L20. Pairs with bounty relics
+  // (a second upgrade stream) + threat-scaled XP income.
+  //  L3 23 · L5 48 · L8 106 · L10 159 · L15 350 · L20 609 · L30 1356 (steep tail).
+  return 4 + level * 3 + Math.floor(Math.pow(level, 2.1));
 }
 
 /** Shard value dropped by an enemy variant. */

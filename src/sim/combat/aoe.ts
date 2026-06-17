@@ -56,11 +56,13 @@ export function applyAreaDamage(
     const dz = enemies.posZ[e]! - z;
     const d2 = dx * dx + dz * dz;
     if (d2 > r2) continue;
-    // Distance falloff: full at the centre, less toward the edge (crowd-control
-    // splash instead of a flat one-shot ring).
-    const amount = spec.falloff
-      ? spec.amount * (1 - spec.falloff * (Math.sqrt(d2) / radius))
-      : spec.amount;
+    // Distance falloff: full at the centre, much less toward the edge. SQUARED
+    // distance ratio so the drop bites EARLY — an enemy halfway out already takes a
+    // fraction, the rim barely a tap. This is the brake on explosion feedback-loops:
+    // a blast core kills, but the outer ring survives, so a chain of pops can't pass
+    // full damage to "enemy #10" and delete a whole wall.
+    const ratio = d2 / r2; // 0 at centre → 1 at the rim (already squared, no sqrt)
+    const amount = spec.falloff ? spec.amount * (1 - spec.falloff * ratio) : spec.amount;
 
     const packet = makePacket({
       weaponId: 'aoe',

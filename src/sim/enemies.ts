@@ -44,6 +44,15 @@ export type EnemyAttack =
       damage: number;
       spread: number;
       burst?: number; // pellets per volley (default 1 = single aimed round)
+    }
+  | {
+      kind: 'beam'; // charge → telegraph a thickening line → fire a hitscan laser to the wall
+      range: number; // engage distance to begin charging
+      cooldown: number; // seconds between beams (long — it's a heavy attack)
+      charge: number; // telegraph window: aim LOCKS, the line thickens, you dodge off it
+      width: number; // beam half-width that hits the player on fire
+      damage: number;
+      beamLife: number; // seconds the fired beam stays lethal + visible
     };
 
 export interface EnemyType {
@@ -71,6 +80,9 @@ export interface EnemyType {
   aggroRange?: number;
   /** Threat cost the wave director spends to field one (§8.3). */
   threat: number;
+  /** Damage-absorb charges (T-beam): each blocks ONE incoming damage instance
+   *  (a flat shield that pops on the first hit). Absent/0 = no shield. */
+  shield?: number;
 }
 
 /** Touch damage when an enemy reaches the player, unless its type overrides it. */
@@ -130,6 +142,13 @@ export class EnemyPool {
   readonly hitFlash: Float32Array; // cosmetic: 1 on hit, decays → red shimmer (view)
   readonly kbX: Float32Array; // knockback velocity (decays); added on top of steering
   readonly kbZ: Float32Array;
+  /** Damage-absorb charges left (T-beam): >0 blocks the next damage instance. */
+  readonly shield: Uint8Array;
+  /** Elite (T-elite): a promoted, beefier+shielded variant. Drives the view's
+   *  "this is a different unit" indicator. 0 = normal. */
+  readonly elite: Uint8Array;
+  /** Promotion decided this spawn? (so elite/baseline-shield rolls happen once). */
+  readonly evaluated: Uint8Array;
 
   constructor(capacity: number = MAX_ENEMIES) {
     this.capacity = capacity;
@@ -168,6 +187,9 @@ export class EnemyPool {
     this.kbZ = new Float32Array(capacity);
     this.contactDmg = new Float32Array(capacity);
     this.aggroRange = new Float32Array(capacity);
+    this.shield = new Uint8Array(capacity);
+    this.elite = new Uint8Array(capacity);
+    this.evaluated = new Uint8Array(capacity);
   }
 
   /** Spawn an enemy in Telegraph state. Returns index, or -1 if full. */
@@ -220,7 +242,21 @@ export class EnemyPool {
     this.hitFlash[i] = 0;
     this.kbX[i] = 0;
     this.kbZ[i] = 0;
+    this.shield[i] = type.shield ?? 0;
+    this.elite[i] = 0;
+    this.evaluated[i] = 0;
     return i;
+  }
+
+  /** Promote a freshly-spawned enemy into an ELITE (T-elite): beefier, hits harder,
+   *  visibly bigger + shielded. The view reads `elite` to flag it as a step-up unit. */
+  promote(i: number, hpMult: number, contactMult: number, shield: number): void {
+    this.elite[i] = 1;
+    this.maxHp[i] = this.maxHp[i]! * hpMult;
+    this.health[i] = this.maxHp[i]!; // full HP at promotion
+    this.contactDmg[i] = this.contactDmg[i]! * contactMult;
+    this.radius[i] = this.radius[i]! * 1.25; // bigger silhouette = the read
+    this.shield[i] = shield;
   }
 
   /** Swap-remove: move the last live enemy into slot i. */
@@ -262,6 +298,9 @@ export class EnemyPool {
       this.hitFlash[i] = this.hitFlash[last]!;
       this.kbX[i] = this.kbX[last]!;
       this.kbZ[i] = this.kbZ[last]!;
+      this.shield[i] = this.shield[last]!;
+      this.elite[i] = this.elite[last]!;
+      this.evaluated[i] = this.evaluated[last]!;
     }
   }
 
@@ -488,6 +527,7 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Liability Blob',
   'Blobling',
   'Phase Stalker',
+  'Lance Sentinel',
 ];
 
 // Frostbite Auditor — cryo lobber (T33). Lobs a slow-fusing FROST writ that
@@ -516,6 +556,47 @@ export const FROSTBITE_AUDITOR: EnemyType = {
   },
 };
 
+/** Lance Sentinel (T-beam): a slow, heavy laser turret. It CHARGES — telegraphing a
+ *  thickening line toward where you were — then fires a hitscan beam down that line
+ *  to the wall. Rare + tanky + a one-hit shield, so it never swarms; it forces you
+ *  to keep moving off its firing line. */
+export const LANCE_SENTINEL: EnemyType = {
+  id: 'lance-sentinel',
+  radius: 0.85,
+  maxHealth: 140, // hefty — a real obstacle, not fodder
+  speed: 1.0, // very slow; it's a creeping turret
+  separationWeight: 0.7,
+  variant: 12,
+  gore: 'blood',
+  threat: 26, // expensive → the director fields it rarely, never in groups
+  shield: 1, // absorbs the first instance of damage
+  attack: {
+    kind: 'beam',
+    range: 32, // long reach — it snipes across the arena
+    cooldown: 4.5,
+    charge: 1.3, // generous telegraph: lock + thicken, you dodge off the line
+    width: 0.7, // beam half-width that catches the player
+    damage: 26,
+    beamLife: 0.22, // brief lethal flash once it fires
+  },
+};
+
+/** Devourer (T-garg): a slow, hulking thing that EATS small enemies it reaches —
+ *  each meal grows its body, HP, and contact damage (and heals it). Left alone in a
+ *  crowd it snowballs into a wall, so you either kill it early or keep the fodder
+ *  away from it. Rare; never swarms. (Growth lives in sim/gargantuan.ts.) */
+export const GARGANTUAN: EnemyType = {
+  id: 'gargantuan',
+  radius: 1.0, // grows from here as it feeds
+  maxHealth: 90,
+  speed: 1.6, // slow lumber
+  separationWeight: 0.5,
+  variant: 13,
+  gore: 'blood',
+  contactDamage: 14,
+  threat: 22, // expensive → rare, never in groups
+};
+
 /** Variant index → enemy type, so SoA-pooled enemies recover their def (and
  *  attack profile) at runtime without storing it per instance. */
 export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
@@ -531,6 +612,7 @@ export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
   LIABILITY_BLOB,
   BLOBLING,
   PHASE_STALKER,
+  LANCE_SENTINEL,
 ];
 
 /**

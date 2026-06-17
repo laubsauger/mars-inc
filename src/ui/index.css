@@ -28,3 +28,36 @@
 
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
+
+/* Draft hand entrance (T-variety): replays each time a NEW level-up draft mounts
+   (keyed on level+options) so sequential level-ups visibly re-deal the cards
+   instead of swapping instantly. Cards stagger in via per-card animation-delay. */
+@keyframes draft-deal {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.draft-deal {
+  animation: draft-deal 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes draft-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.draft-flash {
+  animation: draft-flash 0.32s ease-out both;
+}

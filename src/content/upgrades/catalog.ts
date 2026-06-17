@@ -92,8 +92,10 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     description: '+1 companion drone that orbits you and shoots enemies on its own.',
     tags: ['drone', 'summon'],
     rarity: 'rare',
-    maxLevel: 6,
-    baseWeight: 6,
+    // Capped at 3 (was 6) — a drone is a real damage source; six from one card line
+    // (plus Glory-Tree drones) turned the screen into an auto-killing fleet.
+    maxLevel: 3,
+    baseWeight: 5,
     synergyWeight: 4,
     apply: ({ player }) => {
       player.droneCount += 1;
@@ -169,20 +171,20 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'long-arm',
     name: 'Long-Arm Clause',
-    description: '+15% weapon range.',
+    description: '+10% weapon range per level.',
     tags: ['range'],
     rarity: 'common',
     maxLevel: 5,
     baseWeight: 12,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      mods.rangeMult += 0.15;
+      mods.rangeMult += 0.1;
     },
   },
   {
     id: 'extended-barrel',
     name: 'Extended Barrel',
-    description: '+28% weapon range and +4% damage — reach out and touch them.',
+    description: '+15% weapon range and +3% damage per level.',
     tags: ['range', 'precision', 'damage'],
     grantsTags: ['range'],
     rarity: 'uncommon',
@@ -190,14 +192,14 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     baseWeight: 8,
     synergyWeight: 4,
     apply: ({ mods }) => {
-      mods.rangeMult += 0.28;
-      mods.damageMult += 0.04;
+      mods.rangeMult += 0.15;
+      mods.damageMult += 0.03;
     },
   },
   {
     id: 'recon-optics',
     name: 'Recon Optics',
-    description: '+45% weapon range and +3% crit chance — pick targets from afar.',
+    description: '+18% weapon range and +2% crit chance per level — pick targets from afar.',
     tags: ['range', 'precision', 'crit'],
     grantsTags: ['range'],
     rarity: 'rare',
@@ -205,8 +207,8 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     baseWeight: 6,
     synergyWeight: 5,
     apply: ({ mods }) => {
-      mods.rangeMult += 0.45;
-      mods.critChanceAdd += 0.03;
+      mods.rangeMult += 0.18;
+      mods.critChanceAdd += 0.02;
     },
   },
 
@@ -323,7 +325,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'singularity-protocol',
     name: 'Singularity Protocol',
-    description: 'CAPSTONE: kills sometimes collapse into a heavy implosion.',
+    description: 'CAPSTONE: ~15% of kills collapse into a heavy implosion (24 dmg, 4m).',
     tags: ['aoe', 'explosive'],
     rarity: 'legendary',
     maxLevel: 1,

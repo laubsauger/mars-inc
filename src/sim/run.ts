@@ -60,8 +60,12 @@ export interface RunResult {
  */
 export function gloryFor(result: RunResult, gloryMult = 1): number {
   const win = result.won ? 200 : 0;
+  // SUB-linear depth reward (§V34: GLORY_P < 1) — the old `level²` term made deep
+  // runs pay exponentially, snowballing the Glory Tree. `level^1.4` keeps early
+  // payouts intact (~L10 unchanged) but tapers the late tail hard. Kills weight cut
+  // too: late runs rack thousands of kills, so a fat per-kill rate ballooned income.
   const base =
-    result.durationSec * 0.2 + result.kills * 0.25 + result.level * result.level * 0.6 + win;
+    result.durationSec * 0.2 + result.kills * 0.12 + Math.pow(result.level, 1.4) * 2.4 + win;
   // Harder Acts pay more (T-Act): the growth outlet for Glory-Tree investment.
   return Math.floor(base * gloryMult);
 }

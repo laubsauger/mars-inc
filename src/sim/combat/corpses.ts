@@ -237,7 +237,7 @@ export class CorpseSystem {
           damageType: 'explosive',
           fx,
           hitFx: true, // sparks + blood on each enemy → the blast reads as real hits
-          falloff: 0.4, // bites hardest at the core
+          falloff: 0.75, // squared-distance falloff: core kills, rim barely tapped
           // Physically punch a hole — meteors clear a crater, corpses shove a lane.
           knockback: meteor ? 46 : Math.min(34, 12 + stored * 0.12),
         },

@@ -82,4 +82,36 @@ describe('DraftController (T18/T41 lifecycle)', () => {
     expect(c.leveling).toBe(false);
     expect(Object.keys(c.upgradeLevels).length).toBe(0); // nothing applied
   });
+
+  it('a milestone level (every 5th) guarantees an interesting (uncommon+) option', () => {
+    const player = createPlayer();
+    player.level = 5; // milestone
+    const c = new DraftController({
+      player,
+      rng: new Rng(1),
+      mods: defaultMods(),
+      effects: new BuildEffects(),
+      stats: newRunStats(),
+      afterApply: () => {},
+    });
+    c.reset();
+    openDraft(c);
+    expect(c.draft.some((d) => d.rarity !== 'common')).toBe(true);
+  });
+
+  it('a non-milestone level is NOT forced to include an interesting option', () => {
+    const player = createPlayer();
+    player.level = 4; // not a multiple of 5 → no guarantee
+    const c = new DraftController({
+      player,
+      rng: new Rng(1),
+      mods: defaultMods(),
+      effects: new BuildEffects(),
+      stats: newRunStats(),
+      afterApply: () => {},
+    });
+    c.reset();
+    openDraft(c);
+    expect(c.draft.length).toBeGreaterThan(0); // draft still rolls; no milestone constraint
+  });
 });

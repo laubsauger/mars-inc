@@ -9,6 +9,7 @@ import { EnemyState } from '../enemies';
 import type { SpatialHash } from '../spatial-hash';
 import type { Rng } from '../../core/rng';
 import type { FxQueue } from '../fx';
+import type { KillEvent } from './weapon-system';
 import { applyAreaDamage } from './aoe';
 import { clampPoint } from '../arena';
 
@@ -81,11 +82,20 @@ export class PetSystem {
   readonly pool = new PetPool();
   /** Damage pets dealt this step (folded into run stats, V20). */
   dealtThisStep = 0;
+  /** Enemies a pet KILLED this step. Pets are autonomous minions, NOT the player's
+   *  weapon — their kills drop XP + count toward stats, but DON'T feed the player's
+   *  on-kill build (corpse detonate / Singularity nova / necro re-raise). So the
+   *  world drains this into XP + kill stats only, never into the trigger pipeline —
+   *  otherwise a pet kill would set off YOUR explosions and snowball into more pets. */
+  readonly kills: KillEvent[] = [];
   private query: number[] = [];
+  private reapScratch: number[] = [];
+  private reapDead: number[] = [];
 
   reset(): void {
     this.pool.clear();
     this.dealtThisStep = 0;
+    this.kills.length = 0;
   }
 
   /** Try to raise a pet from a slain enemy (caller rolls necroChance). Pet power
@@ -108,6 +118,7 @@ export class PetSystem {
   ): number {
     void player;
     this.dealtThisStep = 0;
+    this.kills.length = 0;
     const p = this.pool;
     for (let i = p.count - 1; i >= 0; i--) {
       p.prevX[i] = p.posX[i]!;
@@ -140,6 +151,10 @@ export class PetSystem {
             rng,
           );
           this.dealtThisStep += dealt;
+          // REAP the pet's own kills now (before the weapon system's compactDead
+          // sweeps them) so they never enter the player's kill pipeline — pet kills
+          // give XP + count, but ⊥ fire your triggers/corpse/re-raise.
+          this.reapKills(enemies, hash, enemies.posX[t]!, enemies.posZ[t]!, fx);
           p.atkCd[i] = ATTACK_CD;
           p.hp[i]! -= COMBAT_DRAIN; // fighting wears it down → it dies FOR you
           fx.push('impact', p.posX[i]!, p.posZ[i]!);
@@ -176,5 +191,46 @@ export class PetSystem {
       }
     }
     return best;
+  }
+
+  /** Swap-remove enemies the pet's claw brought to ≤0 hp in `radius` of (x,z),
+   *  recording each as a pet KillEvent (XP + stats, NOT the player trigger pipeline).
+   *  Done here so the weapon system's compactDead never sees them. */
+  private reapKills(
+    enemies: EnemyPool,
+    hash: SpatialHash,
+    x: number,
+    z: number,
+    fx: FxQueue,
+  ): void {
+    const n = hash.queryCircle(x, z, ATTACK_RADIUS + 0.5, this.reapScratch);
+    // Collect dead indices first, then kill HIGH→LOW so swap-remove can't skip one.
+    // Reused scratch (V5 — no per-claw alloc in the hot sim path).
+    const dead = this.reapDead;
+    dead.length = 0;
+    for (let k = 0; k < n; k++) {
+      const e = this.reapScratch[k]!;
+      if (e < enemies.count && enemies.health[e]! <= 0) dead.push(e);
+    }
+    dead.sort((a, b) => b - a);
+    for (const e of dead) {
+      if (e >= enemies.count || enemies.health[e]! > 0) continue; // already reaped via swap
+      this.kills.push({
+        x: enemies.posX[e]!,
+        z: enemies.posZ[e]!,
+        variant: enemies.variant[e]!,
+        overkill: Math.max(0, -enemies.health[e]!),
+        size: enemies.radius[e]!,
+      });
+      fx.push(
+        'death',
+        enemies.posX[e]!,
+        enemies.posZ[e]!,
+        enemies.radius[e]!,
+        0,
+        enemies.variant[e]!,
+      );
+      enemies.kill(e);
+    }
   }
 }

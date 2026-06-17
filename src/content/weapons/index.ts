@@ -10,6 +10,7 @@ import { liabilityShotgun } from './liability-shotgun';
 import { severanceCannon } from './severance-cannon';
 import { arcRepeater } from './arc-repeater';
 import { phobosDriver } from './phobos-driver';
+import { ionLance } from './ion-lance';
 
 export const WEAPONS: readonly WeaponDefinition[] = [
   contractualSidearm,
@@ -18,6 +19,7 @@ export const WEAPONS: readonly WeaponDefinition[] = [
   severanceCannon,
   arcRepeater,
   phobosDriver,
+  ionLance,
 ];
 
 const BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));

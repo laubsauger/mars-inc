@@ -20,10 +20,17 @@ export class ShardView {
 
   constructor(scene: Scene, capacity: number = MAX_SHARDS) {
     const geo = new OctahedronGeometry(0.28);
+    // Narrow the horizontal axes + stretch the vertical → an elongated crystal
+    // shard instead of a fat square box (keeps the height, slims the footprint so
+    // a field of them reads cleaner among the enemies).
+    geo.scale(0.6, 1.35, 0.6);
     // Pushed brighter (HDR) so XP shards keep their glow under the lowered global
     // bloom strength (arena calmed, pickups left reading as before).
     const mat = new MeshBasicMaterial({
-      color: COL.shieldCyan.clone().multiplyScalar(1.4),
+      // Emerald XP green (palette token) — leans blue-green so it reads as a pickup,
+      // distinct from the yellow-green toxic enemies AND the old cyan it shared with
+      // bolts. Pushed brighter (HDR) so it keeps its glow under the calmed bloom.
+      color: COL.xpGreen.clone().multiplyScalar(1.35),
       toneMapped: false,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);

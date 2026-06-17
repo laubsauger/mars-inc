@@ -60,6 +60,7 @@ const MOD_LABELS: Partial<Record<keyof RunMods, [string, (n: number) => string]>
   grenadeCdMult: ['Grenade Cooldown', x2],
   grenadeDamageMult: ['Grenade Damage', x2],
   grenadeRadiusAdd: ['Grenade Radius', num1],
+  grenadeRangeAdd: ['Grenade Range', num1],
   grenadeKnockbackMult: ['Grenade Knockback', x2],
 };
 

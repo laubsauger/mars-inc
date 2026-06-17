@@ -28,7 +28,10 @@ export const ACCENT = {
   shieldCyan: '#32d7ff',
   healthRed: '#ff3b30',
   toxicGreen: '#83f04f',
+  xpGreen: '#33f28c', // XP shards — emerald, blue-green so it reads ⊥ toxic enemies
+  petSpectral: '#9aa8ff', // risen Gravedigger pets — cold spectral periwinkle "ally" glow
   eliteMagenta: '#d84cff',
+  laserRed: '#ff2a3a', // Lance Sentinel turret + its charging laser beam
 } as const;
 
 /** Toon ramp band thresholds (lit fraction → next band). For TSL material at T37. */
@@ -56,5 +59,8 @@ export const COL = {
   shieldCyan: new Color(ACCENT.shieldCyan),
   healthRed: new Color(ACCENT.healthRed),
   toxicGreen: new Color(ACCENT.toxicGreen),
+  xpGreen: new Color(ACCENT.xpGreen),
+  petSpectral: new Color(ACCENT.petSpectral),
   eliteMagenta: new Color(ACCENT.eliteMagenta),
+  laserRed: new Color(ACCENT.laserRed),
 } as const;

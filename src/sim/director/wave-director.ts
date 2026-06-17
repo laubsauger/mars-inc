@@ -16,6 +16,7 @@ import {
   FROSTBITE_AUDITOR,
   LIABILITY_BLOB,
   PHASE_STALKER,
+  LANCE_SENTINEL,
   SpawnKind,
   type EnemyType,
 } from '../enemies';
@@ -42,8 +43,8 @@ export const TIMELINE_STRETCH = 2;
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
 // gap shrinks, groups grow, and more gates open as the run escalates.
-const WAVE_GAP_START = 1.6; // seconds between waves at the open — less early downtime
-const WAVE_GAP_MIN = 0.9; // late-game floor
+const WAVE_GAP_START = 1.2; // seconds between waves at the open — snappy, ⊥ draggy
+const WAVE_GAP_MIN = 0.45; // late-game floor — waves crash in fast deep in the run
 
 // Directional spawn patterns. Kiting makes WHERE enemies come from the real
 // pressure dial: a wave from one gate is easy to lead away from; opposing gates
@@ -110,10 +111,15 @@ export function budgetAt(elapsed: number): SpawnBudget {
     // first minute. Still gentle vs late game and monotonic (V8).
     // Numbers ramp HARD and keep ramping (accelerating) so late waves are a real
     // horde, not a trickle — the bank funds bigger bursts, the cap lets more stand.
-    threatPoints: 5.0 + elapsed * 0.32 + elapsed * elapsed * 0.0018,
+    // Opening must feel LIVE (a draggy first minute reads as broken). Strong base +
+    // brisk early ramp; the quadratic still carries the late horde.
+    threatPoints: 8.0 + elapsed * 0.34 + elapsed * elapsed * 0.0016,
+    // Count growth tamed vs the old low-HP-ocean quadratic, but a livelier floor so
+    // the start isn't sparse. The power-tier sawtooth (capMul) does the thinning at
+    // each HP step; HP escalation (hpScaleFor) carries the late difficulty.
     maxConcurrentEnemies: Math.min(
       HARD_CAP,
-      Math.floor(8 + elapsed * 2.4 + elapsed * elapsed * 0.01),
+      Math.floor(10 + elapsed * 2.0 + elapsed * elapsed * 0.006),
     ),
     eliteBudget: Math.floor(elapsed / 30),
     rangedBudget: 0,
@@ -173,6 +179,7 @@ export class WaveDirector {
       if (elapsed > 80 && r < 0.48) return FROSTBITE_AUDITOR; // cryo
       if (elapsed > 90 && r < 0.56) return REPO_MARSHAL; // gun
       if (elapsed > 110 && r < 0.62) return FORECLOSURE_MORTAR; // artillery
+      if (elapsed > 100 && r < 0.67) return LANCE_SENTINEL; // laser turret — rare, late, dodge-or-die
       return AUDIT_BRUTE; // the bulk of specials are the melee wall
     }
     // Fodder: Rust Mites + a growing minority of Debt Hounds.
@@ -220,6 +227,7 @@ export class WaveDirector {
     adapt: Adaptation = NEUTRAL_ADAPT,
     hpScale = 1,
     fx?: FxQueue,
+    capMul = 1, // sawtooth count multiplier (T44 power-tier thinning)
   ): void {
     this.hpScale = hpScale;
     // Stretch the escalation clock: every threshold below reads this slowed time,
@@ -233,7 +241,9 @@ export class WaveDirector {
     const actPace = activeArena().paceMult;
     this.bank += b.threatPoints * pace * actPace * dt;
 
-    const cap = Math.min(Math.floor(b.maxConcurrentEnemies * actPace), pool.capacity);
+    // Sawtooth thins the crowd at each power step (capMul), so the cap tracks player
+    // progression, not just elapsed time → fewer, beefier enemies after a step.
+    const cap = Math.min(Math.floor(b.maxConcurrentEnemies * actPace * capMul), pool.capacity);
 
     // Recurring boss waves (V22 hinge × N): the first Gatekeeper at BOSS_AT, then a
     // TOUGHER one each BOSS_PERIOD after the previous falls — you fight through an
@@ -391,19 +401,38 @@ export class WaveDirector {
   }
 }
 
-/**
- * Run-phase difficulty scale (T44): a multiplier on FODDER spawn health. The ONLY
- * source is boss kills — slaying a boss in the current run makes SUBSEQUENT spawns
- * tankier (bosses are the progression hinge, §G). NO time/level ramp: those made
- * HP balloon continuously and, since field units keep their spawn HP, produced a
- * runaway where new waves vastly out-tanked the ones already on the floor.
- *
- * Applied at spawn ONLY (the director folds it into `pool.spawn`'s hpScale); live
- * units are NEVER re-scaled (V12) — a monster keeps the HP it spawned with for life.
- * Boss HP is not scaled. Deterministic (pure function of bossKills).
- */
-export function difficultyScale(bossKills: number): number {
-  return 1 + Math.max(0, bossKills) * 0.5; // +50% spawn HP per boss slain
+// ── Power-tiered escalation (T44 rework) ─────────────────────────────────────
+// The run must NOT scale by enemy COUNT alone — that drowns you in an uncapped mass
+// of low-HP fodder the player one-shots. Instead enemy HP steps up HARD per "power
+// tier" (which tracks the PLAYER's growing damage), and each step DROPS the
+// concurrent count, which then recovers across the tier — a sawtooth. Net: fewer,
+// beefier enemies that demand real damage, then more of them, then a chunkier step
+// again. Strategic, not a swarm you delete on contact.
+const TIER_SIZE = 5; // player levels per power tier (matches the milestone draft cadence)
+const HP_STEP = 0.5; // +50% spawn HP per tier (compounding)
+const COUNT_FLOOR = 0.6; // a fresh tier drops the cap to this fraction…
+const COUNT_CEIL = 1.0; // …recovering to full by the tier's end (the sawtooth)
+
+/** Run progress in "tier units": each player level is 1, each boss kill jumps a
+ *  whole tier (a boss is a big power step). Single source for HP + count below. */
+export function powerProgress(level: number, bossKills: number): number {
+  return Math.max(0, level - 1) + Math.max(0, bossKills) * TIER_SIZE;
+}
+
+/** Spawn-HP multiplier — steps ×(1+HP_STEP) per tier so fodder HP keeps pace with
+ *  the player's escalating per-upgrade damage. Spawn-only (live units keep birth HP,
+ *  V12). Deterministic. T0 1× · T1 1.5× · T2 2.25× · T3 3.4× · T4 5.1× · T5 7.6×. */
+export function hpScaleFor(level: number, bossKills: number): number {
+  const tier = Math.floor(powerProgress(level, bossKills) / TIER_SIZE);
+  return Math.pow(1 + HP_STEP, tier);
+}
+
+/** Concurrent-cap sawtooth: drops to COUNT_FLOOR the instant a new HP tier kicks in,
+ *  climbs back to COUNT_CEIL across that tier's levels, then drops again at the next
+ *  step. So a power step thins the crowd; you re-earn the density. */
+export function countSawtooth(level: number, bossKills: number): number {
+  const within = (powerProgress(level, bossKills) % TIER_SIZE) / TIER_SIZE; // 0→1 across a tier
+  return COUNT_FLOOR + (COUNT_CEIL - COUNT_FLOOR) * within;
 }
 
 /** Seconds between waves — long at the open, shrinking to a floor. */

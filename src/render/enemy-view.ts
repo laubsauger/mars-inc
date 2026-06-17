@@ -38,8 +38,8 @@ const TELE_TELEGRAPH = 1.0; // must match the director's teleport telegraph wind
 // Color blocking, not line noise (art doc pillar 1). Per-variant base tint; the
 // silhouette carries the identity, colour reinforces it.
 const VARIANT_COLORS = [
-  new Color(0x6f8a7d), // Rust Mite — cool insect grey-green (was muddy brown) // 0 Rust Mite
-  new Color(0x9c4326), // Debt Hound — rust-red, distinct from the mite // 1 Debt Hound
+  new Color(0x46c88f), // 0 Rust Mite — bright teal-green, pops off the dark grey floor
+  new Color(0xe0612e), // 1 Debt Hound — bright rust-orange, high contrast + ⊥ the mite
   COL.eliteMagenta, // 2 Gatekeeper (boss)
   COL.toxicGreen, // 3 Severance Lobber
   COL.brass, // 4 Repossession Marshal
@@ -50,6 +50,7 @@ const VARIANT_COLORS = [
   COL.toxicGreen, // 9 Liability Blob (splitter ooze)
   COL.toxicGreen, // 10 Blobling
   COL.eliteMagenta, // 11 Phase Stalker (teleport ambusher)
+  COL.laserRed, // 12 Lance Sentinel — hot crimson laser turret
 ];
 
 // Silhouette families.
@@ -79,6 +80,7 @@ export const VARIANT_SHAPE: number[] = [
   Shape.Ooze, // 9 blob
   Shape.Ooze, // 10 blobling
   Shape.Runner, // 11 phase stalker (fast chaser silhouette)
+  Shape.Rifle, // 12 lance sentinel (turret/barrel silhouette)
 ];
 // Per-variant silhouette tweak [widthMul, heightMul] on top of the radius scale —
 // keeps fodder readable above an OCEAN of XP shards (shards sit at ~0.5 tall, so a
@@ -271,6 +273,19 @@ export class EnemyView {
           this.tmp.g * (1 - mat) + 0.6 * mat,
           this.tmp.b * (1 - mat) + 1.0 * mat,
         );
+      }
+      // Elite/shield read (T-elite): an elite is a HOTTER, pulsing version of its
+      // kind (paired with the bigger silhouette from its radius); a plain shielded
+      // unit gets a steely cyan cast so "this one's armored" reads at a glance.
+      if (pool.elite[i]) {
+        const pulse = 0.82 + 0.18 * Math.sin(this.phase * 6 + i);
+        this.tmp.setRGB(
+          Math.min(1, this.tmp.r * 1.5 + 0.18) * pulse,
+          Math.min(1, this.tmp.g * 1.15) * pulse,
+          Math.min(1, this.tmp.b * 1.15) * pulse,
+        );
+      } else if (pool.shield[i]! > 0) {
+        this.tmp.setRGB(this.tmp.r * 0.7 + 0.08, this.tmp.g * 0.7 + 0.36, this.tmp.b * 0.7 + 0.46);
       }
       mesh.setColorAt(idx, this.tmp);
     }

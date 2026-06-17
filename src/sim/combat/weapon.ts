@@ -39,6 +39,10 @@ export interface WeaponDefinition {
   spreadArc?: number;
   /** Explosive blast radius dealt on impact (V3-routed AoE); 0/absent = none. */
   explosiveRadius?: number;
+  /** HITSCAN (T-laser): present → the weapon fires an INSTANT beam instead of a
+   *  projectile. It damages every enemy within `width` of the aim line out to range
+   *  (piercing up to projectile.pierce + mods.pierce), then draws a laser. */
+  hitscan?: { width: number };
   /** Proc coefficient (T69, V32): scales on-hit status/trigger chance·duration·
    *  magnitude. Absent → the weapon's family default (`procCoefOf`, combat/proc.ts).
    *  Fast-spray families low (~0.5), slow-big-hit high (~2.5). */

@@ -32,8 +32,9 @@ const SETTLE_LIFE = 7.5; // s a grounded chunk lingers before it dries away
 const FADE_FRAC = 0.32; // last fraction of life spent shrinking out
 
 // Dark dried-gore reds / olive — matter on the floor, NOT a glow (no emissive).
-// Pulled darker than the blood decal so a wet chunk reads as a solid lump.
-const BLOOD = new Color(0.5, 0.05, 0.05);
+// Pulled darker than the blood decal so a wet chunk reads as a solid lump — a
+// sliver deeper still for a touch more separation from the brighter blood spray.
+const BLOOD = new Color(0.42, 0.035, 0.035);
 const ICHOR = new Color(0.22, 0.34, 0.06);
 const SCRAP = new Color(0.26, 0.25, 0.28); // mechanical enemies shed dark metal bits
 

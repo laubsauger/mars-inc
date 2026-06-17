@@ -134,8 +134,8 @@ export class FloatingText {
       const isCrit = f === 1;
       const isSelf = f === 2;
       // Spring pop: overshoot the size on spawn, settle fast. Crits punch harder.
-      const pop = 1 + (isCrit ? 0.9 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
-      const base = isCrit ? 20 : isSelf ? 14 : 11;
+      const pop = 1 + (isCrit ? 0.65 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
+      const base = isCrit ? 15 : isSelf ? 14 : 11;
       const val = Math.round(this.amt[i]!);
       out.push({
         id: `d${i}`,

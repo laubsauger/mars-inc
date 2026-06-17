@@ -7,11 +7,18 @@
 // HUD health bar. Deterministic via the shared rng (V16).
 
 import { type EnemyPool, EnemyState, RUST_MITE, BOSS_GATEKEEPER } from './enemies';
-import type { Player } from './player';
+import { type Player, hitPlayer } from './player';
 import type { Rng } from '../core/rng';
 import type { FxQueue } from './fx';
 import type { EnemyAttackSystem } from './enemy-attacks';
-import { interiorPoint } from './arena';
+import { interiorPoint, wallDistance } from './arena';
+
+// Charge attack (T-boss): a brief telegraph (a danger LINE drawn by a damage-0 beam)
+// then a snap-slide of the boss body along it — keep moving or get run over.
+const CHARGE_TELE = 0.85; // telegraph window (you read the line + dodge off it)
+const CHARGE_SLIDE = 0.26; // the snap-slide is FAST (a lunge, not a walk)
+const CHARGE_DMG = 30; // a heavy hit if the slide catches you
+const CHARGE_LANE = 1.5; // danger-line half-width (≈ the boss body)
 
 export const BOSS_NAME = 'Gatekeeper of Phobos';
 export const BOSS_PHASES = 3;
@@ -35,6 +42,16 @@ export class BossController {
   justDefeated = false;
   private phase = 0;
   private timer = 0;
+  // Charge state: 0 idle · 1 telegraph (line shown, boss braced) · 2 sliding.
+  private chargeState = 0;
+  private chargeT = 0;
+  private dirX = 0;
+  private dirZ = 0;
+  private sx = 0; // slide start
+  private sz = 0;
+  private tx = 0; // slide target
+  private tz = 0;
+  private chargeHit = false; // contact already dealt this slide
 
   reset(): void {
     this.active = false;
@@ -43,6 +60,7 @@ export class BossController {
     this.justDefeated = false;
     this.phase = 0;
     this.timer = 0;
+    this.chargeState = 0;
   }
 
   /** Drive the boss this step. No-op when no boss is on the field. */
@@ -81,10 +99,105 @@ export class BossController {
       this.onPhaseBreak(enemies, attacks, rng, fx, b);
     }
 
+    // A charge OWNS the boss while it runs (telegraph + slide) — no other attacks
+    // fire, and the boss body position is driven directly here, overriding steering.
+    if (this.chargeState > 0) {
+      this.driveCharge(enemies, player, fx, b, dt);
+      return;
+    }
+
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = this.cadence(this.phase);
-      this.attack(enemies, player, attacks, rng, fx, b);
+      // From phase 1 on, sometimes LUNGE instead of barraging — a movement check.
+      if (this.phase >= 1 && rng.next() < 0.35) {
+        this.startCharge(enemies, player, attacks, fx, b);
+      } else {
+        this.attack(enemies, player, attacks, rng, fx, b);
+      }
+    }
+  }
+
+  /** Begin a charge: lock the line toward the player, draw the danger telegraph (a
+   *  damage-0 beam to the target), and brace. */
+  private startCharge(
+    enemies: EnemyPool,
+    player: Player,
+    attacks: EnemyAttackSystem,
+    fx: FxQueue,
+    b: number,
+  ): void {
+    const ex = enemies.posX[b]!;
+    const ez = enemies.posZ[b]!;
+    let dx = player.pos.x - ex;
+    let dz = player.pos.z - ez;
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l;
+    dz /= l;
+    // Charge to just PAST the player, capped at the wall (minus the body so it
+    // doesn't bury itself in the wall).
+    const wall = wallDistance(ex, ez, dx, dz, 60) - enemies.radius[b]!;
+    const dist = Math.min(wall, l + 4);
+    this.dirX = dx;
+    this.dirZ = dz;
+    this.sx = ex;
+    this.sz = ez;
+    this.tx = ex + dx * dist;
+    this.tz = ez + dz * dist;
+    this.chargeState = 1;
+    this.chargeT = CHARGE_TELE;
+    this.chargeHit = false;
+    // Danger line: a damage-0 telegraph beam (the render thickens it as it "charges",
+    // and flashes when the boss launches) — reuses the laser-sentinel beam visual.
+    attacks.beams.spawn(ex, ez, dx, dz, dist, CHARGE_LANE, CHARGE_TELE, 0);
+    fx.push('muzzle', ex, ez, dx, dz);
+  }
+
+  /** Advance an in-progress charge: hold during the telegraph, then snap-slide the
+   *  body along the line, running over the player for heavy contact. */
+  private driveCharge(
+    enemies: EnemyPool,
+    player: Player,
+    fx: FxQueue,
+    b: number,
+    dt: number,
+  ): void {
+    if (this.chargeState === 1) {
+      // Telegraph: brace in place (override steering drift) until the line elapses.
+      enemies.posX[b] = this.sx;
+      enemies.posZ[b] = this.sz;
+      enemies.velX[b] = 0;
+      enemies.velZ[b] = 0;
+      this.chargeT -= dt;
+      if (this.chargeT <= 0) {
+        this.chargeState = 2;
+        this.chargeT = CHARGE_SLIDE;
+        fx.push('muzzle', this.sx, this.sz, this.dirX, this.dirZ); // launch cue
+      }
+      return;
+    }
+    // Sliding: ease the body from start → target; deal one heavy contact hit if it
+    // catches the player.
+    this.chargeT -= dt;
+    const p = Math.min(1, 1 - Math.max(0, this.chargeT) / CHARGE_SLIDE);
+    const ease = p * (2 - p); // ease-out — a fast launch that settles
+    const bx = this.sx + (this.tx - this.sx) * ease;
+    const bz = this.sz + (this.tz - this.sz) * ease;
+    enemies.posX[b] = bx;
+    enemies.posZ[b] = bz;
+    if (!this.chargeHit) {
+      const ddx = player.pos.x - bx;
+      const ddz = player.pos.z - bz;
+      const rr = enemies.radius[b]! + player.stats.collisionRadius + 0.3;
+      if (ddx * ddx + ddz * ddz <= rr * rr) {
+        hitPlayer(player, CHARGE_DMG);
+        this.chargeHit = true;
+        fx.push('impact', bx, bz, this.dirX, this.dirZ);
+      }
+    }
+    if (this.chargeT <= 0) {
+      this.chargeState = 0;
+      this.timer = this.cadence(this.phase); // resume normal cadence
     }
   }
 

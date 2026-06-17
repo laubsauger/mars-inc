@@ -24,10 +24,12 @@ import {
   taken,
   isOffense,
   OFFENSE_TAGS,
+  INTERESTING_RARITIES,
 } from './upgrades';
 import { previewUpgrade, type UpgradeChange } from './preview';
 import { DRAFT_POOL } from './draft-pool';
 
+const MILESTONE_EVERY = 5; // every Nth level → a draft guaranteed an "interesting" card
 const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
@@ -256,7 +258,31 @@ export class DraftController {
             boost: this.foundationBoost(),
           })
         : [];
-    return [...forced, ...fresh];
+    return this.ensureMilestone([...forced, ...fresh], exclude);
+  }
+
+  /** Milestone draft (T-variety): every Nth level, guarantee the hand holds at least
+   *  one "interesting" (uncommon+) card — never an all-common parrot of +10% stats.
+   *  If the rolled hand is all common, swap a common slot for a rare+ pick. */
+  private ensureMilestone(hand: UpgradeDefinition[], exclude: Set<string>): UpgradeDefinition[] {
+    const lvl = this.deps.player.level;
+    if (lvl <= 0 || lvl % MILESTONE_EVERY !== 0) return hand;
+    if (hand.some((d) => INTERESTING_RARITIES.has(d.rarity))) return hand; // already spicy
+    const shownIds = new Set(exclude);
+    for (const d of hand) shownIds.add(d.id);
+    const [pick] = rollDraft(DRAFT_POOL, this.upgradeLevels, this.deps.rng, {
+      count: 1,
+      level: lvl,
+      luck: this.deps.player.luck,
+      banished: shownIds,
+      rarityFilter: INTERESTING_RARITIES,
+    });
+    if (!pick) return hand; // pool had nothing rare+ left → keep the common hand (V11)
+    // Replace a common slot (prefer the last, leave Lock-held slot 0 alone).
+    const swapAt = hand.map((d) => d.rarity).lastIndexOf('common');
+    if (swapAt >= 0) hand[swapAt] = pick;
+    else hand.push(pick);
+    return hand;
   }
 
   /** Roll a draft keeping any locked entries (reroll/banish). `keep` = ids to hold. */

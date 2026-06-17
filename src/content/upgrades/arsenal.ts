@@ -140,7 +140,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'executioners-writ',
     name: "Executioner's Writ",
-    description: 'Hits on enemies below 25% health detonate them for a finishing blast.',
+    description: 'Hits on enemies below 25% health detonate them for a 14-dmg blast (2m).',
     tags: ['execute', 'damage', 'aoe'],
     rarity: 'rare',
     maxLevel: 3,
@@ -160,16 +160,20 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'overwhelming-force',
     name: 'Overwhelming Force',
-    description: 'Shots knock back AND burst a small concussive blast on impact.',
-    tags: ['kinetic', 'explosive', 'aoe', 'control'],
+    description:
+      'CONVERTER: your knockback shots ALSO burst a 4-dmg concussive blast (1.6m) on impact (needs a knockback card).',
+    tags: ['explosive', 'aoe', 'control'],
     rarity: 'rare',
     maxLevel: 2,
     baseWeight: 4,
     synergyWeight: 3,
     role: 'converter',
     riskTier: 0,
-    apply: ({ mods, effects }) => {
-      mods.knockback += 11;
+    // Gate behind an existing knockback build (kinetic tag) so it reads as the
+    // CONVERTER it is — adding AoE on top — not a second parallel knockback card.
+    // No `mods.knockback` bump here; Concussive Rounds owns the knockback stat.
+    requiresAnyTags: ['kinetic'],
+    apply: ({ effects }) => {
       effects.on('hit', (c) => {
         c.dealArea(c.x, c.z, 1.6, 4);
       });
@@ -194,16 +198,16 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'railgun-mandate',
     name: 'Railgun Mandate',
-    description: '+3 pierce, +20% range, +15% damage — punch a hole down the lane.',
+    description: '+1 pierce, +12% range, +10% damage per level — punch a hole down the lane.',
     tags: ['pierce', 'precision', 'range', 'damage'],
     rarity: 'rare',
-    maxLevel: 2,
+    maxLevel: 3,
     baseWeight: 4,
     synergyWeight: 2,
     apply: ({ mods }) => {
-      mods.pierce += 3;
-      mods.rangeMult += 0.2;
-      mods.damageMult += 0.15;
+      mods.pierce += 1;
+      mods.rangeMult += 0.12;
+      mods.damageMult += 0.1;
     },
   },
   {
@@ -279,7 +283,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'golden-parachute',
     name: 'Golden Parachute',
-    description: 'CAPSTONE: kills sometimes pay out — a heal and a parting blast.',
+    description: 'CAPSTONE: ~10% of kills pay out — heal 6 HP and a parting blast (10 dmg, 3.5m).',
     tags: ['lifesteal', 'aoe'],
     rarity: 'legendary',
     maxLevel: 1,
@@ -299,7 +303,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'white-phosphorus',
     name: 'White Phosphorus',
-    description: 'CAPSTONE: a burning enemy that dies ignites everything around it (viral burn).',
+    description:
+      'CAPSTONE: a burning enemy that dies ignites everything within 3m (viral burn, 5 dps/2s).',
     tags: ['burn', 'aoe', 'status'],
     requiresAllTags: ['burn'],
     rarity: 'legendary',
@@ -385,6 +390,20 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     },
   },
   {
+    id: 'long-fuse',
+    name: 'Long Fuse',
+    description: 'GRENADE: +4m throw range per level — reach the back line.',
+    tags: ['grenade', 'explosive', 'range'],
+    grantsTags: ['grenade'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 6,
+    synergyWeight: 2,
+    apply: ({ mods }) => {
+      mods.grenadeRangeAdd += 4;
+    },
+  },
+  {
     id: 'heavy-ordnance',
     name: 'Heavy Ordnance',
     description: 'GRENADE: +50% grenade damage and +1 blast radius per level.',
@@ -402,15 +421,15 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'concussion-charge',
     name: 'Concussion Charge',
-    description: 'GRENADE: +60% grenade knockback — blow a lane through the horde.',
+    description: 'GRENADE: +25% grenade knockback per level — blow a lane through the horde.',
     tags: ['grenade', 'kinetic', 'control'],
     grantsTags: ['grenade'],
     rarity: 'uncommon',
-    maxLevel: 2,
+    maxLevel: 3,
     baseWeight: 6,
     synergyWeight: 2,
     apply: ({ mods }) => {
-      mods.grenadeKnockbackMult += 0.6;
+      mods.grenadeKnockbackMult += 0.25;
     },
   },
   {

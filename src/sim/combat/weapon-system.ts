@@ -24,6 +24,7 @@ import { corrodeAmp, shockAmp } from './status';
 import { procCoefOf } from './proc';
 import { applyAreaDamage } from './aoe';
 import { knockbackFrom } from './knockback';
+import { wallDistance } from '../arena';
 import type { RunMods } from '../progression/mods';
 import type { ConditionalResult } from '../progression/effects';
 import { type FxQueue, ImpactProfile } from '../fx';
@@ -76,6 +77,15 @@ export interface KillEvent {
  *  dealt (T70, V33) so on-hit DoTs can scale as a fraction of the hit. */
 export type OnHit = (enemy: number, crit: boolean, procCoef: number, hitDamage: number) => void;
 
+// Chain lightning is a CROWD-SOFTENER, not a wave-deleter: each arc carries only
+// this fraction of the hit BEFORE falloff compounds, so even a high-falloff capstone
+// can't pass near-full damage down a whole pack (the instant-wipe complaint). The
+// first arc ≈ hit × COEF × chainFalloff, weaker every hop after.
+const CHAIN_DAMAGE_COEF = 0.4;
+// Multishot total-damage exponent (<1 → diminishing returns). projectileCount^this
+// is the total volley damage vs the 1-projectile baseline: 0.7 → ×2 proj ≈ 1.62×,
+// ×4 ≈ 2.64×, ×6 ≈ 3.5×. Keeps multishot strong but ⊥ a strict ×N auto-win.
+const MULTISHOT_FALLOFF = 0.7;
 const RECOIL_CAP = 5.0; // max per-shot velocity kick (V10) — heavy guns kick, ⊥ launch
 const RECOIL_SCALE = 6.5; // global recoil punch-up so kick is a real movement factor (toned down from 10 — minigun shove was uncontrollable)
 const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
@@ -90,7 +100,13 @@ export class WeaponSystem {
   damageThisStep = 0;
   /** True if any weapon fired this step (drives the on-shot trigger, T55). */
   firedThisStep = false;
+  /** True if any hit this step was a CRIT — drives the `recentCrit` build conditional
+   *  (Batch 1), tracked independently of trigger registration. */
+  critThisStep = false;
   private query: number[] = [];
+  /** Reused scratch for hitscan-beam hits — packed (distance,enemyIndex) for a
+   *  nearest-first sort without per-shot allocation (V5). */
+  private beamHits: number[] = [];
   private chainQuery: number[] = []; // scratch for chain-lightning arc lookup
   private chainVisited: number[] = []; // enemies already hit this chain (no repeats)
 
@@ -131,7 +147,8 @@ export class WeaponSystem {
     this.kills.length = 0;
     this.damageThisStep = 0;
     this.firedThisStep = false;
-    this.fire(player, enemies, mods, rng, dt, fx, cond, firing);
+    this.critThisStep = false;
+    this.fire(player, enemies, mods, rng, dt, fx, cond, firing, onHit);
     this.advanceProjectiles(enemies, hash, mods, rng, dt, fx, onHit);
     compactDead(enemies, this.kills, fx);
   }
@@ -145,6 +162,7 @@ export class WeaponSystem {
     fx: FxQueue,
     cond: ConditionalResult,
     firing: boolean,
+    onHit?: OnHit,
   ): void {
     for (const w of this.weapons) {
       w.cooldownLeft -= dt;
@@ -162,11 +180,21 @@ export class WeaponSystem {
       // Fold in the transient fire-rate ramp (Kinetic Overdraft etc, T55).
       w.cooldownLeft = w.def.cooldown / Math.max(0.01, mods.fireRateMult * cond.fireRateMult);
 
+      // Multishot DIMINISHING RETURNS (build-variety pass): extra projectiles from
+      // the multishot mult used to each deal FULL damage → +projectile was a strict
+      // ×N DPS button that beat every other build. Now total volley damage scales
+      // SUB-linearly: each added projectile pays less. `count^MULTISHOT_FALLOFF`
+      // total (e.g. ×2 proj = ~1.62× damage, ×4 = ~2.6×, ×6 = ~3.5×), so multishot
+      // is a real direction with a cost, not the no-brainer. Applied to the per-shot
+      // multiplier (not the weapon's innate pellets — a shotgun's spread stays full).
+      const pc = Math.max(1, mods.projectileCount);
+      const multishotFactor = pc > 1 ? Math.pow(pc, MULTISHOT_FALLOFF) / pc : 1;
+
       // Damage spec with run mods + dynamic conditionals folded in (T38), still
       // resolved through the pipeline (V3).
       const dmg: WeaponDamageSpec = {
         ...w.def.damage,
-        multiplier: w.def.damage.multiplier * mods.damageMult * cond.damageMult,
+        multiplier: w.def.damage.multiplier * mods.damageMult * cond.damageMult * multishotFactor,
         critChance: Math.min(1, w.def.damage.critChance + mods.critChanceAdd + cond.critAdd),
         // Crit-damage amplifier (T35): scale the BONUS above 1× by critDamageMult.
         critMultiplier: 1 + (w.def.damage.critMultiplier - 1) * mods.critDamageMult,
@@ -200,6 +228,25 @@ export class WeaponSystem {
         const a = aimAngle + fan + jitter;
         const dx = Math.sin(a);
         const dz = Math.cos(a);
+        if (w.def.hitscan) {
+          // INSTANT beam: damage everything in the line, draw a laser (no projectile).
+          this.fireBeam(
+            player,
+            enemies,
+            rng,
+            fx,
+            dx,
+            dz,
+            effRange,
+            w.def.hitscan.width,
+            dmg,
+            pierce,
+            procCoef,
+            mods,
+            onHit,
+          );
+          continue;
+        }
         this.projectiles.spawn(
           player.pos.x + dx * muzzle,
           player.pos.z + dz * muzzle,
@@ -246,6 +293,74 @@ export class WeaponSystem {
       player.recoilTimer = 0.25; // "recoil is moving the player" window (T55)
       this.firedThisStep = true;
     }
+  }
+
+  /** Hitscan beam (T-laser): instantly damage every active enemy within `width` of
+   *  the aim line out to `range` (capped by the wall), piercing up to `pierce+1`
+   *  bodies nearest-first. Routes each hit through the SAME damage pipeline (V3),
+   *  shield, blood/dmg FX, and on-hit triggers as a bullet — then draws the laser to
+   *  the wall. No projectile is spawned. */
+  private fireBeam(
+    player: Player,
+    enemies: EnemyPool,
+    rng: Rng,
+    fx: FxQueue,
+    dx: number,
+    dz: number,
+    range: number,
+    width: number,
+    dmg: WeaponDamageSpec,
+    pierce: number,
+    procCoef: number,
+    mods: RunMods,
+    onHit?: OnHit,
+  ): void {
+    const ox = player.pos.x;
+    const oz = player.pos.z;
+    const maxDist = Math.min(range, wallDistance(ox, oz, dx, dz, range));
+    // Gather every enemy the beam line passes through (projection within range,
+    // perpendicular distance within the beam half-width + the body radius).
+    this.beamHits.length = 0;
+    for (let e = 0; e < enemies.count; e++) {
+      if (enemies.health[e]! <= 0 || enemies.state[e] !== EnemyState.Active) continue;
+      const ex = enemies.posX[e]! - ox;
+      const ez = enemies.posZ[e]! - oz;
+      const t = ex * dx + ez * dz;
+      if (t < 0 || t > maxDist) continue;
+      const perp2 = ex * ex + ez * ez - t * t;
+      const w = width + enemies.radius[e]!;
+      if (perp2 > w * w) continue;
+      this.beamHits.push(e | (Math.round(t * 64) << 12)); // pack (t,e) → sort nearest-first
+    }
+    this.beamHits.sort((a, b) => a - b); // higher bits = t → ascending distance
+    const max = Math.min(pierce + 1, this.beamHits.length);
+    for (let h = 0; h < max; h++) {
+      const e = this.beamHits[h]! & 0xfff;
+      const packet = makePacket({
+        weaponId: 'beam',
+        baseDamage: dmg.base,
+        additive: dmg.additive,
+        multiplier: dmg.multiplier * corrodeAmp(enemies, e) * shockAmp(enemies, e),
+        critChance: dmg.critChance,
+        critMultiplier: dmg.critMultiplier,
+      });
+      const out = computeOutgoing(packet, rng);
+      const mit = applyMitigation(out.amount, 0, 0);
+      if (enemies.shield[e]! > 0) {
+        enemies.shield[e] = enemies.shield[e]! - 1; // absorb the whole instance, pop
+      } else {
+        this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
+        enemies.health[e]! -= mit.toHealth;
+      }
+      fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!, dx, dz, ImpactProfile.Arc);
+      emitBlood(fx, enemies, e, dx, dz);
+      fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
+      if (out.crit) this.critThisStep = true;
+      if (onHit) onHit(e, out.crit, procCoef, mit.toHealth);
+      if (mods.knockback > 0) knockbackFrom(enemies, e, ox, oz, mods.knockback);
+    }
+    // The laser always reaches the wall — draw origin → wall point (absolute end).
+    fx.push('laser', ox, oz, ox + dx * maxDist, oz + dz * maxDist);
   }
 
   private advanceProjectiles(
@@ -308,11 +423,17 @@ export class WeaponSystem {
             critMultiplier: pr.critMult[i]!,
           });
           const out = computeOutgoing(packet, rng);
-          const mit = applyMitigation(out.amount, 0, 0); // enemies: no armor/shield yet
-          // Count effective damage (clamp to remaining health, no overkill) for
-          // run stats — must match what the sim actually removed (V20).
-          this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
-          enemies.health[e]! -= mit.toHealth;
+          const mit = applyMitigation(out.amount, 0, 0);
+          // Absorb shield (T-beam): a live charge soaks this WHOLE damage instance
+          // and pops — the hit still registers (triggers/fx fire) but deals no HP.
+          if (enemies.shield[e]! > 0) {
+            enemies.shield[e] = enemies.shield[e]! - 1;
+          } else {
+            // Count effective damage (clamp to remaining health, no overkill) for
+            // run stats — must match what the sim actually removed (V20).
+            this.damageThisStep += Math.min(mit.toHealth, enemies.health[e]!);
+            enemies.health[e]! -= mit.toHealth;
+          }
           // Drone (and other "dumb") bolts don't inherit the build's GLOBAL on-hit
           // mods — chain, knockback, on-hit status triggers all gate on `inherit`,
           // so a companion drone isn't secretly an explosive/chaining murder-bot
@@ -338,6 +459,7 @@ export class WeaponSystem {
           emitBlood(fx, enemies, e, pr.velX[i]!, pr.velZ[i]!);
           // Floating damage number at the enemy (amount in dx, crit flag in variant).
           fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
+          if (out.crit) this.critThisStep = true;
           // On-hit hook (before compaction → index valid): triggers + status (T38/T39).
           // Proc coefficient rides the projectile → scales on-hit effects (T69, V32);
           // the hit's damage (T70, V33) lets on-hit DoTs scale as a fraction of it.
@@ -470,7 +592,7 @@ export class WeaponSystem {
   ): void {
     let curX = enemies.posX[fromE]!;
     let curZ = enemies.posZ[fromE]!;
-    let mult = pr.dmgMult[i]! * mods.chainFalloff;
+    let mult = pr.dmgMult[i]! * CHAIN_DAMAGE_COEF * mods.chainFalloff;
     const visited = this.chainVisited;
     visited.length = 0;
     visited.push(fromE);
@@ -504,6 +626,7 @@ export class WeaponSystem {
       });
       const out = computeOutgoing(packet, rng);
       const mit = applyMitigation(out.amount, 0, 0);
+      if (out.crit) this.critThisStep = true;
       this.damageThisStep += Math.min(mit.toHealth, enemies.health[best]!);
       enemies.health[best]! -= mit.toHealth;
       const bx = enemies.posX[best]!;

@@ -31,6 +31,7 @@ export interface RunMods {
   grenadeCdMult: number; // throw cooldown × this (<1 = faster)
   grenadeDamageMult: number; // grenade blast damage × this
   grenadeRadiusAdd: number; // + blast radius (world units)
+  grenadeRangeAdd: number; // + max throw distance (world units, on top of the base)
   grenadeKnockbackMult: number; // outward shove × this
   grenadeMolotov: boolean; // Molotov: the blast also sets the area on fire (burn)
   grenadePull: boolean; // Vacuum Charge: the blast SUCKS enemies in instead of shoving them out
@@ -61,6 +62,7 @@ export function defaultMods(): RunMods {
     grenadeCdMult: 1,
     grenadeDamageMult: 1,
     grenadeRadiusAdd: 0,
+    grenadeRangeAdd: 0,
     grenadeKnockbackMult: 1,
     grenadeMolotov: false,
     grenadePull: false,

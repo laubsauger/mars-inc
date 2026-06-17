@@ -88,6 +88,12 @@ export function UpgradeScreen() {
 
   if (!draft.open) return null;
 
+  // Per-draft identity: level increments every level-up, so sequential drafts
+  // always get a fresh key → the LEVEL badge + card hand REMOUNT and replay their
+  // entrance animation. Without this, a chained level-up swaps the cards instantly
+  // and the player can't tell the hand changed.
+  const dealKey = `${draft.level}:${key}`;
+
   const toggleLock = (id: string) =>
     setLocked((prev) => {
       const next = new Set(prev);
@@ -99,7 +105,10 @@ export function UpgradeScreen() {
   return (
     <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-pit/90 px-4 font-mono backdrop-blur-md">
       <div className="mb-6 text-center">
-        <div className="mx-auto mb-2 flex w-fit items-center gap-2 border border-cyan/45 bg-pit/70 px-3 py-1 text-xs uppercase text-cyan shadow-[0_0_24px_rgba(50,215,255,0.16)]">
+        <div
+          key={dealKey}
+          className="draft-flash mx-auto mb-2 flex w-fit items-center gap-2 border border-cyan/45 bg-pit/70 px-3 py-1 text-xs uppercase text-cyan shadow-[0_0_24px_rgba(50,215,255,0.16)]"
+        >
           <span className="h-1.5 w-1.5 bg-cyan" />
           LEVEL {draft.level}
           <span className="h-1.5 w-1.5 bg-cyan" />
@@ -110,7 +119,9 @@ export function UpgradeScreen() {
         <div className="mt-2 text-xs uppercase text-dust">Mars Inc authorization pending</div>
       </div>
 
-      <div className="flex max-w-full flex-col gap-4 md:flex-row">
+      {/* key=dealKey → the whole hand remounts on a NEW draft so the staggered
+          deal-in animation replays; chained level-ups visibly re-deal. */}
+      <div key={dealKey} className="flex max-w-full flex-col gap-4 md:flex-row">
         {draft.options.map((o, i) => {
           const isLocked = locked.has(o.id);
           const isHeld = draft.lockedId === o.id;
@@ -119,7 +130,8 @@ export function UpgradeScreen() {
           return (
             <div
               key={o.id}
-              className={`group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
+              style={{ animationDelay: `${i * 70}ms` }}
+              className={`draft-deal group/card relative flex min-h-[30rem] w-[21rem] max-w-[92vw] flex-col overflow-hidden rounded-sm border-2 bg-pit bg-gradient-to-br p-5 shadow-[0_20px_60px_rgba(0,0,0,0.62),inset_0_0_0_1px_rgba(7,5,4,0.92)] transition ${style.border} ${style.bg} ${style.glow} ${isLocked ? 'ring-2 ring-gold' : isUpgrade ? 'ring-1 ring-gold/35' : ''}`}
             >
               <div className={`absolute inset-x-0 top-0 h-1 ${style.bar}`} />
               {/* Faint "approved" corner stamp — tucked into the very top-right corner,

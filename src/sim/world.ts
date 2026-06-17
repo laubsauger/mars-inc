@@ -12,7 +12,12 @@ import { HealthDropSystem } from './health-drops';
 import { BountySystem } from './bounty-system';
 import { availableEvolution } from '../content/weapons/evolutions';
 import { type BossReward, type RewardCtx, rollBossRewards } from './boss-rewards';
-import { WaveDirector, computeAdaptation, difficultyScale } from './director/wave-director';
+import {
+  WaveDirector,
+  computeAdaptation,
+  hpScaleFor,
+  countSawtooth,
+} from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
 import { CorpseSystem } from './combat/corpses';
@@ -28,7 +33,13 @@ import { stepXpResource } from './xp-resource';
 import { FxQueue } from './fx';
 import { type RunMods, defaultMods, resetMods } from './progression/mods';
 import { type PermanentLevels, applyPermanents } from './progression/permanents';
-import { BuildEffects, type ConditionalResult, type TriggerCtx } from './progression/effects';
+import {
+  BuildEffects,
+  type ConditionalResult,
+  type TriggerCtx,
+  type TriggerEvent,
+} from './progression/effects';
+import { promoteSpawns, eliteProgress } from './director/elites';
 import { activeArena } from './arena';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
@@ -53,6 +64,8 @@ export interface RunSummary {
 }
 
 const COUNTDOWN_SECONDS = 3;
+const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
+const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
 
 const ZERO_INPUT: InputSnapshot = {
   moveX: 0,
@@ -114,6 +127,14 @@ export class World {
   private novaDamageThisStep = 0;
   /** Sprint active last step — edge-detects the Kinetic Boots dash shockwave. */
   private prevSprintActive = false;
+  /** Recent-crit window (s): set on a crit, decays; feeds the `recentCrit` build
+   *  conditional (crit-chain cards, Batch 1). */
+  private recentCritTimer = 0;
+  /** Edge state for the low-HP trigger (fires once each time you DROP below the
+   *  threshold, not every step you're under it). */
+  private wasLowHp = false;
+  /** Were there enemies last step? → edge-detects a wave clear (all dead). */
+  private hadEnemies = false;
   /** Render-facing FX events; the render layer drains this each frame. */
   readonly fx = new FxQueue();
   readonly director: WaveDirector;
@@ -134,6 +155,11 @@ export class World {
   /** Grenade cooldown progress 0..1 (1 = ready to throw) — for the ability hotbar. */
   get grenadeCharge01(): number {
     return this.grenadeCdMax > 0 ? Math.min(1, 1 - this.grenadeCd / this.grenadeCdMax) : 1;
+  }
+  /** Effective max grenade throw distance (base + range upgrades). The render aim
+   *  marker reads this so the reticle reflects throw-range upgrades. */
+  get grenadeMaxThrow(): number {
+    return GRENADE_MAX_THROW + this.mods.grenadeRangeAdd;
   }
   paused = false;
 
@@ -290,12 +316,17 @@ export class World {
       this.elapsed,
       dt,
       computeAdaptation(this.mods),
-      // Fold the Act's difficulty multiplier into the spawn-time HP scale (Act 2's
-      // hosts are tankier). Scale is boss-kill-only — spawn-time only, never
-      // re-scales live units (no time/level runaway).
-      difficultyScale(this.stats.bossKills) * activeArena().difficultyMult,
+      // Spawn-time HP scale (never re-scales live units, V12). Steps HARD per power
+      // tier (player level + boss kills) × the Act's base difficulty, so fodder HP
+      // tracks the player's escalating damage instead of the run scaling by count.
+      hpScaleFor(this.player.level, this.stats.bossKills) * activeArena().difficultyMult,
       this.fx,
+      // Sawtooth: each HP step thins the crowd, density re-earned across the tier.
+      countSawtooth(this.player.level, this.stats.bossKills),
     );
+    // Escalate difficulty in KIND, not just count (T-elite): freshly-spawned fodder
+    // gains baseline shields as the run deepens + a slice promotes to elites.
+    promoteSpawns(this.enemies, eliteProgress(this.player.level, this.stats.bossKills), this.rng);
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
     // Companion drones hunt + fire into the shared projectile pool (V3 pipeline).
     // After the enemy system so the spatial hash is current; before the weapon
@@ -464,6 +495,18 @@ export class World {
       this.fx,
       dt,
     );
+    // Pet kills drop XP + count toward stats, but DELIBERATELY skip the player's
+    // on-kill build (fireKillTriggers/corpse.ingest) and necro re-raise — pets are
+    // autonomous minions, not your weapon, so they don't set off your explosions or
+    // snowball into more pets (T-necro balance).
+    if (this.pets.kills.length > 0) {
+      emitShards(this.shards, this.pets.kills);
+      this.stats.kills += this.pets.kills.length;
+      for (const k of this.pets.kills) {
+        this.stats.killsByVariant[k.variant] = (this.stats.killsByVariant[k.variant] ?? 0) + 1;
+        splitOnDeath(this.enemies, k.variant, k.x, k.z, this.rng); // blobs still rupture
+      }
+    }
     const leveled = stepXp(this.shards, this.player, dt);
     // XP-as-resource builds (T58): interest/magnetar/liquidation/crash over the
     // loose shard pool (pipeline-routed, V3/V21). Free until a card is taken.
@@ -513,6 +556,28 @@ export class World {
     this.stats.timeSurvived = this.elapsed;
     this.stats.level = this.player.level;
 
+    // ── Edge-triggered player events (Batch 1) ──────────────────────────────
+    // recentCrit window: decay, refresh on any crit this step → feeds the build
+    // conditional next step (crit-chain cards). Tracked from the weapon system so
+    // it works even without a crit TRIGGER registered.
+    if (this.recentCritTimer > 0) this.recentCritTimer = Math.max(0, this.recentCritTimer - dt);
+    if (this.weaponSystem.critThisStep) this.recentCritTimer = RECENT_CRIT_WINDOW;
+    // sprint: fire once on the dash rising edge (momentum builds).
+    if (sprintRising && this.effects.has('sprint')) this.firePlayerTrigger('sprint');
+    // lowHp: fire ONCE each time health drops below the threshold (panic builds),
+    // re-armed only after climbing back above it.
+    const lowNow =
+      this.player.maxHealth > 0 && this.player.health / this.player.maxHealth < LOW_HP_FRAC;
+    if (lowNow && !this.wasLowHp && this.effects.has('lowHp')) this.firePlayerTrigger('lowHp');
+    this.wasLowHp = lowNow;
+    // waveClear: fire when the last enemy dies (clear-the-room payoffs). Checked
+    // after splitters have spawned their children so a blob pop isn't a false clear.
+    const enemiesNow = this.enemies.count > 0;
+    if (!enemiesNow && this.hadEnemies && this.effects.has('waveClear')) {
+      this.firePlayerTrigger('waveClear');
+    }
+    this.hadEnemies = enemiesNow;
+
     this.draftCtl.update(dt); // tick the flourish delay → open the draft when due
 
     // Death ends the run (loss). EACH boss kill is a progression hinge: it opens a
@@ -543,7 +608,7 @@ export class World {
       nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
       firingRampSec: this.firingRampSec,
       hpFrac: this.player.maxHealth > 0 ? this.player.health / this.player.maxHealth : 0,
-      recentCrit: false, // wired when the weapon system reports crits (T40)
+      recentCrit: this.recentCritTimer > 0, // crit-chain cards (Batch 1)
       recoilActive: this.player.recoilTimer > 0, // recoil builds (T55)
       stationarySec: this.stationarySec,
     });
@@ -586,7 +651,7 @@ export class World {
           radius,
           // magnitude scales by coef (V32); hitFx + shove so trigger blasts (Singularity
           // etc.) read as real explosions, not silent damage.
-          { amount: amount * procCoef, fx: this.fx, hitFx: true, knockback: 22 },
+          { amount: amount * procCoef, fx: this.fx, hitFx: true, knockback: 10, falloff: 0.75 },
           this.rng,
         );
         this.hitTriggerDamage += d;
@@ -627,9 +692,10 @@ export class World {
     const ddx = tx - px;
     const ddz = tz - pz;
     const d = Math.hypot(ddx, ddz);
-    if (d > GRENADE_MAX_THROW) {
-      tx = px + (ddx / d) * GRENADE_MAX_THROW;
-      tz = pz + (ddz / d) * GRENADE_MAX_THROW;
+    const maxThrow = this.grenadeMaxThrow;
+    if (d > maxThrow) {
+      tx = px + (ddx / d) * maxThrow;
+      tz = pz + (ddz / d) * maxThrow;
     }
     this.grenades.throwAt(px, pz, tx, tz);
     this.grenadeCd = 1.2 * m.grenadeCdMult;
@@ -646,7 +712,15 @@ export class World {
   /** Fire the on-shot trigger once per step the player fired (T55). `x,z` is the
    *  player; handlers compute "behind" from `player.facing`. */
   private fireShotTrigger(): void {
-    this.effects.fire('shot', {
+    this.firePlayerTrigger('shot');
+  }
+
+  /** Fire a PLAYER-CENTERED trigger (shot / sprint / lowHp / waveClear) — events
+   *  with no specific enemy target. AoE routes through the V3 pipeline like the
+   *  other triggers; status falls on the nearest hit. Batch 1 wires sprint/lowHp/
+   *  waveClear so cards can hook movement, panic, and clear-the-room moments. */
+  private firePlayerTrigger(event: TriggerEvent): void {
+    this.effects.fire(event, {
       x: this.player.pos.x,
       z: this.player.pos.z,
       player: this.player,
@@ -667,7 +741,7 @@ export class World {
           x,
           z,
           radius,
-          { amount, fx: this.fx, hitFx: true, knockback: 22 },
+          { amount, fx: this.fx, hitFx: true, knockback: 10, falloff: 0.75 },
           this.rng,
         );
         this.hitTriggerDamage += d;
@@ -713,7 +787,7 @@ export class World {
                   ax,
                   az,
                   radius,
-                  { amount, fx: this.fx, hitFx: true, knockback: 22 },
+                  { amount, fx: this.fx, hitFx: true, knockback: 10, falloff: 0.75 },
                   this.rng,
                 );
                 this.hitTriggerDamage += d;
@@ -756,7 +830,7 @@ export class World {
           x,
           z,
           radius,
-          { amount, fx: this.fx, hitFx: true, knockback: 22 },
+          { amount, fx: this.fx, hitFx: true, knockback: 10, falloff: 0.75 },
           this.rng,
         );
         dealt += d;
@@ -802,6 +876,10 @@ export class World {
     // Frostbrand, Hair-Trigger…) register onto a clean slate (T35+).
     resetMods(this.mods);
     this.effects.reset();
+    this.recentCritTimer = 0;
+    this.wasLowHp = false;
+    this.hadEnemies = false;
+    this.prevSprintActive = false;
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
     // Draft resources read the permanent bonuses applied above (T35), so reset the
     // draft controller AFTER permanents.

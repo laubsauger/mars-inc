@@ -3,7 +3,9 @@ import {
   WaveDirector,
   budgetAt,
   computeAdaptation,
-  difficultyScale,
+  hpScaleFor,
+  countSawtooth,
+  powerProgress,
   NEUTRAL_ADAPT,
 } from './wave-director';
 import { EnemyPool, RUST_MITE, PHASE_STALKER, SpawnKind } from '../enemies';
@@ -44,15 +46,31 @@ describe('Phase Stalker teleporter (T33+)', () => {
   });
 });
 
-describe('difficultyScale (boss-kill-only spawn HP)', () => {
-  it('is 1 until a boss is slain, then steps up per boss kill only', () => {
-    expect(difficultyScale(0)).toBe(1); // fresh start = base HP
-    // NO time/level ramp — scale depends solely on boss kills.
-    expect(difficultyScale(1)).toBeGreaterThan(difficultyScale(0));
-    expect(difficultyScale(2)).toBeGreaterThan(difficultyScale(1));
-    // Each boss is a fixed +50% step (monotonic, bounded by boss count).
-    expect(difficultyScale(1)).toBeCloseTo(1.5);
-    expect(difficultyScale(2)).toBeCloseTo(2.0);
+describe('power-tiered escalation (T44 rework — HP steps, count sawtooth)', () => {
+  it('HP holds ×1 through the first tier, then steps HARD per tier', () => {
+    expect(hpScaleFor(1, 0)).toBe(1); // L1, tier 0
+    expect(hpScaleFor(5, 0)).toBe(1); // still tier 0 (L1–5)
+    expect(hpScaleFor(6, 0)).toBeCloseTo(1.5); // tier 1
+    expect(hpScaleFor(11, 0)).toBeCloseTo(2.25); // tier 2
+    expect(hpScaleFor(16, 0)).toBeCloseTo(3.375); // tier 3 — fodder genuinely chunky
+  });
+
+  it('a boss kill jumps a whole power tier (big HP step)', () => {
+    expect(hpScaleFor(1, 1)).toBeCloseTo(1.5); // +1 boss = +1 tier even at L1
+    expect(hpScaleFor(6, 1)).toBeCloseTo(2.25); // tier 1 (level) + 1 (boss) = tier 2
+  });
+
+  it('count sawtooth drops at each tier and recovers across it', () => {
+    expect(countSawtooth(1, 0)).toBeCloseTo(0.6); // fresh tier → thinned crowd (COUNT_FLOOR)
+    expect(countSawtooth(5, 0)).toBeGreaterThan(countSawtooth(1, 0)); // recovers within tier
+    // New tier RESETS the density (the sawtooth tooth): L6 (tier 1 start) < L5 peak.
+    expect(countSawtooth(6, 0)).toBeLessThan(countSawtooth(5, 0));
+  });
+
+  it('powerProgress folds level + boss kills into one tier clock', () => {
+    expect(powerProgress(1, 0)).toBe(0);
+    expect(powerProgress(6, 0)).toBe(5);
+    expect(powerProgress(1, 1)).toBe(5); // a boss = a full tier of progress
   });
 
   it('applies the HP scale to spawned fodder (per-instance maxHp)', () => {

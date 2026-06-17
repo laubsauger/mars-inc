@@ -190,6 +190,16 @@ export function isOffense(u: UpgradeDefinition): boolean {
   return u.tags.some((t) => OFFENSE_TAGS.has(t));
 }
 
+/** Rarities that count as an "interesting" milestone reward — anything past the
+ *  plain common stat tune-up. A milestone draft guarantees ≥1 of these (T-variety). */
+export const INTERESTING_RARITIES: ReadonlySet<Rarity> = new Set([
+  'uncommon',
+  'rare',
+  'legendary',
+  'corrupted',
+  'prototype',
+]);
+
 export interface DraftParams {
   count?: number;
   level?: number;
@@ -199,23 +209,39 @@ export interface DraftParams {
   gates?: ReadonlySet<string>;
   /** Optional weight nudge toward a tag set (foundation pity, T-pity). */
   boost?: DraftBoost | undefined;
+  /** When set, only cards of these rarities are eligible (milestone "interesting"
+   *  rolls draw from rare+ tiers). */
+  rarityFilter?: ReadonlySet<Rarity> | undefined;
 }
 
 /** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
  *  leans on, so a card you've set up appears more) + per-rule multipliers, all
  *  scaled by rarity×level×luck. `counts` = ownedTags (tags ∪ grantsTags). */
+// Per-owned-level repeat damping (T-variety). A card you've already taken shows up
+// LESS each subsequent draft, so the draft stops parroting the same "+10% damage"
+// 15 times and surfaces fresh options — the archetype stays supported by SIBLING
+// cards (tag synergy) rather than the one card you keep seeing. Not zero: a stack
+// you're building can still re-appear, just not dominate.
+const REPEAT_DAMP = 0.55;
+
 function weightOf(
   u: UpgradeDefinition,
   counts: Map<string, number>,
   level: number,
   luck: number,
+  ownedLevel: number,
   boost?: DraftBoost,
 ): number {
+  // Synergy is the SUM of owned tag counts, but capped so one deep archetype can't
+  // run away and crowd the draft with a single family (the "all pets" problem).
   let synergy = 0;
   for (const t of u.tags) synergy += counts.get(t) ?? 0;
   if (u.requiresAnyTags) for (const t of u.requiresAnyTags) synergy += counts.get(t) ?? 0;
   if (u.requiresAllTags) for (const t of u.requiresAllTags) synergy += counts.get(t) ?? 0;
+  synergy = Math.min(synergy, 6); // cap the snowball — synergy biases, never dominates
   let w = (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck);
+  // Damp the EXACT card by how many levels of it you already own → forces variety.
+  if (ownedLevel > 0) w /= 1 + ownedLevel * REPEAT_DAMP;
   if (u.weightRules) {
     for (const rule of u.weightRules) {
       const hit = rule.all
@@ -247,16 +273,17 @@ export function rollDraft(
   const luck = params.luck ?? 0;
   const boost = params.boost;
   const counts = ownedTags(registry, levels);
-  const pool = available(registry, levels, params.banished, params.gates, counts);
+  let pool = available(registry, levels, params.banished, params.gates, counts);
+  if (params.rarityFilter) pool = pool.filter((u) => params.rarityFilter!.has(u.rarity));
   const picks: UpgradeDefinition[] = [];
 
   while (picks.length < count && pool.length > 0) {
     let total = 0;
-    for (const u of pool) total += weightOf(u, counts, level, luck, boost);
+    for (const u of pool) total += weightOf(u, counts, level, luck, taken(levels, u.id), boost);
     let r = rng.next() * total;
     let idx = 0;
     for (let i = 0; i < pool.length; i++) {
-      r -= weightOf(pool[i]!, counts, level, luck, boost);
+      r -= weightOf(pool[i]!, counts, level, luck, taken(levels, pool[i]!.id), boost);
       if (r <= 0) {
         idx = i;
         break;

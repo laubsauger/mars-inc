@@ -376,28 +376,31 @@ export class Effects {
             color: COL.kineticGold,
           });
           break;
-        case 'corpseblast':
-          // Overkill detonation — a TOXIC-GREEN ring + dust, unmistakably its own
-          // read vs the gold explosive blast (so you learn the corpse mechanic).
+        case 'corpseblast': {
+          // Overkill detonation — a green read (its own identity vs the gold blast),
+          // but TONED DOWN: a tighter, shorter-lived ring + a dim dust scuff, not a
+          // big saturated green flash. Dimmed green so bloom doesn't blow it out.
+          const corpseGreen = COL.toxicGreen.clone().multiplyScalar(0.55);
           this.impact.spawn({
             x: e.x,
             z: e.z,
-            s0: 0.8,
-            s1: 4.0,
-            life: 0.4,
+            s0: 0.6,
+            s1: 2.4,
+            life: 0.28,
             spin: 0,
-            color: COL.toxicGreen,
+            color: corpseGreen,
           });
           this.dust.spawn({
             x: e.x,
             z: e.z,
-            s0: 1.4,
-            s1: 3.6,
-            life: 0.44,
+            s0: 1.0,
+            s1: 2.2,
+            life: 0.32,
             spin: 3,
-            color: COL.toxicGreen,
+            color: corpseGreen,
           });
           break;
+        }
         case 'ember':
           // Tiny rising fire fleck on a burn tick — subtle, no sound.
           this.muzzle.spawn({
