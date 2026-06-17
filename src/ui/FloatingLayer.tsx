@@ -22,7 +22,7 @@ export function FloatingLayer() {
           <div
             key={l.id}
             className={`absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-mono tabular-nums ${
-              isPickup && !l.active ? 'font-semibold' : 'font-black'
+              isPickup ? (l.active ? 'font-black' : 'font-semibold') : 'font-bold'
             }`}
             style={{
               left: l.x,

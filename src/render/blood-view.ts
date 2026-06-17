@@ -19,8 +19,11 @@ import {
   type Scene,
 } from 'three';
 import { ENEMY_BY_VARIANT } from '../sim/enemies';
+import { clampPoint } from '../sim/arena';
 import type { FxEvent } from '../sim/fx';
 import { COL } from './art/palette';
+
+const BLOOD_WALL_INSET = 0.25; // keep spray + decals this far inside the wall
 
 const MAX_DROPLETS = 1024;
 const MAX_DECALS = 256;
@@ -296,6 +299,11 @@ export class BloodView {
       this.px[i]! += this.vx[i]! * dt;
       this.py[i]! += this.vy[i]! * dt;
       this.pz[i]! += this.vz[i]! * dt;
+      // Keep spray INSIDE the pit (knockback/shockwaves can fling it over the wall),
+      // so droplets + their landing decals never render out in the void.
+      const c = clampPoint(this.px[i]!, this.pz[i]!, BLOOD_WALL_INSET);
+      this.px[i] = c.x;
+      this.pz[i] = c.z;
       if (this.py[i]! <= FLOOR_Y) {
         // Only a FRACTION of droplets leave a floor mark, weighted by droplet
         // size — small fodder droplets mostly evaporate (less floor clutter),

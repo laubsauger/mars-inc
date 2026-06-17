@@ -179,17 +179,21 @@ export const MOBILITY_PERMANENTS: PermanentUpgrade[] = [
       mods.grenadeRadiusAdd += 1;
     },
   },
-  // ── Sprint-offense seed (Batch 2) — the dash itself becomes a strike ────────
+  // ── Sprint scaffolding (redesign) — tunes the BASELINE dash everyone has, rather
+  //    than seeding the sprint-burst draft card's effect at run start. ──
   {
-    id: 'momentum-charge',
-    name: 'Momentum Charge',
-    description: 'Starting a sprint discharges a concussive burst around you (per level).',
+    id: 'kinetic-reserves',
+    name: 'Kinetic Reserves',
+    description: '+1 sprint charge and +10% sprint duration per level.',
     branch: 'mobility',
     rarity: 'rare',
     cost: 200,
     maxLevel: 2,
-    apply: (_p, level, _mods, effects) => {
-      effects.on('sprint', (c) => c.dealArea(c.x, c.z, 4, 10 + 8 * level));
+    apply: (p, level) => {
+      p.stats.sprintCharges += level;
+      p.sprint.maxCharges += level;
+      p.sprint.charges += level;
+      p.stats.sprintDuration *= 1 + 0.1 * level;
     },
   },
   {

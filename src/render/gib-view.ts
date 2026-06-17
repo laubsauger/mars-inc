@@ -22,9 +22,11 @@ import {
   type Scene,
 } from 'three';
 import { ENEMY_BY_VARIANT } from '../sim/enemies';
+import { clampPoint } from '../sim/arena';
 import type { FxEvent } from '../sim/fx';
 
 const MAX_GIBS = 512; // hard cap (V5); oldest recycle via the ring buffer
+const GIB_WALL_INSET = 0.3; // keep chunks this far inside the wall (never over it)
 const GRAVITY = 26; // chunk fall accel (world u/s²) — a touch heavier than blood
 const FLOOR_Y = 0.05; // rest height reference (above the floor inlays)
 const AIR_DRAG = 7; // horizontal speed shed per second while airborne
@@ -183,6 +185,16 @@ export class GibView {
         this.px[i]! += this.vx[i]! * dt;
         this.py[i]! += this.vy[i]! * dt;
         this.pz[i]! += this.vz[i]! * dt;
+        // Keep chunks INSIDE the pit — knockback / shockwaves / corpse pops can
+        // otherwise fling gore over the wall (and render it out in the void). Clamp
+        // to just inside the boundary and kill the horizontal motion on contact.
+        const c = clampPoint(this.px[i]!, this.pz[i]!, GIB_WALL_INSET);
+        if (c.x !== this.px[i]! || c.z !== this.pz[i]!) {
+          this.px[i] = c.x;
+          this.pz[i] = c.z;
+          this.vx[i] = 0;
+          this.vz[i] = 0;
+        }
         this.rx[i]! += this.spinX[i]! * dt;
         this.ry[i]! += this.spinY[i]! * dt;
         this.rz[i]! += this.spinZ[i]! * dt;

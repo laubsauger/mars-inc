@@ -15,7 +15,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'killing-spree',
     name: 'Killing Spree',
-    description: 'While you’ve critically hit recently, +10% fire rate per level.',
+    description: '+6% fire rate per level for 1.5s after a critical hit (refreshes on each crit).',
     tags: ['crit', 'fire-rate', 'tempo'],
     grantsTags: ['tempo'],
     rarity: 'uncommon',
@@ -25,12 +25,12 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'engine',
     riskTier: 0,
     apply: ({ effects }) =>
-      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.1 } : {})),
+      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.06 } : {})),
   },
   {
     id: 'bloodlust',
     name: 'Bloodlust',
-    description: 'While you’ve critically hit recently, +12% crit damage per level — snowball it.',
+    description: '+8% damage per level for 1.5s after a critical hit, plus +2% base crit chance.',
     tags: ['crit', 'tempo'],
     rarity: 'rare',
     maxLevel: 2,
@@ -41,13 +41,14 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 0,
     apply: ({ mods, effects }) => {
       mods.critChanceAdd += 0.02; // a little base crit so the loop can start
-      effects.addConditional((c) => (c.recentCrit ? { damageMult: 1.1 } : {}));
+      effects.addConditional((c) => (c.recentCrit ? { damageMult: 1.08 } : {}));
     },
   },
   {
     id: 'critical-cascade',
     name: 'Critical Cascade',
-    description: 'Critical hits splash 40% of the hit to enemies around the victim.',
+    description:
+      'Critical hits splash 40% of the hit as damage to enemies within 2.2m of the victim.',
     tags: ['crit', 'aoe'],
     grantsTags: ['aoe'],
     rarity: 'rare',
@@ -67,7 +68,8 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'adrenaline-dump',
     name: 'Adrenaline Dump',
-    description: 'Dropping to low health blasts a knockback shockwave to clear space.',
+    description:
+      'Dropping below 40% health blasts a 4.5m shockwave (12 damage + heavy knockback) to clear space.',
     tags: ['control', 'risk', 'panic'],
     grantsTags: ['panic'],
     rarity: 'uncommon',
@@ -85,7 +87,8 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'last-ditch-protocol',
     name: 'Last-Ditch Protocol',
-    description: 'Hitting low health vents a damaging nova AND patches you for 10% HP.',
+    description:
+      'Dropping below 40% health vents a 40-damage nova (5.5m) and heals you for 10% max HP.',
     tags: ['risk', 'panic', 'explosive'],
     grantsTags: ['panic'],
     rarity: 'rare',
@@ -130,7 +133,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'overtime-bonus',
     name: 'Overtime Bonus',
-    description: 'Clear the field and you reload instantly + a brief shield of safety.',
+    description: 'Clearing every enemy grants 0.8s of invulnerability — a breather between waves.',
     tags: ['sustain', 'tempo'],
     grantsTags: ['sustain'],
     rarity: 'rare',
@@ -150,7 +153,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'slipstream-rounds',
     name: 'Slipstream Rounds',
-    description: 'Starting a sprint discharges a radial burst around you.',
+    description: 'Starting a sprint discharges a 14-damage burst in a 3.5m ring per level.',
     tags: ['movement', 'aoe', 'tempo'],
     grantsTags: ['sprint-build'],
     rarity: 'uncommon',
@@ -168,7 +171,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'detonation-dash',
     name: 'Detonation Dash',
-    description: 'Upgrades the dash burst into a heavy concussive blast — bomb-on-legs.',
+    description: 'Each sprint detonates a heavy 36-damage concussive blast in a 5.5m radius.',
     tags: ['movement', 'aoe', 'explosive'],
     grantsTags: ['sprint-build'],
     rarity: 'rare',
@@ -233,7 +236,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'apex-instinct',
     name: 'Apex Instinct',
     description:
-      'CAPSTONE: after a crit you enter a frenzy — +40% fire rate, +40% crit damage, crits splash.',
+      'CAPSTONE: +25% fire rate for 1.5s after a crit, +40% crit damage always, and crits splash 50% of the hit nearby.',
     tags: ['crit', 'tempo', 'fire-rate'],
     rarity: 'legendary',
     maxLevel: 1,
@@ -244,7 +247,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 1,
     apply: ({ mods, effects }) => {
       mods.critChanceAdd += 0.05;
-      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.4 } : {}));
+      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.25 } : {}));
       effects.on('crit', (ctx) => {
         if (ctx.hitDamage > 0) ctx.dealArea(ctx.x, ctx.z, 2.6, ctx.hitDamage * 0.5);
       });

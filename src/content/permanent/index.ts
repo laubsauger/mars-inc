@@ -61,8 +61,8 @@ const COST_GROWTH = 2.2;
 // deeper you path the steeper each node gets. Pure in (def, level) → refund stays exact.
 const RARITY_COST_MULT: Record<GloryRarity, number> = {
   common: 1,
-  rare: 1.9, // rares are mechanic seeds, not stat sprinkles → they cost like it
-  legendary: 2.5, // marquee keystones — a real, run-defining Glory commitment
+  rare: 2.6, // layer-2 nodes — meaningfully steeper than the cheap common ring
+  legendary: 3.4, // branch-tip keystones — a real, run-defining Glory commitment
 };
 export function levelCost(def: PermanentUpgrade, ownedLevel: number): number {
   return Math.round(

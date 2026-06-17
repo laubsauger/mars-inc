@@ -202,17 +202,19 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
       mods.grenadeCdMult *= Math.pow(0.85, level);
     },
   },
-  // ── Mechanic seeds (Batch 2) — the tree should grant BEHAVIORS, not just stats ──
+  // ── AMPLIFIERS (redesign) — these do NOTHING on their own; they only pay off once
+  //    you DRAFT the matching mechanic. So the tree informs/synergizes a build instead
+  //    of handing you a draft card's effect at run start (which broke early balance). ──
   {
-    id: 'field-shrapnel',
-    name: 'Field Shrapnel',
-    description: 'Kills splinter a small shockwave into the pack around the corpse.',
+    id: 'shaped-charges',
+    name: 'Shaped Charges',
+    description: 'AMPLIFY: +25% explosive blast damage per level — pays off once you draft AoE.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 230,
     maxLevel: 2,
-    apply: (_p, level, _mods, effects) => {
-      effects.on('kill', (c) => c.dealArea(c.x, c.z, 2.2, 4 + 3 * level));
+    apply: (_p, level, mods) => {
+      mods.blastDamageMult = Math.min(1.2, mods.blastDamageMult + 0.25 * level);
     },
   },
   {
@@ -245,32 +247,30 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     },
   },
   {
-    id: 'incendiary-doctrine',
-    name: 'Incendiary Doctrine',
-    description: 'Start every run with burning rounds — hits set enemies alight (scaling DoT).',
+    id: 'proc-calibration',
+    name: 'Proc Calibration',
+    description: 'AMPLIFY: +0.4 proc coefficient per level — every ailment you draft lands harder.',
     branch: 'arsenal',
     rarity: 'rare',
     cost: 220,
-    maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      // Seeds a STATUS build from the tree (dotCoef → hit-scaled burn, like the
-      // Incendiary Rounds draft card). Opens the burn/reaction lane from run start.
-      effects.on('hit', (c) => c.applyStatus(c.targetIndex, 'burn', { duration: 3, dotCoef: 0.5 }));
+    maxLevel: 2,
+    apply: (_p, level, mods) => {
+      // Amplifies status APPLICATION — useless until you draft an on-hit status card,
+      // then it boosts all of them. Informs a DoT build instead of seeding the effect.
+      mods.procCoefBonus += 0.4 * level;
     },
   },
   {
-    id: 'apex-munitions',
-    name: 'Apex Munitions',
-    description:
-      'KEYSTONE: every critical hit DETONATES a blast scaled to the hit — crits become bombs.',
+    id: 'critical-doctrine',
+    name: 'Critical Doctrine',
+    description: 'KEYSTONE: +8% crit chance and +60% crit damage — the foundation of a crit build.',
     branch: 'arsenal',
     rarity: 'legendary',
-    cost: 520, // marquee crit→AoE keystone — ties the crit and explosive lanes together
+    cost: 520, // marquee crit-scaffolding keystone (a passive amp, not an on-crit effect)
     maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('crit', (c) => {
-        if (c.hitDamage > 0) c.dealArea(c.x, c.z, 3, c.hitDamage * 0.7);
-      });
+    apply: (_p, _level, mods) => {
+      mods.critChanceAdd += 0.08;
+      mods.critDamageMult += 0.6;
     },
   },
 ];

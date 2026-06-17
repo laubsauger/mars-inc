@@ -172,52 +172,46 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
   // ── ORDNANCE lane (Batch 2) — Command isn't only drones: it's called firepower.
   //    Trigger-driven strikes that don't need a drone body, so Command has a second
   //    identity (automated artillery) instead of nine flavours of +drone-damage. ──
+  // ── AMPLIFIERS / META (redesign) — these BUFF firepower you bring, they don't hand
+  //    you a draft card's on-kill strike at run start. A drone/grenade build pays off;
+  //    nothing happens until you actually field the ordnance. ──
   {
-    id: 'cluster-doctrine',
-    name: 'Cluster Doctrine',
-    description: 'Kills have a 10% chance per level to drop a mini-mortar on the corpse.',
+    id: 'fire-control-array',
+    name: 'Fire-Control Array',
+    description: 'AMPLIFY: +18% drone damage and +18% grenade damage per level.',
     branch: 'command',
     rarity: 'rare',
     cost: 200,
     maxLevel: 2,
-    apply: (_p, level, _mods, effects) => {
-      const chance = 0.1 * level;
-      effects.on('kill', (c) => {
-        if (c.rng.next() < chance) c.dealArea(c.x, c.z, 2.5, 12);
-      });
+    apply: (p, level, mods) => {
+      p.droneDamageMult += 0.18 * level;
+      mods.grenadeDamageMult += 0.18 * level;
     },
   },
   {
-    id: 'air-support',
-    name: 'Air Support',
-    description: 'Clearing the field calls an orbital strike on your position (per level).',
+    id: 'logistics-network',
+    name: 'Logistics Network',
+    description: 'AMPLIFY: −14% grenade cooldown and +15% drone damage per level.',
     branch: 'command',
     rarity: 'rare',
     cost: 240,
     maxLevel: 2,
-    apply: (_p, level, _mods, effects) => {
-      const dmg = 30 + 20 * level;
-      effects.on('waveClear', (c) => {
-        c.dealArea(c.x, c.z, 5, dmg);
-        c.fx.push('impact', c.x, c.z);
-      });
+    apply: (p, level, mods) => {
+      mods.grenadeCdMult *= Math.pow(0.86, level);
+      p.droneDamageMult += 0.15 * level;
     },
   },
   {
-    id: 'saturation-doctrine',
-    name: 'Saturation Doctrine',
-    description: 'KEYSTONE: every kill has a 6% chance to call a heavy orbital barrage.',
+    id: 'war-room',
+    name: 'War Room',
+    description: 'KEYSTONE: +40% drone damage and +1 upgrade choice in every draft.',
     branch: 'command',
     rarity: 'legendary',
-    cost: 560, // marquee ordnance keystone — automated artillery is a steep investment
+    cost: 560, // marquee Command keystone — firepower amp + a permanent draft edge
     maxLevel: 1,
-    apply: (_p, _level, _mods, effects) => {
-      effects.on('kill', (c) => {
-        if (c.rng.next() < 0.06) {
-          c.dealArea(c.x, c.z, 4.5, 40);
-          c.fx.push('impact', c.x, c.z);
-        }
-      });
+    apply: (p) => {
+      p.droneDamageMult += 0.4;
+      p.draftSize += 1;
     },
   },
 ];

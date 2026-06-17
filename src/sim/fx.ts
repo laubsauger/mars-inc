@@ -16,7 +16,8 @@ export type FxKind =
   | 'ember' // visual-only status flecks (burn) — NEVER plays a sound
   | 'corpseblast' // overkill-corpse detonation — TOXIC-GREEN so it reads ⊥ gold explosions
   | 'meteor' // Moonshot orbital strike telegraph — render drops a rock that lands on the fuse
-  | 'laser'; // player hitscan beam — x,z = origin; dx,dz = END point (absolute, not a dir)
+  | 'laser' // player hitscan beam — x,z = origin; dx,dz = END point (absolute, not a dir)
+  | 'toxiccloud'; // Toxic Bloom — a lingering green gas puff (dx = radius)
 
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family

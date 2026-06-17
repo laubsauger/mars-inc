@@ -12,12 +12,9 @@ import { DROP_TTL, DROP_FADE } from '../sim/weapon-drops';
 import { WEAPONS } from '../content/weapons/index';
 import { ACCENT, INK } from './art/palette';
 
-const MAX_DMG = 48; // hard cap on concurrent damage numbers (bounded DOM)
-// Small enough that it only tallies repeated hits on the SAME enemy (rapid fire,
-// DoT ticks) — adjacent enemies (centers ≳1.2 apart) each keep their own number,
-// so pierce / splash / chain show damage on every unit they hit, not one merged blob.
-const AGG_R2 = 0.8 * 0.8; // hits within this radius...
-const AGG_WINDOW = 0.4; // ...and this recent → tally into the same number
+const MAX_DMG = 160; // hard cap on concurrent damage numbers (bounded DOM). Raised
+// from 48 now that every hit gets its OWN number — a fast multishot build sprays
+// far more at once, and 48 recycled them away before they could read.
 const TTL = 0.9; // lifetime of a damage number (s)
 
 export interface ScreenLabel {
@@ -52,21 +49,11 @@ export class FloatingText {
   private count = 0;
   private v = new Vector3();
 
-  /** Record damage at a world point — aggregates into a nearby recent number of
-   *  the same flag (so player-hit numbers never merge with enemy-damage ones). */
+  /** Record damage at a world point — EACH hit instance gets its OWN flying number
+   *  (no aggregation). Summing nearby hits into one tally read as far higher
+   *  per-hit damage than the build actually does, which was misleading. */
   addDamage(x: number, z: number, amount: number, flag: number): void {
     if (amount <= 0) return;
-    for (let i = 0; i < this.count; i++) {
-      if (this.age[i]! >= AGG_WINDOW || this.flag[i] === 2 || flag === 2) continue;
-      const ddx = this.dx[i]! - x;
-      const ddz = this.dz[i]! - z;
-      if (ddx * ddx + ddz * ddz < AGG_R2) {
-        this.amt[i]! += amount;
-        this.age[i] = 0; // keep it alive + rising while tallying
-        if (flag === 1) this.flag[i] = 1; // a crit anywhere in the tally → gold
-        return;
-      }
-    }
     let slot = this.count;
     if (this.count >= MAX_DMG) {
       slot = 0; // recycle the oldest

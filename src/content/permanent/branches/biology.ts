@@ -121,6 +121,7 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
     apply: (_p, _level, _mods, effects) => {
       effects.on('kill', (c) => {
         c.dealArea(c.x, c.z, 3.5, 9);
+        c.fx.push('toxiccloud', c.x, c.z, 3.5); // visible green gas puff (radius in dx)
       });
     },
   },
@@ -173,15 +174,17 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
     id: 'adrenal-reflex',
     name: 'Adrenal Reflex',
     description:
-      'KEYSTONE: hitting low health vents a defensive nova AND grants a second of invulnerability.',
+      'KEYSTONE: the moment you drop below 40% health, gain 1.5s of invulnerability + a panic shove (once per dip).',
     branch: 'biology',
     rarity: 'legendary',
     cost: 460,
     maxLevel: 1,
     apply: (_p, _level, _mods, effects) => {
+      // Pure SURVIVAL safety-net (a Hades Death-Defiance-style passive), NOT a damage
+      // nova — the shove is knockback-only (0 damage) to buy space, no offense effect.
       effects.on('lowHp', (c) => {
-        c.dealArea(c.x, c.z, 5.5, 35);
-        c.player.invuln = Math.max(c.player.invuln, 1);
+        c.dealArea(c.x, c.z, 5, 0); // 0 damage → just the pipeline knockback shove
+        c.player.invuln = Math.max(c.player.invuln, 1.5);
         c.fx.push('impact', c.x, c.z);
       });
     },

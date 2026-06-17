@@ -186,14 +186,14 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     id: 'killer-instinct',
     name: 'Killer Instinct',
     description:
-      'KEYSTONE: after a crit you go feral — +30% fire rate and +20% damage while it lasts.',
+      'KEYSTONE: +20% fire rate and +12% damage for 1.5s after a critical hit, plus +4% base crit chance.',
     branch: 'infamy',
     rarity: 'legendary',
     cost: 500, // marquee crit-momentum keystone — seeds the frenzy loop from run start
     maxLevel: 1,
     apply: (_p, _level, mods, effects) => {
       mods.critChanceAdd += 0.04; // a little base crit so the loop can ignite
-      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.3, damageMult: 1.2 } : {}));
+      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.2, damageMult: 1.12 } : {}));
     },
   },
 ];
