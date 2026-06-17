@@ -52,10 +52,20 @@ export function permanentById(id: string): PermanentUpgrade | undefined {
 // the most expensive overall. `ownedLevel` = how many levels you already have (0 =
 // buying the unlock).
 const UNLOCK_DISCOUNT = 0.7; // level 1 costs 70% of the node's base
-// Each further level escalates HARD (×1.8) so deep-stacking a node is a serious
-// Glory sink — you can't cheaply max one branch and steamroll. Pairs with the
-// tapered late-run Glory income (gloryFor) so progression stays earned, not snowballed.
-const COST_GROWTH = 1.8;
+// Each further level escalates HARD (×2.2) so deep-stacking ONE node is a serious
+// Glory sink — you can't cheaply max a branch and steamroll. Pairs with the tapered
+// late-run Glory income (gloryFor) so progression stays earned, not snowballed.
+const COST_GROWTH = 2.2;
+// Prices climb HARDER along the tree: a node's rarity (which tracks its depth — the
+// cost-sorted layout pushes rare/legendary nodes outward) multiplies its cost, so the
+// deeper you path the steeper each node gets. Pure in (def, level) → refund stays exact.
+const RARITY_COST_MULT: Record<GloryRarity, number> = {
+  common: 1,
+  rare: 1.9, // rares are mechanic seeds, not stat sprinkles → they cost like it
+  legendary: 2.5, // marquee keystones — a real, run-defining Glory commitment
+};
 export function levelCost(def: PermanentUpgrade, ownedLevel: number): number {
-  return Math.round(def.cost * UNLOCK_DISCOUNT * Math.pow(COST_GROWTH, ownedLevel));
+  return Math.round(
+    def.cost * UNLOCK_DISCOUNT * RARITY_COST_MULT[def.rarity] * Math.pow(COST_GROWTH, ownedLevel),
+  );
 }

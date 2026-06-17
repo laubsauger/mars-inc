@@ -202,4 +202,75 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
       mods.grenadeCdMult *= Math.pow(0.85, level);
     },
   },
+  // ── Mechanic seeds (Batch 2) — the tree should grant BEHAVIORS, not just stats ──
+  {
+    id: 'field-shrapnel',
+    name: 'Field Shrapnel',
+    description: 'Kills splinter a small shockwave into the pack around the corpse.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 230,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      effects.on('kill', (c) => c.dealArea(c.x, c.z, 2.2, 4 + 3 * level));
+    },
+  },
+  {
+    id: 'marksmans-eye',
+    name: "Marksman's Eye",
+    description: '+7% crit chance per level while the nearest enemy is kept at distance.',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 180,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const add = 0.07 * level;
+      effects.addConditional((c) => (c.nearestDist > 9 ? { critAdd: add } : {}));
+    },
+  },
+  {
+    id: 'executioners-clause',
+    name: "Executioner's Clause",
+    description: 'KEYSTONE: crit chance climbs as the field thins — up to +40% finishing a wave.',
+    branch: 'arsenal',
+    rarity: 'legendary',
+    cost: 360,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      // Smooth finisher (was a dead "≤3 enemies" gate): 0 at 10+ enemies → +40% as
+      // the wave empties. Real varying uptime, not an almost-never threshold.
+      effects.addConditional((c) => ({
+        critAdd: Math.max(0, (10 - c.enemiesOnScreen) / 10) * 0.4,
+      }));
+    },
+  },
+  {
+    id: 'incendiary-doctrine',
+    name: 'Incendiary Doctrine',
+    description: 'Start every run with burning rounds — hits set enemies alight (scaling DoT).',
+    branch: 'arsenal',
+    rarity: 'rare',
+    cost: 220,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      // Seeds a STATUS build from the tree (dotCoef → hit-scaled burn, like the
+      // Incendiary Rounds draft card). Opens the burn/reaction lane from run start.
+      effects.on('hit', (c) => c.applyStatus(c.targetIndex, 'burn', { duration: 3, dotCoef: 0.5 }));
+    },
+  },
+  {
+    id: 'apex-munitions',
+    name: 'Apex Munitions',
+    description:
+      'KEYSTONE: every critical hit DETONATES a blast scaled to the hit — crits become bombs.',
+    branch: 'arsenal',
+    rarity: 'legendary',
+    cost: 520, // marquee crit→AoE keystone — ties the crit and explosive lanes together
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('crit', (c) => {
+        if (c.hitDamage > 0) c.dealArea(c.x, c.z, 3, c.hitDamage * 0.7);
+      });
+    },
+  },
 ];

@@ -15,7 +15,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'killing-spree',
     name: 'Killing Spree',
-    description: 'While you’ve critically hit recently, +25% fire rate per level.',
+    description: 'While you’ve critically hit recently, +10% fire rate per level.',
     tags: ['crit', 'fire-rate', 'tempo'],
     grantsTags: ['tempo'],
     rarity: 'uncommon',
@@ -25,12 +25,12 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'engine',
     riskTier: 0,
     apply: ({ effects }) =>
-      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.25 } : {})),
+      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.1 } : {})),
   },
   {
     id: 'bloodlust',
     name: 'Bloodlust',
-    description: 'While you’ve critically hit recently, +30% crit damage — snowball it.',
+    description: 'While you’ve critically hit recently, +12% crit damage per level — snowball it.',
     tags: ['crit', 'tempo'],
     rarity: 'rare',
     maxLevel: 2,
@@ -40,8 +40,8 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'engine',
     riskTier: 0,
     apply: ({ mods, effects }) => {
-      mods.critChanceAdd += 0.03; // a little base crit so the loop can start
-      effects.addConditional((c) => (c.recentCrit ? { damageMult: 1.18 } : {}));
+      mods.critChanceAdd += 0.02; // a little base crit so the loop can start
+      effects.addConditional((c) => (c.recentCrit ? { damageMult: 1.1 } : {}));
     },
   },
   {

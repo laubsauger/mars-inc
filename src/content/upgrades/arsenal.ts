@@ -110,7 +110,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'killing-floor',
     name: 'Killing Floor',
-    description: '+2% crit chance for every enemy on screen (capped) — thrive in the swarm.',
+    description:
+      '+1% crit chance per nearby enemy per level (cap +10%/level) — thrive in the swarm.',
     tags: ['crit', 'crowd', 'conditional'],
     rarity: 'rare',
     maxLevel: 2,
@@ -118,8 +119,11 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'engine',
     riskTier: 0,
+    // A swarm card IS mostly-on in a swarm (that's its identity) — the old +2%/enemy
+    // cap 30% was just too much (a near-flat +30% crit). Halved to +1%/enemy, +10%/lvl
+    // cap, so it's a fair "fight in the crowd" bonus, not a free 30%.
     apply: ({ effects }) =>
-      effects.addConditional((c) => ({ critAdd: Math.min(0.3, c.enemiesOnScreen * 0.02) })),
+      effects.addConditional((c) => ({ critAdd: Math.min(0.1, c.enemiesOnScreen * 0.01) })),
   },
   {
     id: 'red-ledger',

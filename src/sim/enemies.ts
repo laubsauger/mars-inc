@@ -528,6 +528,7 @@ export const ENEMY_DISPLAY_NAME: readonly string[] = [
   'Blobling',
   'Phase Stalker',
   'Lance Sentinel',
+  'Gargantuan',
 ];
 
 // Frostbite Auditor — cryo lobber (T33). Lobs a slow-fusing FROST writ that
@@ -613,6 +614,7 @@ export const ENEMY_BY_VARIANT: readonly (EnemyType | undefined)[] = [
   BLOBLING,
   PHASE_STALKER,
   LANCE_SENTINEL,
+  GARGANTUAN,
 ];
 
 /**

@@ -10,6 +10,22 @@
 import type { PermanentUpgrade } from '../index';
 
 export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
+  // CENTER node (cheapest → sits at the hub). Deliberately NOT drone-damage: amping
+  // a drone you don't own yet reads wrong as the first Command pick. This opener is
+  // pure called-ordnance (grenade) utility, useful from the first run with zero drones.
+  {
+    id: 'munitions-prep',
+    name: 'Munitions Prep',
+    description: 'ORDNANCE: +10% grenade damage and +0.3 blast radius per level.',
+    branch: 'command',
+    rarity: 'common',
+    cost: 60,
+    maxLevel: 3,
+    apply: (_p, level, mods) => {
+      mods.grenadeDamageMult += 0.1 * level;
+      mods.grenadeRadiusAdd += 0.3 * level;
+    },
+  },
   // ── Amplify / utility tiers (cheap, near the hub — no extra bodies) ──
   {
     id: 'drone-coolant',
@@ -151,6 +167,57 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     apply: (p) => {
       p.droneCount += 1;
       p.droneDamageMult += 0.45;
+    },
+  },
+  // ── ORDNANCE lane (Batch 2) — Command isn't only drones: it's called firepower.
+  //    Trigger-driven strikes that don't need a drone body, so Command has a second
+  //    identity (automated artillery) instead of nine flavours of +drone-damage. ──
+  {
+    id: 'cluster-doctrine',
+    name: 'Cluster Doctrine',
+    description: 'Kills have a 10% chance per level to drop a mini-mortar on the corpse.',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const chance = 0.1 * level;
+      effects.on('kill', (c) => {
+        if (c.rng.next() < chance) c.dealArea(c.x, c.z, 2.5, 12);
+      });
+    },
+  },
+  {
+    id: 'air-support',
+    name: 'Air Support',
+    description: 'Clearing the field calls an orbital strike on your position (per level).',
+    branch: 'command',
+    rarity: 'rare',
+    cost: 240,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const dmg = 30 + 20 * level;
+      effects.on('waveClear', (c) => {
+        c.dealArea(c.x, c.z, 5, dmg);
+        c.fx.push('impact', c.x, c.z);
+      });
+    },
+  },
+  {
+    id: 'saturation-doctrine',
+    name: 'Saturation Doctrine',
+    description: 'KEYSTONE: every kill has a 6% chance to call a heavy orbital barrage.',
+    branch: 'command',
+    rarity: 'legendary',
+    cost: 560, // marquee ordnance keystone — automated artillery is a steep investment
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('kill', (c) => {
+        if (c.rng.next() < 0.06) {
+          c.dealArea(c.x, c.z, 4.5, 40);
+          c.fx.push('impact', c.x, c.z);
+        }
+      });
     },
   },
 ];

@@ -17,6 +17,7 @@ import {
   LIABILITY_BLOB,
   PHASE_STALKER,
   LANCE_SENTINEL,
+  GARGANTUAN,
   SpawnKind,
   type EnemyType,
 } from '../enemies';
@@ -179,7 +180,8 @@ export class WaveDirector {
       if (elapsed > 80 && r < 0.48) return FROSTBITE_AUDITOR; // cryo
       if (elapsed > 90 && r < 0.56) return REPO_MARSHAL; // gun
       if (elapsed > 110 && r < 0.62) return FORECLOSURE_MORTAR; // artillery
-      if (elapsed > 100 && r < 0.67) return LANCE_SENTINEL; // laser turret — rare, late, dodge-or-die
+      if (elapsed > 65 && r < 0.67) return LANCE_SENTINEL; // laser turret — sprinkled in early so you learn it, stays rare
+      if (elapsed > 120 && r < 0.72) return GARGANTUAN; // devourer — kill it before it snowballs
       return AUDIT_BRUTE; // the bulk of specials are the melee wall
     }
     // Fodder: Rust Mites + a growing minority of Debt Hounds.

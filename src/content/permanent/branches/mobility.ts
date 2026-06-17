@@ -179,4 +179,30 @@ export const MOBILITY_PERMANENTS: PermanentUpgrade[] = [
       mods.grenadeRadiusAdd += 1;
     },
   },
+  // ── Sprint-offense seed (Batch 2) — the dash itself becomes a strike ────────
+  {
+    id: 'momentum-charge',
+    name: 'Momentum Charge',
+    description: 'Starting a sprint discharges a concussive burst around you (per level).',
+    branch: 'mobility',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      effects.on('sprint', (c) => c.dealArea(c.x, c.z, 4, 10 + 8 * level));
+    },
+  },
+  {
+    id: 'slipstream-protocol',
+    name: 'Slipstream Protocol',
+    description: '+12% damage per level while recoil is still carrying you — fight on the move.',
+    branch: 'mobility',
+    rarity: 'rare',
+    cost: 180,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const mult = 1 + 0.12 * level;
+      effects.addConditional((c) => (c.recoilActive ? { damageMult: mult } : {}));
+    },
+  },
 ];

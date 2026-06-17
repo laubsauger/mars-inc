@@ -233,15 +233,15 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'heavy-barrel',
     name: 'Heavy Barrel',
-    description: '+35% damage, but slower fire rate.',
+    description: '+18% damage per level, but slightly slower fire rate.',
     tags: ['damage'],
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 6,
     synergyWeight: 2,
     apply: ({ mods }) => {
-      mods.damageMult += 0.35;
-      mods.fireRateMult = Math.max(0.3, mods.fireRateMult - 0.12);
+      mods.damageMult += 0.18;
+      mods.fireRateMult = Math.max(0.3, mods.fireRateMult - 0.08);
     },
   },
 
@@ -278,14 +278,19 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'apex-hunter',
     name: 'Apex Hunter',
-    description: '+25% crit when 3 or fewer enemies remain.',
+    description: 'Crit chance ramps up as the field thins — up to +30% as you mop up a wave.',
     tags: ['conditional', 'crit'],
     rarity: 'rare',
     maxLevel: 1,
     baseWeight: 4,
     synergyWeight: 2,
     apply: ({ effects }) => {
-      effects.addConditional((ctx) => ({ critAdd: ctx.enemiesOnScreen <= 3 ? 0.25 : 0 }));
+      // SMOOTH finisher (was a dead "≤3 enemies" gate — almost never true in dense
+      // waves). Scales 0 at 8+ enemies → full +30% as the wave empties, so it has
+      // real, varying uptime tied to clearing instead of an all-or-nothing threshold.
+      effects.addConditional((ctx) => ({
+        critAdd: Math.max(0, (8 - ctx.enemiesOnScreen) / 8) * 0.3,
+      }));
     },
   },
 

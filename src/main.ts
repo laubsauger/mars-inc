@@ -11,6 +11,7 @@ import { accumulateLights } from './render/light-accumulator';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { StatusMarkerView } from './render/status-marker-view';
+import { EliteMarkerView } from './render/elite-marker-view';
 import { GroundShadowView } from './render/ground-shadow-view';
 import { EnemyHealthbarView } from './render/enemy-healthbar-view';
 import { ProjectileView } from './render/projectile-view';
@@ -204,6 +205,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene, lightBuffer);
   const statusMarkers = new StatusMarkerView(scene);
+  const eliteMarkers = new EliteMarkerView(scene);
   const groundShadowView = new GroundShadowView(scene);
   const enemyHealthbars = new EnemyHealthbarView(scene);
   const projectileView = new ProjectileView(scene);
@@ -643,6 +645,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       groundShadowView.sync(world.enemies, alpha); // contact shadows (grounding)
       enemyView.sync(world.enemies, alpha);
       statusMarkers.sync(world.enemies, camera, alpha);
+      eliteMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
       accumulateLights(lightBuffer, world, alpha); // all emitters → the projectile light buffer

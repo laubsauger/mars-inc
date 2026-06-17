@@ -166,4 +166,34 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
       mods.grenadeMolotov = true;
     },
   },
+  // ── Marquee glass keystone (Batch 2) — the priciest crazy thing in the tree ──
+  {
+    id: 'glass-reactor',
+    name: 'Glass Reactor',
+    description:
+      'KEYSTONE: −35 max health, but the lower your health the harder you hit — up to +70%.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 520, // a run-defining gamble → one of the steepest nodes in the tree
+    maxLevel: 1,
+    apply: (p, _level, _mods, effects) => {
+      p.maxHealth = Math.max(1, p.maxHealth - 35);
+      p.health = Math.min(p.health, p.maxHealth);
+      effects.addConditional((c) => ({ damageMult: 1 + (1 - c.hpFrac) * 0.7 }));
+    },
+  },
+  {
+    id: 'killer-instinct',
+    name: 'Killer Instinct',
+    description:
+      'KEYSTONE: after a crit you go feral — +30% fire rate and +20% damage while it lasts.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 500, // marquee crit-momentum keystone — seeds the frenzy loop from run start
+    maxLevel: 1,
+    apply: (_p, _level, mods, effects) => {
+      mods.critChanceAdd += 0.04; // a little base crit so the loop can ignite
+      effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.3, damageMult: 1.2 } : {}));
+    },
+  },
 ];

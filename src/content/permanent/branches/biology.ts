@@ -153,4 +153,52 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
       p.stats.knockbackResistance = Math.min(0.95, p.stats.knockbackResistance + 0.5);
     },
   },
+  // ── Sustain via the clear-the-room lever (Batch 2) ──────────────────────────
+  {
+    id: 'regen-mesh',
+    name: 'Regenerative Mesh',
+    description: 'Clearing every enemy patches 5% of your max health per level.',
+    branch: 'biology',
+    rarity: 'rare',
+    cost: 200,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const frac = 0.05 * level;
+      effects.on('waveClear', (c) => {
+        c.player.health = Math.min(c.player.maxHealth, c.player.health + c.player.maxHealth * frac);
+      });
+    },
+  },
+  {
+    id: 'adrenal-reflex',
+    name: 'Adrenal Reflex',
+    description:
+      'KEYSTONE: hitting low health vents a defensive nova AND grants a second of invulnerability.',
+    branch: 'biology',
+    rarity: 'legendary',
+    cost: 460,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('lowHp', (c) => {
+        c.dealArea(c.x, c.z, 5.5, 35);
+        c.player.invuln = Math.max(c.player.invuln, 1);
+        c.fx.push('impact', c.x, c.z);
+      });
+    },
+  },
+  {
+    id: 'hemo-recovery',
+    name: 'Hemo-Recovery',
+    description: 'Kills knit you back together — heal 1.5 HP per level on each kill.',
+    branch: 'biology',
+    rarity: 'rare',
+    cost: 210,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      const heal = 1.5 * level;
+      effects.on('kill', (c) => {
+        c.player.health = Math.min(c.player.maxHealth, c.player.health + heal);
+      });
+    },
+  },
 ];

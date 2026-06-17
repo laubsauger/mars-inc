@@ -51,6 +51,7 @@ const VARIANT_COLORS = [
   COL.toxicGreen, // 10 Blobling
   COL.eliteMagenta, // 11 Phase Stalker (teleport ambusher)
   COL.laserRed, // 12 Lance Sentinel — hot crimson laser turret
+  COL.devourerViolet, // 13 Gargantuan — deep violet hulk
 ];
 
 // Silhouette families.
@@ -81,6 +82,7 @@ export const VARIANT_SHAPE: number[] = [
   Shape.Ooze, // 10 blobling
   Shape.Runner, // 11 phase stalker (fast chaser silhouette)
   Shape.Rifle, // 12 lance sentinel (turret/barrel silhouette)
+  Shape.Brute, // 13 gargantuan (big asymmetric mass)
 ];
 // Per-variant silhouette tweak [widthMul, heightMul] on top of the radius scale —
 // keeps fodder readable above an OCEAN of XP shards (shards sit at ~0.5 tall, so a
@@ -274,17 +276,11 @@ export class EnemyView {
           this.tmp.b * (1 - mat) + 1.0 * mat,
         );
       }
-      // Elite/shield read (T-elite): an elite is a HOTTER, pulsing version of its
-      // kind (paired with the bigger silhouette from its radius); a plain shielded
-      // unit gets a steely cyan cast so "this one's armored" reads at a glance.
-      if (pool.elite[i]) {
-        const pulse = 0.82 + 0.18 * Math.sin(this.phase * 6 + i);
-        this.tmp.setRGB(
-          Math.min(1, this.tmp.r * 1.5 + 0.18) * pulse,
-          Math.min(1, this.tmp.g * 1.15) * pulse,
-          Math.min(1, this.tmp.b * 1.15) * pulse,
-        );
-      } else if (pool.shield[i]! > 0) {
+      // Shield read (T-elite): a shielded unit (incl. elites) gets a steely cyan
+      // cast so "this one's armored" reads at a glance. Elites ALSO carry a gold star
+      // marker (EliteMarkerView) + a bigger silhouette — the colour cast alone would
+      // drown among same-hued fodder / XP crystals.
+      if (pool.shield[i]! > 0) {
         this.tmp.setRGB(this.tmp.r * 0.7 + 0.08, this.tmp.g * 0.7 + 0.36, this.tmp.b * 0.7 + 0.46);
       }
       mesh.setColorAt(idx, this.tmp);

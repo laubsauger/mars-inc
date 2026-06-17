@@ -40,6 +40,7 @@ import {
   type TriggerEvent,
 } from './progression/effects';
 import { promoteSpawns, eliteProgress } from './director/elites';
+import { stepGargantuans } from './gargantuan';
 import { activeArena } from './arena';
 import { applyAreaDamage } from './combat/aoe';
 import { applyStatus, tickStatus } from './combat/status';
@@ -328,6 +329,9 @@ export class World {
     // gains baseline shields as the run deepens + a slice promotes to elites.
     promoteSpawns(this.enemies, eliteProgress(this.player.level, this.stats.bossKills), this.rng);
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
+    // Gargantuans devour overlapping fodder + grow, and SLAM a size-scaled blast
+    // (after steering → current positions). A fat one carves a huge lethal zone.
+    stepGargantuans(this.enemies, this.enemyAttacks, dt, this.fx);
     // Companion drones hunt + fire into the shared projectile pool (V3 pipeline).
     // After the enemy system so the spatial hash is current; before the weapon
     // system so their bolts are stepped/collided this frame too.
