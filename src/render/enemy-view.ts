@@ -80,6 +80,15 @@ export const VARIANT_SHAPE: number[] = [
   Shape.Ooze, // 10 blobling
   Shape.Runner, // 11 phase stalker (fast chaser silhouette)
 ];
+// Per-variant silhouette tweak [widthMul, heightMul] on top of the radius scale —
+// keeps fodder readable above an OCEAN of XP shards (shards sit at ~0.5 tall, so a
+// flat low-profile mite drowns in them). Default [1,1]; only the early fodder needs
+// a lift so they read as bodies, not specks. ⊥ sim (radius/hitbox unchanged, V2/V4).
+const VARIANT_SIZE: ReadonlyArray<readonly [number, number]> = [
+  [1.0, 1.32], // 0 mite — same footprint, taller so it clears the shard layer
+  [1.12, 1.26], // 1 hound (tier 2) — a touch wider + taller, reads as the bigger threat
+];
+const UNIT_SIZE: readonly [number, number] = [1, 1]; // every other variant — unchanged
 // Shapes whose silhouette has a clear front → rotate to face movement direction.
 const SHAPE_FACES = [true, true, true, true, true, false, false, false];
 
@@ -244,9 +253,13 @@ export class EnemyView {
         mat = Math.min(1, pool.stateTimer[i]! / TELE_TELEGRAPH); // 1 (just arrived) → 0 (live)
       }
       const scaleMul = 0.3 + 0.7 * (1 - mat);
+      const base = (r / 0.5) * scaleMul;
+      const sz = VARIANT_SIZE[pool.variant[i]!] ?? UNIT_SIZE;
       this.dummy.position.set(x, 0, z);
       this.dummy.rotation.set(0, yaw, 0);
-      this.dummy.scale.setScalar((r / 0.5) * scaleMul);
+      // Width on x/z, height on y → a per-variant silhouette lift without touching
+      // the sim footprint (ground-seated geometry, so taller grows upward, V4).
+      this.dummy.scale.set(base * sz[0], base * sz[1], base * sz[0]);
       this.dummy.updateMatrix();
       mesh.setMatrixAt(idx, this.dummy.matrix);
 

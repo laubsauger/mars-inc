@@ -148,7 +148,7 @@ export class EnemySystem {
       // the big hitters parked just behind them.
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
-      const rr = p.radius[i]! * 1.35 + player.stats.collisionRadius + 0.4;
+      const rr = p.radius[i]! * 1.35 + player.stats.collisionRadius + 0.25;
       if (dx * dx + dz * dz <= rr * rr && hitPlayer(player, p.contactDmg[i]!)) {
         fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
         // Body-check shoves the player AWAY from the enemy (enemy → player dir is

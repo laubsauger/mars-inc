@@ -3,6 +3,7 @@ import { applyAreaDamage } from './aoe';
 import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
 import { SpatialHash } from '../spatial-hash';
 import { Rng } from '../../core/rng';
+import { FxQueue } from '../fx';
 
 function seed(pool: EnemyPool, positions: [number, number][]): void {
   for (const [x, z] of positions) {
@@ -65,5 +66,30 @@ describe('applyAreaDamage (T38, V3 pipeline-routed)', () => {
     const da = applyAreaDamage(a, hashOf(a), 0, 0, 3, { amount: 4, critChance: 0.5 }, new Rng(9));
     const db = applyAreaDamage(b, hashOf(b), 0, 0, 3, { amount: 4, critChance: 0.5 }, new Rng(9));
     expect(da).toBe(db);
+  });
+
+  it('knockback option shoves hit enemies outward from the centre', () => {
+    const pool = new EnemyPool();
+    seed(pool, [[2, 0]]); // +x of the blast
+    applyAreaDamage(pool, hashOf(pool), 0, 0, 3, { amount: 4, knockback: 12 }, new Rng(1));
+    expect(pool.kbX[0]!).toBeGreaterThan(0); // pushed away (+x)
+  });
+
+  it('hitFx emits a per-enemy impact spark when fx is provided', () => {
+    const pool = new EnemyPool();
+    seed(pool, [[1, 0]]);
+    const fx = new FxQueue();
+    applyAreaDamage(pool, hashOf(pool), 0, 0, 3, { amount: 4, fx, hitFx: true }, new Rng(1));
+    expect(fx.events.some((e) => e.kind === 'impact')).toBe(true);
+    expect(fx.events.some((e) => e.kind === 'dmg')).toBe(true);
+  });
+
+  it('floats only a damage number (no impact spark) without hitFx', () => {
+    const pool = new EnemyPool();
+    seed(pool, [[1, 0]]);
+    const fx = new FxQueue();
+    applyAreaDamage(pool, hashOf(pool), 0, 0, 3, { amount: 4, fx }, new Rng(1));
+    expect(fx.events.some((e) => e.kind === 'impact')).toBe(false);
+    expect(fx.events.some((e) => e.kind === 'dmg')).toBe(true);
   });
 });

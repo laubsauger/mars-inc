@@ -47,44 +47,12 @@ import {
   OFFENSE_TAGS,
 } from './progression/upgrades';
 import { previewUpgrade, type UpgradeChange } from './progression/preview';
-import { UPGRADES } from '../content/upgrades/index';
-import { ADVANCED_UPGRADES } from '../content/upgrades/advanced';
-import { REACTION_UPGRADES } from '../content/upgrades/reactions';
-import { RECOIL_UPGRADES } from '../content/upgrades/recoil';
-import { CORPSE_UPGRADES } from '../content/upgrades/corpse';
-import { XP_RESOURCE_UPGRADES } from '../content/upgrades/xp-resource';
-import { SYNERGY_UPGRADES } from '../content/upgrades/synergy';
-import { NECRO_UPGRADES } from '../content/upgrades/necro';
+import { DRAFT_POOL, DEV_UPGRADE_CATALOG } from './progression/draft-pool';
+import { type CharacterSheet, buildCharacterSheet } from './progression/character-sheet';
 import type { InputSnapshot } from '../core/input';
 
-/** Full draft pool: base catalog (T18/T33/T40) + engine-showcase set (T38) +
- *  status-reaction primers/converters (T54) + recoil build family (T55). */
-const DRAFT_POOL: UpgradeDefinition[] = [
-  ...UPGRADES,
-  ...ADVANCED_UPGRADES,
-  ...REACTION_UPGRADES,
-  ...RECOIL_UPGRADES,
-  ...CORPSE_UPGRADES,
-  ...XP_RESOURCE_UPGRADES,
-  ...SYNERGY_UPGRADES,
-  ...NECRO_UPGRADES,
-];
-
-/** Flat upgrade list for the dev control board (T74): exactly the ids the run can
- *  grant (DRAFT_POOL), with display data. ⊥ the live defs — read-only metadata. */
-export const DEV_UPGRADE_CATALOG: ReadonlyArray<{
-  id: string;
-  name: string;
-  rarity: string;
-  maxLevel: number;
-  tags: readonly string[];
-}> = DRAFT_POOL.map((u) => ({
-  id: u.id,
-  name: u.name,
-  rarity: u.rarity,
-  maxLevel: u.maxLevel,
-  tags: u.tags,
-}));
+export { DEV_UPGRADE_CATALOG }; // re-exported for the dev board (imported via ./sim/world)
+export type { CharacterSheet }; // re-exported for consumers importing via ./sim/world
 
 /** Rich post-game summary (T23) — what the run actually became. */
 export interface RunSummary {
@@ -92,23 +60,6 @@ export interface RunSummary {
   bossKills: number;
   killsByType: { name: string; count: number }[];
   upgrades: { name: string; level: number }[];
-}
-
-/** A reusable character/build sheet (T43) — shown on the end screen, the pause
- *  menu, and the warrior panel. Derived live from player + mods. */
-export interface CharacterSheet {
-  level: number;
-  weapon: string;
-  attributes: { label: string; value: string }[];
-  /** Owned upgrades with enough detail to read the build at a glance (T51):
-   *  name, owned/max level, rarity (for colour), and what the card does. */
-  upgrades: {
-    name: string;
-    level: number;
-    maxLevel: number;
-    rarity: string;
-    description: string;
-  }[];
 }
 
 const COUNTDOWN_SECONDS = 3;
@@ -1210,95 +1161,16 @@ export class World {
   /** Live character/build sheet — reused by the end screen, pause menu, warrior
    *  panel (T43). Reads the run-mod layer + player stats into readable rows. */
   characterSheet(): CharacterSheet {
-    const m = this.mods;
-    const s = this.player.stats;
-    const p = this.player;
-    const pct = (x: number): string => `${Math.round(x * 100)}%`;
-    // Conditional damage/crit/fire-rate (Restraining Order, risk cards, ramps…) live
-    // in the dynamic BuildEffects layer, NOT the static mods. Evaluate them against
-    // the CURRENT battlefield (read-only — no mutation) so the sheet shows what's
-    // ACTIVE right now; a separate best-case probe gives the "up to" potential.
-    const e = this.enemies;
-    let nearest = Infinity;
-    for (let i = 0; i < e.count; i++) {
-      const dx = e.posX[i]! - p.pos.x;
-      const dz = e.posZ[i]! - p.pos.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < nearest) nearest = d2;
-    }
-    const live = this.effects.evalConditionals({
-      enemiesOnScreen: e.count,
-      nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
+    return buildCharacterSheet({
+      mods: this.mods,
+      player: this.player,
+      enemies: this.enemies,
+      effects: this.effects,
       firingRampSec: this.firingRampSec,
-      hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 0,
-      recentCrit: false,
-      recoilActive: p.recoilTimer > 0,
       stationarySec: this.stationarySec,
+      upgradeLevels: this.upgradeLevels,
+      weaponSystem: this.weaponSystem,
     });
-    const probe = this.effects.evalConditionals({
-      enemiesOnScreen: 99,
-      nearestDist: 999,
-      firingRampSec: 12,
-      hpFrac: 0.01,
-      recentCrit: true,
-      recoilActive: true,
-      stationarySec: 12,
-    });
-    // Show the CURRENTLY-active value, and "(up to MAX)" only when more is possible.
-    const upTo = (now: number, max: number, fmt: (n: number) => string): string =>
-      max > now + Math.abs(now) * 0.001 + 1e-4 ? `${fmt(now)} (up to ${fmt(max)})` : fmt(now);
-    const xMult = (n: number): string => `×${n.toFixed(2)}`;
-    const attributes = [
-      { label: 'Health', value: `${Math.round(p.health)} / ${Math.round(p.maxHealth)}` },
-      {
-        label: 'Damage',
-        value: upTo(m.damageMult * live.damageMult, m.damageMult * probe.damageMult, xMult),
-      },
-      {
-        label: 'Fire rate',
-        value: upTo(m.fireRateMult * live.fireRateMult, m.fireRateMult * probe.fireRateMult, xMult),
-      },
-      {
-        label: 'Crit chance',
-        value: upTo(
-          m.critChanceAdd + live.critAdd,
-          m.critChanceAdd + probe.critAdd,
-          (n) => `+${pct(n)}`,
-        ),
-      },
-      { label: 'Crit damage', value: xMult(m.critDamageMult) },
-      { label: 'Range', value: `×${m.rangeMult.toFixed(2)}` },
-      { label: 'Projectiles', value: `${m.projectileCount}` },
-      { label: 'Pierce', value: m.pierce > 0 ? `+${m.pierce}` : '—' },
-      {
-        label: 'Chain',
-        value: m.chainCount > 0 ? `${m.chainCount} arc${m.chainCount > 1 ? 's' : ''}` : '—',
-      },
-      { label: 'Blast', value: m.blastRadius > 0 ? `${m.blastRadius.toFixed(1)} m` : '—' },
-      { label: 'Move speed', value: s.moveSpeed.toFixed(1) },
-      { label: 'Sprint', value: `${s.sprintCharges}× · ${s.sprintCooldown.toFixed(1)}s` },
-      { label: 'Magnet', value: `${p.magnetRadius.toFixed(1)} m` },
-    ];
-    // Rich abilities list: owned level + rarity + effect text, sorted by level so
-    // the build's backbone reads first. Falls back gracefully if a def is missing.
-    const upgrades = Object.entries(this.upgradeLevels)
-      .map(([id, level]) => {
-        const def = DRAFT_POOL.find((u) => u.id === id);
-        return {
-          name: def?.name ?? id,
-          level,
-          maxLevel: def?.maxLevel ?? level,
-          rarity: def?.rarity ?? 'common',
-          description: def?.description ?? '',
-        };
-      })
-      .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
-    return {
-      level: p.level,
-      weapon: this.weaponSystem.weapons[0]?.def.displayName ?? '—',
-      attributes,
-      upgrades,
-    };
   }
 
   /** Apply the chosen boss reward and resume the run (harder). */

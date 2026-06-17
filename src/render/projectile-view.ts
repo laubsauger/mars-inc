@@ -32,7 +32,10 @@ const STYLES: Style[] = [
   { color: COL.sunHigh.clone().multiplyScalar(1.5), w: 0.75, len: 1.5 }, // rotary: thin fast tracer
   { color: new Color(1.0, 0.5, 0.18).multiplyScalar(1.3), w: 1.7, len: 1.3 }, // explosive: fat orange shell
   { color: COL.eliteMagenta.clone().multiplyScalar(1.2), w: 1.0, len: 1.3 }, // drone: small purple
-  { color: COL.shieldCyan.clone().multiplyScalar(1.35), w: 0.62, len: 3.2 }, // energy: long cyan lance
+  // energy: electric VIOLET lance. Green kept LOW + brightness trimmed so bloom
+  // can't blow the core to a cyan-white — the halo stays clearly purple, distinct
+  // from the reserved XP-shard cyan (high green) yet bluer than the drone magenta.
+  { color: new Color(0.68, 0.22, 1.0).multiplyScalar(1.2), w: 0.62, len: 3.2 },
   { color: COL.kineticGold.clone().multiplyScalar(1.55), w: 1.5, len: 2.5 }, // orbital: heavy gold slug
 ];
 const FALLBACK = STYLES[0]!;

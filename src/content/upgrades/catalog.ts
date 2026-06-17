@@ -36,6 +36,41 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       player.health += 20;
     },
   },
+  // ── Recoil / knockback CONTROL — the answer to a kicking weapon. An unprepared
+  // fighter gets shoved around by a minigun's recoil; these let you BUILD toward
+  // wielding it planted and controlled. Surfaced harder for fire-rate / multishot
+  // owners (the builds that generate the most kick).
+  {
+    id: 'counterweight-plating',
+    name: 'Counterweight Plating',
+    description: 'Brace against your own gun — −15% recoil shove per level.',
+    tags: ['control', 'defense', 'recoil'],
+    grantsTags: ['recoil'],
+    rarity: 'common',
+    maxLevel: 4,
+    baseWeight: 8,
+    synergyWeight: 3,
+    weightRules: [{ whenTags: ['fire-rate', 'multishot'], multiplier: 3 }],
+    apply: ({ player }) => {
+      player.stats.recoilResistance = Math.min(0.85, player.stats.recoilResistance + 0.15);
+    },
+  },
+  {
+    id: 'gyro-stabilizers',
+    name: 'Gyro Stabilizers',
+    description: 'Planted stance: −18% recoil AND −15% enemy knockback per level.',
+    tags: ['control', 'defense', 'recoil'],
+    grantsTags: ['recoil'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 6,
+    synergyWeight: 3,
+    weightRules: [{ whenTags: ['fire-rate', 'multishot'], multiplier: 3 }],
+    apply: ({ player }) => {
+      player.stats.recoilResistance = Math.min(0.9, player.stats.recoilResistance + 0.18);
+      player.stats.knockbackResistance = Math.min(0.9, player.stats.knockbackResistance + 0.15);
+    },
+  },
   {
     id: 'deflector-array',
     name: 'Deflector Array',

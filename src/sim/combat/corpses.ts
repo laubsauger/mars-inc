@@ -23,15 +23,22 @@ import { applyAreaDamage } from './aoe';
 import type { KillEvent } from './weapon-system';
 
 const MAX_CORPSES = 256; // hard pool cap (V5) — excess kills just don't leave a body
-const STORE_CAP = 400; // ceiling on stored overkill per corpse (bounded scaling)
+// Base engine (Violent Recycling) is INTENTIONALLY contained — a small, capped pop
+// that clears fodder right next to the body, NOT a wave-nuke. Without hard caps a
+// big-overkill build turned every kill into a screen-clear, and each blast-kill
+// banked more overkill → a runaway cascade. The family's PAYOFF lives in the later
+// cards (Chain of Evidence = more hops, Moonshot = the big strike), which build on
+// this floor instead of the floor itself being absurd (T65 retune).
+const STORE_CAP = 150; // ceiling on stored overkill per corpse (≥ Moonshot threshold)
 const FUSE = 1.3; // s a stationary corpse sits before it pops (long enough to SEE it)
 const LAUNCH_SPEED = 17; // ballistics travel speed
 const LAUNCH_MAX = 1.3; // s max flight before a launched corpse detonates anyway
 const SEEK_RADIUS = 22; // how far ballistics looks for a target
-const BLAST_BASE = 1.6; // min detonation radius
-const BLAST_PER_STORE = 0.045; // radius growth per stored point
-const BLAST_MAX = 6; // radius ceiling
-const DMG_FRAC = 0.85; // detonation damage = stored × this
+const BLAST_BASE = 1.4; // min detonation radius
+const BLAST_PER_STORE = 0.022; // radius growth per stored point (gentle)
+const BLAST_MAX = 3.2; // radius ceiling — a body's-length pop, not a pack wipe
+const DMG_FRAC = 0.5; // detonation damage = stored × this
+const DMG_CAP = 55; // ABSOLUTE per-pop damage ceiling (non-meteor) — kills fodder, ⊥ nukes packs
 const CHAIN_FRAC = 0.55; // a chained child inherits this much of the parent's store
 const CHAIN_FLOOR = 8; // chains stop once stored drops below this → terminates (V30)
 const SELF_DMG_FRAC = 0.22; // liability: player takes this frac if it stands in a blast
@@ -215,7 +222,10 @@ export class CorpseSystem {
       const radius = meteor
         ? MOONSHOT_RADIUS
         : Math.min(BLAST_MAX, BLAST_BASE + stored * BLAST_PER_STORE);
-      const amount = stored * DMG_FRAC * (meteor ? MOONSHOT_DMG_MULT : 1);
+      // Meteor (catastrophe) keeps its heavy multiplier; a normal pop is hard-capped
+      // so it can't snowball into a wave wipe (the cascade tamer).
+      const baseAmount = stored * DMG_FRAC;
+      const amount = meteor ? baseAmount * MOONSHOT_DMG_MULT : Math.min(DMG_CAP, baseAmount);
       dealt = applyAreaDamage(
         enemies,
         hash,

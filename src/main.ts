@@ -1,12 +1,13 @@
 // Boot. WebGPU detect → unsupported screen (§C, §I.url). Wires input + sim + render.
 
-import { Scene, FogExp2, Color } from 'three';
+import { Scene, FogExp2 } from 'three';
 import { isWebGpuSupported, createRenderer } from './render/renderer';
 import { createPostProcessing } from './render/post';
 import { createCamera, screenToGround, frameArena } from './render/camera';
 import { createControls } from './render/controls';
 import { ArenaView, setArenaLightBuffer } from './render/arena';
-import { LightBuffer, PROJ_LIGHT_COLS, PROJ_LIGHT_GAIN } from './render/light-buffer';
+import { LightBuffer } from './render/light-buffer';
+import { accumulateLights } from './render/light-accumulator';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { StatusMarkerView } from './render/status-marker-view';
@@ -57,8 +58,10 @@ import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile'
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
-import { World, DEV_UPGRADE_CATALOG } from './sim/world';
-import { WEAPONS } from './content/weapons/index';
+import { World } from './sim/world';
+import { createDevBridge } from './boot/dev-bridge';
+import { buildHudState } from './ui/hud-sync';
+import { buildProfileView, buildSettingsView } from './ui/profile-sync';
 import { EnemyState, ENEMY_DISPLAY_NAME, ENEMY_BY_VARIANT, BOSS_GATEKEEPER } from './sim/enemies';
 import { DevOverlay, type OverlayMetrics } from './dev/overlay';
 import { mountUi } from './ui/ui-root';
@@ -197,59 +200,6 @@ async function boot(parent: HTMLElement): Promise<void> {
 
   const world = new World(seed, save.current.permanentUpgrades);
 
-  // Feed the projectile light buffer from EVERY emitter, not just player bolts.
-  // One accumulation pass (begin → add… → commit); cost is the sprite count, not a
-  // light per source. Airborne sources (grenade, lobbed enemy shots) shrink + dim
-  // their FLOOR glow with height so the light reads as lifting off the ground.
-  const LIGHT_GRENADE = new Color(1.0, 0.28, 0.14); // hot red — distinct from gold bolts
-  const LIGHT_ENEMY = new Color(0.85, 0.3, 0.95); // hostile magenta
-  const LIGHT_SHARD = new Color(0.3, 0.85, 0.7); // xp cyan-green
-  const LIGHT_BOUNTY = new Color(1.0, 0.78, 0.32); // relic gold
-  const LIGHT_WEAPON = new Color(1.0, 0.66, 0.34); // crate warm gold
-  const LIGHT_HEALTH = new Color(1.0, 0.32, 0.28); // medkit red
-  const accumulateLights = (alpha: number): void => {
-    lightBuffer.begin();
-    // Player bolts — full glow, tinted by weapon family.
-    const pp = world.weaponSystem.projectiles;
-    for (let i = 0; i < pp.count; i++) {
-      const x = pp.prevX[i]! + (pp.posX[i]! - pp.prevX[i]!) * alpha;
-      const z = pp.prevZ[i]! + (pp.posZ[i]! - pp.prevZ[i]!) * alpha;
-      const style = pp.style[i]!;
-      const g = PROJ_LIGHT_GAIN[style] ?? PROJ_LIGHT_GAIN[0]!;
-      lightBuffer.add(x, z, PROJ_LIGHT_COLS[style] ?? PROJ_LIGHT_COLS[0]!, g.scale, g.intensity);
-    }
-    // Grenades — floor glow shrinks/dims as the lob rises (peak ≈ 2.6 over base 0.4).
-    const gr = world.grenades;
-    for (let i = 0; i < gr.count; i++) {
-      const t = Math.min(1, Math.max(0, (gr.posY[i]! - 0.4) / 2.6));
-      const f = 1 - t * 0.85; // near 0.15 at the apex
-      lightBuffer.add(gr.posX[i]!, gr.posZ[i]!, LIGHT_GRENADE, 1.3 * f, 1.2 * f);
-    }
-    // Enemy projectiles — lobbed shots arc (height fades the floor glow); guns flat.
-    const ep = world.enemyAttacks.projectiles;
-    for (let i = 0; i < ep.count; i++) {
-      const h = ep.height(i, alpha);
-      const f = 1 - Math.min(1, h / 4) * 0.8;
-      const x = ep.prevX[i]! + (ep.posX[i]! - ep.prevX[i]!) * alpha;
-      const z = ep.prevZ[i]! + (ep.posZ[i]! - ep.prevZ[i]!) * alpha;
-      lightBuffer.add(x, z, LIGHT_ENEMY, 1, 0.8 * f);
-    }
-    // Pickups — subtle, low static floor glow so they're findable on the dark stage.
-    const sh = world.shards;
-    for (let i = 0; i < sh.count; i++)
-      lightBuffer.add(sh.posX[i]!, sh.posZ[i]!, LIGHT_SHARD, 0.5, 0.4);
-    const bp = world.bounties.pool;
-    for (let i = 0; i < bp.count; i++)
-      lightBuffer.add(bp.posX[i]!, bp.posZ[i]!, LIGHT_BOUNTY, 1.1, 0.7);
-    const wd = world.weaponDrops.pool;
-    for (let i = 0; i < wd.count; i++)
-      lightBuffer.add(wd.posX[i]!, wd.posZ[i]!, LIGHT_WEAPON, 1, 0.6);
-    const hd = world.healthDrops.pool;
-    for (let i = 0; i < hd.count; i++)
-      lightBuffer.add(hd.posX[i]!, hd.posZ[i]!, LIGHT_HEALTH, 0.9, 0.6);
-    lightBuffer.commit();
-  };
-
   const playerView = new PlayerView(scene, world.player);
   const enemyView = new EnemyView(scene, lightBuffer);
   const statusMarkers = new StatusMarkerView(scene);
@@ -319,52 +269,8 @@ async function boot(parent: HTMLElement): Promise<void> {
 
   // Push records/settings to the menu from the saved profile.
   const pushProfile = (): void => {
-    const r = save.current.records;
-    // One row per (arena × character) combo — both are tracked together.
-    const byCombo = Object.values(ARENAS).flatMap((a) =>
-      [ACTIVE_CHARACTER].map((c) => {
-        const rec =
-          save.current.recordsByArenaCharacter[arenaCharacterKey(a.id, c.id)] ?? emptyRecord();
-        return {
-          id: `${a.id}|${c.id}`,
-          arena: a.name,
-          character: c.name,
-          bestTimeSec: rec.bestTimeSec,
-          bestLevel: rec.bestLevel,
-          mostKills: rec.mostKills,
-        };
-      }),
-    );
-    uiActions.setProfile({
-      bestTimeSec: r.bestTimeSec,
-      bestLevel: r.bestLevel,
-      mostKills: r.mostKills,
-      runCount: save.current.runHistory.length,
-      byCombo,
-      bossDefeated: !!save.current.unlocks['boss-beaten'],
-      discoveredWeapons: Object.keys(save.current.unlocks)
-        .filter((k) => k.startsWith('weapon:') && save.current.unlocks[k])
-        .map((k) => k.slice('weapon:'.length)),
-    });
-    uiActions.setSettings({
-      masterVolume: save.current.settings.masterVolume,
-      sfxVolume: save.current.settings.sfxVolume,
-      musicVolume: save.current.settings.musicVolume,
-      screenShake: save.current.settings.screenShake,
-      reduceFlash: save.current.settings.reduceFlash,
-      uiScale: save.current.settings.uiScale,
-      holdToSprint: save.current.accessibility.holdToSprint,
-      pauseOnFocusLoss: save.current.settings.pauseOnFocusLoss,
-      enemyHealthbars: save.current.settings.enemyHealthbars,
-      toonShading: save.current.settings.toonShading,
-      arenaId: save.current.settings.arenaId,
-      showCountdown: save.current.settings.showCountdown,
-      cameraControls: save.current.settings.cameraControls,
-      showGrenadeRange: save.current.settings.showGrenadeRange,
-      projectileLighting: save.current.settings.projectileLighting,
-      ambientOcclusion: save.current.settings.ambientOcclusion,
-      colorblind: save.current.accessibility.colorblindPalette,
-    });
+    uiActions.setProfile(buildProfileView(save, ACTIVE_CHARACTER));
+    uiActions.setSettings(buildSettingsView(save));
   };
   pushProfile();
 
@@ -733,7 +639,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       statusMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
-      accumulateLights(alpha); // all emitters → the projectile light buffer
+      accumulateLights(lightBuffer, world, alpha); // all emitters → the projectile light buffer
       grenadeView.sync(world.grenades);
       floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
@@ -814,29 +720,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       renderMs = performance.now() - r0;
 
       // Push HUD slice to the store (selectors re-render only changed widgets).
-      const sp = world.player.sprint;
-      uiActions.setHud({
-        health: world.player.health,
-        maxHealth: world.player.maxHealth,
-        sprintCharges: sp.charges,
-        sprintCooldown01:
-          sp.charges >= sp.maxCharges
-            ? 1
-            : 1 - Math.max(0, sp.cooldown) / world.player.stats.sprintCooldown,
-        paused: world.paused,
-        elapsed: world.elapsed,
-        level: world.player.level,
-        xp01: world.player.xp / world.player.xpToNext,
-        countdown: world.countdown,
-        bossEta: world.bossEta(),
-        enemiesAlive: world.enemies.count,
-        weapon: world.weaponSystem.weapons[0]?.def.displayName ?? '',
-        shieldCharges: world.player.shieldCharges,
-        shieldMax: world.player.shieldMax,
-        sprintMax: sp.maxCharges,
-        grenade01: world.grenadeCharge01,
-        autoShoot: world.autoShoot,
-      });
+      uiActions.setHud(buildHudState(world));
       uiActions.setBoss(world.boss.snapshot());
       uiActions.setInspect(computeInspect(world));
 
@@ -1028,107 +912,8 @@ async function boot(parent: HTMLElement): Promise<void> {
   });
   window.addEventListener('beforeunload', () => void save.flush());
 
-  // Dev control board bridge (T74). Every action routes through the real sim/save
-  // APIs (world.devXxx / save.mutate) — ⊥ a bespoke pipeline (V35). Live grants flag
-  // world.cheated so the run never banks (gated above). Permanents/Glory honour a
-  // PERSIST flag: persist → write the profile (a real grant); else → run-only.
-  const dev = {
-    upgrades: DEV_UPGRADE_CATALOG,
-    weapons: WEAPONS.map((w) => ({ id: w.id, name: w.displayName })),
-    permanents: PERMANENT_UPGRADES.map((p) => ({
-      id: p.id,
-      name: p.name,
-      branch: p.branch,
-      maxLevel: p.maxLevel,
-    })),
-    enemies: ENEMY_BY_VARIANT.flatMap((t, v) =>
-      t ? [{ variant: v, name: ENEMY_DISPLAY_NAME[v] ?? `Variant ${v}` }] : [],
-    ),
-    grantUpgrade: (id: string) => world.devGrantUpgrade(id),
-    upgradeLevelOf: (id: string) => world.upgradeLevelOf(id),
-    setWeapon: (id: string) => world.devSetWeapon(id),
-    evolve: () => world.devTryEvolve(),
-    addLevels: (n: number) => world.devAddLevels(n),
-    heal: () => world.devHeal(),
-    toggleGodmode: () => world.devToggleGodmode(),
-    godmode: () => world.devGodmode,
-    spawn: (variant: number, count: number) => world.devSpawn(variant, count),
-    forceBoss: () => world.devForceBoss(),
-    clearEnemies: () => world.devClearEnemies(),
-    openBossReward: () => world.devOpenBossReward(),
-    weaponId: () => world.weaponSystem.primaryId ?? '',
-    glory: () => save.current.currencies.martianGlory,
-    ownedPermanent: (id: string) => save.current.permanentUpgrades[id] ?? 0,
-    grantGlory: (amount: number) => {
-      save.mutate((p) => {
-        p.currencies.martianGlory = Math.max(0, p.currencies.martianGlory + amount);
-      });
-      pushMeta();
-    },
-    setPermanent: (id: string, level: number, persist: boolean) => {
-      const lvl = Math.max(0, Math.floor(level));
-      if (persist) {
-        save.mutate((p) => {
-          if (lvl <= 0) delete p.permanentUpgrades[id];
-          else p.permanentUpgrades[id] = lvl;
-        });
-        world.setPermanents(save.current.permanentUpgrades);
-      } else {
-        // Run-only: a throwaway level map applied at the NEXT run start (Enter Pit /
-        // restart) — doesn't touch the profile.
-        const ephemeral = { ...save.current.permanentUpgrades };
-        if (lvl <= 0) delete ephemeral[id];
-        else ephemeral[id] = lvl;
-        world.setPermanents(ephemeral);
-      }
-      pushMeta();
-    },
-    // Scenario = a portable snapshot of a build setup (weapon + owned card levels +
-    // permanent-tree levels). Export to share / version / drive automated tests;
-    // import to reconstruct it instantly (T74 scenario presets).
-    exportScenario: (): string => {
-      const upgrades: Record<string, number> = {};
-      for (const u of DEV_UPGRADE_CATALOG) {
-        const lvl = world.upgradeLevelOf(u.id);
-        if (lvl > 0) upgrades[u.id] = lvl;
-      }
-      return JSON.stringify(
-        {
-          weapon: world.weaponSystem.primaryId ?? null,
-          upgrades,
-          permanents: { ...save.current.permanentUpgrades },
-        },
-        null,
-        2,
-      );
-    },
-    applyScenario: (text: string, persist: boolean): string | null => {
-      let s: { weapon?: unknown; upgrades?: unknown; permanents?: unknown };
-      try {
-        s = JSON.parse(text) as typeof s;
-      } catch {
-        return 'invalid JSON';
-      }
-      if (typeof s !== 'object' || s === null) return 'not a scenario object';
-      if (typeof s.weapon === 'string') world.devSetWeapon(s.weapon);
-      if (s.permanents && typeof s.permanents === 'object') {
-        for (const [id, lvl] of Object.entries(s.permanents as Record<string, unknown>)) {
-          if (typeof lvl === 'number') dev.setPermanent(id, lvl, persist);
-        }
-      }
-      if (s.upgrades && typeof s.upgrades === 'object') {
-        // Raise each card to its target level (grants are additive +1 per call).
-        for (const [id, target] of Object.entries(s.upgrades as Record<string, unknown>)) {
-          if (typeof target !== 'number') continue;
-          for (let cur = world.upgradeLevelOf(id); cur < target; cur++) {
-            if (!world.devGrantUpgrade(id)) break; // unknown id → stop that card
-          }
-        }
-      }
-      pushMeta();
-      return null; // ok
-    },
-  };
+  // Dev control board bridge (T74) — see boot/dev-bridge.ts.
+  const dev = createDevBridge(world, save, pushMeta);
   uiActions.setDev(dev);
 
   // Dev hook for e2e / debugging invisible sim state (execution rule 11). Temp.

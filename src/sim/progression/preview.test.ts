@@ -42,10 +42,30 @@ describe('previewUpgrade', () => {
 
   it('surfaces a CONDITIONAL card peak (situational damage) as from→to', () => {
     // Restraining Order: +35% damage while the nearest enemy is far → a peak the
-    // static-field diff misses. With live effects it stacks on what's owned.
+    // static-field diff misses. Level 0→1 stacks on nothing yet.
     const changes = previewUpgrade(find('restraining-order'), defaultMods(), createPlayer());
-    const dmg = changes.find((c) => c.label === 'Damage (peak)');
-    expect(dmg).toEqual({ label: 'Damage (peak)', from: '×1.00', to: '×1.35' });
+    expect(changes.find((c) => c.label === 'Damage (peak)')).toEqual({
+      label: 'Damage (peak)',
+      from: '×1.00',
+      to: '×1.35',
+    });
+  });
+
+  it('CONDITIONAL peak STACKS on owned levels (the Lv1→2 case)', () => {
+    // One level already owned (live effects hold its conditional) → the next level
+    // multiplies on top: ×1.35 → ×1.82.
+    const live = new BuildEffects();
+    find('restraining-order').apply({
+      mods: defaultMods(),
+      player: createPlayer(),
+      effects: live,
+    });
+    const changes = previewUpgrade(find('restraining-order'), defaultMods(), createPlayer(), live);
+    expect(changes.find((c) => c.label === 'Damage (peak)')).toEqual({
+      label: 'Damage (peak)',
+      from: '×1.35',
+      to: '×1.82',
+    });
   });
 
   it('returns empty for pure TRIGGER cards (on-kill AoE — no preview-able number)', () => {

@@ -177,7 +177,8 @@ export function previewUpgrade(
   const dmg = peak('damageMult', 1);
   if (dmg) changes.push({ label: 'Damage (peak)', from: x2(dmg.from), to: x2(dmg.to) });
   const crit = peak('critAdd', 0);
-  if (crit) changes.push({ label: 'Crit (peak)', from: `+${pct(crit.from)}`, to: `+${pct(crit.to)}` });
+  if (crit)
+    changes.push({ label: 'Crit (peak)', from: `+${pct(crit.from)}`, to: `+${pct(crit.to)}` });
   const fr = peak('fireRateMult', 1);
   if (fr) changes.push({ label: 'Fire Rate (peak)', from: x2(fr.from), to: x2(fr.to) });
   // Walk EVERY mod key so no numeric/boolean field is silently dropped (root cause

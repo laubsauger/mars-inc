@@ -18,6 +18,10 @@ import { xpRequired } from '../content/balance/xp-curve';
 // you a real distance — recoil is a movement/strategy factor, not a flicker. Still
 // decays fully so it never makes you uncontrollable (V10).
 const RECOIL_DECAY = 3.2;
+// Ceiling on ACCUMULATED recoil impulse (u/s). Rapid fire stacks kicks faster than
+// they decay; this bounds the sustained shove so a minigun pushes you, ⊥ launches
+// you (V10). Recoil resistance shrinks the inputs, so it rarely hits this.
+const MAX_RECOIL_VEL = 8;
 
 // Lilu Tubs, Human Scrapper — balanced (§22).
 export const LILU_STATS: MovementStats = {
@@ -287,6 +291,16 @@ export function stepPlayer(p: Player, input: InputSnapshot, dt: number): void {
   const rdecay = Math.max(0, 1 - RECOIL_DECAY * dt);
   p.recoilVel.x *= rdecay;
   p.recoilVel.z *= rdecay;
+  // TOTAL recoil-velocity ceiling: per-shot kicks are capped, but a high fire rate
+  // stacks them faster than they decay → a rapid gun could still build an
+  // uncontrollable shove. Clamp the accumulated impulse so recoil stays a push you
+  // can fight, never a launch (V10). Resistance lifts headroom by shrinking inputs.
+  const rspeed = Math.hypot(p.recoilVel.x, p.recoilVel.z);
+  if (rspeed > MAX_RECOIL_VEL) {
+    const k = MAX_RECOIL_VEL / rspeed;
+    p.recoilVel.x *= k;
+    p.recoilVel.z *= k;
+  }
   if (Math.abs(p.recoilVel.x) < 1e-3) p.recoilVel.x = 0;
   if (Math.abs(p.recoilVel.z) < 1e-3) p.recoilVel.z = 0;
 
