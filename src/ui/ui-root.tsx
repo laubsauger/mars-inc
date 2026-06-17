@@ -12,10 +12,11 @@ import { FloatingLayer } from './FloatingLayer';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { MainMenu } from './screens/MainMenu';
 import { Hud } from './Hud';
+import { DevMenu } from './dev/DevMenu';
 import { useUiStore } from './store';
 import './index.css';
 
-function App() {
+function Screen() {
   const screen = useUiStore((s) => s.screen);
   switch (screen) {
     case 'unsupported':
@@ -37,6 +38,16 @@ function App() {
     case 'boot':
       return null;
   }
+}
+
+function App() {
+  return (
+    <>
+      <Screen />
+      {/* Dev control board (T74) — always available (corner pill + F2). */}
+      <DevMenu />
+    </>
+  );
 }
 
 export function mountUi(parent: HTMLElement): void {

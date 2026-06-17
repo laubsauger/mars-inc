@@ -1,5 +1,5 @@
 // Post-game run summary (T23 redesign). One rich page: the verdict, the spoils
-// you banked (Glory earned, bosses felled), the run's numbers, and the build you
+// you banked (Glory earned, bosses slain), the run's numbers, and the build you
 // actually became (final weapon, upgrades, kills by type). Spending Glory lives
 // in the menu's Glory Tree — this screen is for reading your run. Restart in
 // place (V15) or return to the menu.
@@ -53,10 +53,10 @@ export function GameOverScreen() {
   const won = result.won;
 
   return (
-    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-pit/90 font-mono">
+    <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-0 overflow-y-auto bg-pit/90 py-6 font-mono">
       {/* Verdict */}
       <div className={`text-xs tracking-[0.45em] ${won ? 'text-gold' : 'text-ember'}`}>
-        {won ? 'GATEKEEPER FELLED' : 'YOU DIED'}
+        {won ? 'GATEKEEPER SLAIN' : 'YOU DIED'}
       </div>
       <div
         className={`mb-4 text-4xl font-black tracking-widest ${won ? 'text-gold drop-shadow-[0_0_18px_rgba(255,210,63,0.5)]' : 'text-bone'}`}
@@ -73,7 +73,7 @@ export function GameOverScreen() {
           </span>
         </div>
         <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
-          <span className="text-[10px] uppercase tracking-widest text-dust">Bosses felled</span>
+          <span className="text-[10px] uppercase tracking-widest text-dust">Bosses slain</span>
           <span className="text-3xl font-black text-bone tabular-nums">{result.bossKills}</span>
         </div>
         <div className="flex flex-col items-center justify-center rounded-md border border-rust/50 bg-umber/60 px-6 py-2">
@@ -83,7 +83,7 @@ export function GameOverScreen() {
       </div>
 
       {/* Body: numbers + kills + the reusable build sheet */}
-      <div className="flex w-[58rem] max-w-[92vw] flex-col gap-3">
+      <div className="flex w-[64rem] max-w-[94vw] flex-col gap-3">
         <div className="grid grid-cols-3 gap-3">
           <Panel title="SURVIVAL">
             <Stat label="Time" value={fmtTime(result.durationSec)} />

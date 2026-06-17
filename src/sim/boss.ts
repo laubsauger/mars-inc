@@ -28,7 +28,7 @@ export interface BossSnapshot {
 export class BossController {
   active = false;
   hp01 = 0;
-  /** True once ANY boss has been felled (Act-2 unlock / run "won"). */
+  /** True once ANY boss has been slain (Act-2 unlock / run "won"). */
   defeated = false;
   /** Per-kill EDGE: true only the step a boss dies — the world grants one reward +
    *  counts the kill, then the controller re-arms for the next boss wave (V22 ×N). */

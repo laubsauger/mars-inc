@@ -160,6 +160,36 @@ export function rarityWeight(rarity: Rarity, level: number, luck: number): numbe
   return RARITY_BASE[rarity] * scale;
 }
 
+/** Tags that mean "this upgrade actually raises kill throughput" — the offensive
+ *  FOUNDATION of a build. Used by the draft's foundation-pity nudge (T-pity): a
+ *  player who's drafted only utility (move speed, range, defense) by the time the
+ *  boss gearcheck looms gets these biased UP so they at least see a damage option.
+ *  Soft odds only — never a guarantee (they can still pick poorly). */
+export const OFFENSE_TAGS: ReadonlySet<string> = new Set([
+  'damage',
+  'fire-rate',
+  'multishot',
+  'crit',
+  'aoe',
+  'explosive',
+  'chain',
+  'ricochet',
+  'drone',
+  'summon',
+]);
+
+/** A draft-time weight nudge: cards carrying ANY `tags` get `mult`×'d. Kept generic
+ *  so the same hook can serve other guided-draft moments later. */
+export interface DraftBoost {
+  tags: ReadonlySet<string>;
+  mult: number;
+}
+
+/** True if the upgrade contributes offensive kill power (per {@link OFFENSE_TAGS}). */
+export function isOffense(u: UpgradeDefinition): boolean {
+  return u.tags.some((t) => OFFENSE_TAGS.has(t));
+}
+
 export interface DraftParams {
   count?: number;
   level?: number;
@@ -167,6 +197,8 @@ export interface DraftParams {
   banished?: ReadonlySet<string>;
   /** Unlocked boss/skill-tree keys (gate boss/tree-locked cards into the pool). */
   gates?: ReadonlySet<string>;
+  /** Optional weight nudge toward a tag set (foundation pity, T-pity). */
+  boost?: DraftBoost | undefined;
 }
 
 /** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
@@ -177,6 +209,7 @@ function weightOf(
   counts: Map<string, number>,
   level: number,
   luck: number,
+  boost?: DraftBoost,
 ): number {
   let synergy = 0;
   for (const t of u.tags) synergy += counts.get(t) ?? 0;
@@ -191,6 +224,9 @@ function weightOf(
       if (hit) w *= rule.multiplier;
     }
   }
+  // Foundation pity (T-pity): lift cards in the boosted tag set. Applied last so it
+  // scales the fully-resolved weight.
+  if (boost && u.tags.some((t) => boost.tags.has(t))) w *= boost.mult;
   return w;
 }
 
@@ -209,17 +245,18 @@ export function rollDraft(
   const count = params.count ?? 3;
   const level = params.level ?? 1;
   const luck = params.luck ?? 0;
+  const boost = params.boost;
   const counts = ownedTags(registry, levels);
   const pool = available(registry, levels, params.banished, params.gates, counts);
   const picks: UpgradeDefinition[] = [];
 
   while (picks.length < count && pool.length > 0) {
     let total = 0;
-    for (const u of pool) total += weightOf(u, counts, level, luck);
+    for (const u of pool) total += weightOf(u, counts, level, luck, boost);
     let r = rng.next() * total;
     let idx = 0;
     for (let i = 0; i < pool.length; i++) {
-      r -= weightOf(pool[i]!, counts, level, luck);
+      r -= weightOf(pool[i]!, counts, level, luck, boost);
       if (r <= 0) {
         idx = i;
         break;

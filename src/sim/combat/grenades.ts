@@ -7,14 +7,18 @@ import type { SpatialHash } from '../spatial-hash';
 import type { Rng } from '../../core/rng';
 import { type FxQueue, ImpactProfile } from '../fx';
 import { applyAreaDamage } from './aoe';
-import { radialPush } from './knockback';
+import { radialPush, directionalPush } from './knockback';
 import { applyStatus } from './status';
 
 const MAX_GRENADES = 8;
+/** Max lob distance (world units). Exported so the aim overlay can draw the
+ *  grenade's reach — its range is decoupled from weapon range, which confuses. */
+export const GRENADE_MAX_THROW = 12;
 const SLING_SPEED = 15; // world units/s — constant, so a longer lob takes LONGER
 const MIN_FLIGHT = 0.14; // floor so a point-blank toss still arcs a touch
 const ARC_HEIGHT = 2.6; // visual lob height (y only — never affects sim, V4)
 const FALLOFF = 0.7; // blast damage drops to 30% at the rim — crowd splash, not one-shot
+const FORWARD_BIAS = 0.65; // knockback lean toward the throw direction (grenade-launcher feel)
 
 export class GrenadeSystem {
   count = 0;
@@ -91,10 +95,35 @@ export class GrenadeSystem {
           tx,
           tz,
           this.radius,
-          { amount: this.damage, damageType: 'explosive', falloff: FALLOFF, fx },
+          { amount: this.damage, damageType: 'explosive', falloff: FALLOFF, fx, hitFx: true },
           rng,
         );
-        radialPush(enemies, hash, tx, tz, this.radius, this.knockback);
+        // Knockback. A grenade LAUNCHER punches downrange, so the outward shove is
+        // biased toward the throw direction — near-side enemies get blown away from
+        // the thrower instead of back into their lap. The Vacuum Charge PULL
+        // (negative force) stays purely radial (a clean gather).
+        if (this.knockback >= 0) {
+          const fdx = tx - sx;
+          const fdz = tz - sz;
+          const fl = Math.hypot(fdx, fdz);
+          if (fl > 1e-3) {
+            directionalPush(
+              enemies,
+              hash,
+              tx,
+              tz,
+              this.radius,
+              this.knockback,
+              fdx / fl,
+              fdz / fl,
+              FORWARD_BIAS,
+            );
+          } else {
+            radialPush(enemies, hash, tx, tz, this.radius, this.knockback); // point-blank → radial
+          }
+        } else {
+          radialPush(enemies, hash, tx, tz, this.radius, this.knockback);
+        }
         if (this.molotov) {
           // Set the area alight — burn everything caught in the blast (T-grenade).
           const n = hash.queryCircle(tx, tz, this.radius, this.ids);
@@ -105,7 +134,9 @@ export class GrenadeSystem {
             }
           }
         }
-        fx.push('impact', tx, tz, 0, 0, ImpactProfile.Blast); // unmistakable explosion
+        // Explosion: blast RADIUS rides in dx so the render shockwave expands to
+        // the true damage zone (visualizes the area that just got hit).
+        fx.push('impact', tx, tz, this.radius, 0, ImpactProfile.Blast);
         const last = --this.count;
         if (i !== last) {
           this.srcX[i] = this.srcX[last]!;

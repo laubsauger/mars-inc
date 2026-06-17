@@ -25,11 +25,13 @@ import {
   type Material,
   type Scene,
 } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { EnemyPool } from '../sim/enemies';
 import { MAX_ENEMIES, EnemyState, SpawnKind } from '../sim/enemies';
 import { COL } from './art/palette';
 import { toonMaterial } from './art/toon';
+import type { LightBuffer } from './light-buffer';
 
 const TELE_TELEGRAPH = 1.0; // must match the director's teleport telegraph window
 
@@ -172,10 +174,24 @@ export class EnemyView {
   private toonMats: (Material | null)[] = [];
   private counts = new Int32Array(SHAPE_COUNT); // per-shape running fill index
 
-  constructor(scene: Scene, capacity: number = MAX_ENEMIES) {
+  constructor(scene: Scene, light?: LightBuffer, capacity: number = MAX_ENEMIES) {
     const shapes = buildShapes();
     for (let s = 0; s < SHAPE_COUNT; s++) {
-      const mat = new MeshStandardMaterial({ roughness: 0.8, metalness: 0.1 });
+      // Std lit material; when the light buffer is wired, projectile light spills
+      // onto the crowd via the same world-XZ sample the floor/walls use. One extra
+      // texture fetch per fragment — cost is independent of projectile count (the
+      // buffer is ONE accumulation pass, not a light per bolt). Toggle-respecting:
+      // strength 0 → no contribution.
+      let mat: Material;
+      if (light) {
+        const node = new MeshStandardNodeMaterial();
+        node.roughness = 0.8;
+        node.metalness = 0.1;
+        node.emissiveNode = light.emissiveNode();
+        mat = node;
+      } else {
+        mat = new MeshStandardMaterial({ roughness: 0.8, metalness: 0.1 });
+      }
       const mesh = new InstancedMesh(shapes[s]!, mat, capacity);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       mesh.castShadow = true;

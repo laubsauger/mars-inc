@@ -6,6 +6,8 @@ import {
   available,
   ownedTags,
   taken,
+  isOffense,
+  OFFENSE_TAGS,
   type UpgradeDefinition,
   type UpgradeLevels,
 } from './upgrades';
@@ -77,6 +79,46 @@ describe('rarity weighting (T41)', () => {
 
   it('count param limits how many options are rolled', () => {
     expect(rollDraft(UPGRADES, {}, new Rng(1), { count: 2 })).toHaveLength(2);
+  });
+});
+
+describe('foundation pity (T-pity offence boost)', () => {
+  // Fraction of single-card draws that surface ANY offensive option, over many seeds.
+  const offenceRate = (boost?: { tags: ReadonlySet<string>; mult: number }): number => {
+    let hits = 0;
+    const N = 400;
+    for (let s = 0; s < N; s++) {
+      const draft = rollDraft(UPGRADES, {}, new Rng(s), { count: 1, level: 3, boost });
+      if (draft.some(isOffense)) hits++;
+    }
+    return hits / N;
+  };
+
+  it('boosting OFFENSE_TAGS raises how often offence appears', () => {
+    const base = offenceRate();
+    const boosted = offenceRate({ tags: OFFENSE_TAGS, mult: 5 });
+    expect(boosted).toBeGreaterThan(base);
+  });
+
+  it('does not guarantee offence — utility can still appear (no spoon-feeding)', () => {
+    // With a strong boost, some single-card draws still land on non-offence cards.
+    let nonOffence = 0;
+    for (let s = 0; s < 200; s++) {
+      const draft = rollDraft(UPGRADES, {}, new Rng(s), {
+        count: 1,
+        level: 3,
+        boost: { tags: OFFENSE_TAGS, mult: 5 },
+      });
+      if (draft.length && !draft.some(isOffense)) nonOffence++;
+    }
+    expect(nonOffence).toBeGreaterThan(0);
+  });
+
+  it('is deterministic with the boost applied (V16)', () => {
+    const boost = { tags: OFFENSE_TAGS, mult: 4 };
+    const a = rollDraft(UPGRADES, {}, new Rng(99), { level: 3, boost }).map((d) => d.id);
+    const b = rollDraft(UPGRADES, {}, new Rng(99), { level: 3, boost }).map((d) => d.id);
+    expect(a).toEqual(b);
   });
 });
 

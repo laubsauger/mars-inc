@@ -1,8 +1,8 @@
-// Optional orbit/zoom camera (player aid). The base game is a fixed framed view
-// (V7), but players can RIGHT-drag to orbit the fixed centre and wheel to zoom —
-// e.g. to lower the angle and peek into the gate rooms. A reset restores the
-// framed default. Left mouse stays free for weapon aim; pan is disabled so the
-// arena centre is always the pivot.
+// Optional free camera (dev aid). The base game is a fixed framed view (V7), but
+// with this opt-in you can MIDDLE-drag to PAN and wheel to ZOOM — to peek into the
+// gate rooms or inspect a corner. A reset restores the framed default. Crucially
+// LEFT (fire) and RIGHT (grenade) mouse buttons stay free — camera lives entirely
+// on the middle button + wheel, so there's no double-assignment with combat.
 
 import { MOUSE, TOUCH, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -25,16 +25,14 @@ export function createControls(
   // accident and losing the framed view. `update()` still runs for damping +
   // camera-shake regardless; `enabled` only gates INPUT.
   controls.enabled = false;
-  controls.enablePan = false; // pivot stays locked on the arena centre
+  controls.enablePan = true; // MIDDLE-drag pans the view (dev: inspect a corner)
+  controls.screenSpacePanning = true; // pan in the screen plane — intuitive top-down
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  // Right-drag orbits (left stays free for mouse-aim); wheel/middle zooms.
-  controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.ROTATE };
-  controls.touches = { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_ROTATE };
-  // Lower the angle to peek into the gate rooms, but never under the floor or
-  // fully top-down (keeps the arena readable).
-  controls.minPolarAngle = (16 * Math.PI) / 180;
-  controls.maxPolarAngle = (84 * Math.PI) / 180;
+  // Camera lives on MIDDLE + wheel ONLY: middle-drag pans, wheel zooms. LEFT/RIGHT
+  // stay null so fire (left) + grenade (right) are never double-bound to the camera.
+  controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: null };
+  controls.touches = { ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_PAN };
   const fit = arenaFitDistance(camera.fov, aspect);
   // Framed default IS the fully-zoomed-out view now (MARGIN baked into `fit`);
   // only a hair of extra dolly-out, and the same absolute closest zoom-in.

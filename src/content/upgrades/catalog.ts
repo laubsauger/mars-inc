@@ -179,16 +179,16 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'ricochet-rounds',
     name: 'Ricochet Rounds',
-    description: 'Spent shots BOUNCE far to a new enemy, one at a time (starts 2, +1/level).',
+    description: 'Spent shots BOUNCE far to a new enemy, one at a time (+1 bounce/level).',
     tags: ['ricochet', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 4,
     baseWeight: 6,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      // First pick gives a couple of bounces; later levels add reach + bounces,
-      // and pump the retained damage up from its weak base toward full strength.
-      mods.ricochet = mods.ricochet === 0 ? 2 : mods.ricochet + 1;
+      // +1 bounce per level (so level 1 = a single bounce, not two); later levels
+      // add reach + pump the retained damage from its weak base toward full strength.
+      mods.ricochet += 1;
       mods.ricochetRange += 1.5;
       mods.ricochetRetain = Math.min(0.9, mods.ricochetRetain + 0.16);
     },

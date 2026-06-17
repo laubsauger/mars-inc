@@ -1,11 +1,12 @@
 // Boot. WebGPU detect → unsupported screen (§C, §I.url). Wires input + sim + render.
 
-import { Scene, FogExp2 } from 'three';
+import { Scene, FogExp2, Color } from 'three';
 import { isWebGpuSupported, createRenderer } from './render/renderer';
 import { createPostProcessing } from './render/post';
 import { createCamera, screenToGround, frameArena } from './render/camera';
 import { createControls } from './render/controls';
-import { ArenaView } from './render/arena';
+import { ArenaView, setArenaLightBuffer } from './render/arena';
+import { LightBuffer, PROJ_LIGHT_COLS } from './render/light-buffer';
 import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { StatusMarkerView } from './render/status-marker-view';
@@ -25,11 +26,15 @@ import { CorpseView } from './render/corpse-view';
 import { GrenadeView } from './render/grenade-view';
 import { PetView } from './render/pet-view';
 import { AimLineView } from './render/aim-line-view';
+import { GrenadeRangeView } from './render/grenade-range-view';
+import { GRENADE_MAX_THROW } from './sim/combat/grenades';
 import { Effects } from './render/effects';
 import { FloorReflectionView } from './render/floor-reflection-view';
 import { FloatingText } from './render/floating-text';
 import { ChainView } from './render/chain-view';
 import { BloodView } from './render/blood-view';
+import { GibView } from './render/gib-view';
+import { MeteorView } from './render/meteor-view';
 import { CameraShake } from './render/camera-shake';
 import { AudioBus } from './audio/audio';
 // Menu music pool: every track in the folder (no hard-coded names — drop more in
@@ -52,7 +57,8 @@ import { emptyRecord, arenaCharacterKey, type RecordData } from './save/profile'
 import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
-import { World } from './sim/world';
+import { World, DEV_UPGRADE_CATALOG } from './sim/world';
+import { WEAPONS } from './content/weapons/index';
 import { EnemyState, ENEMY_DISPLAY_NAME, ENEMY_BY_VARIANT, BOSS_GATEKEEPER } from './sim/enemies';
 import { DevOverlay, type OverlayMetrics } from './dev/overlay';
 import { mountUi } from './ui/ui-root';
@@ -171,11 +177,79 @@ async function boot(parent: HTMLElement): Promise<void> {
   // camera distance. Just a touch of atmosphere toward the spectator dark.
   scene.fog = new FogExp2(0x140c08, 0.0038);
   const camera = createCamera(window.innerWidth / window.innerHeight);
+
+  // Projectile light buffer (top-down accumulation → floor/wall light spill). Built
+  // + framed BEFORE the arena so its floor/wall materials bake in the light sample.
+  const lightBuffer = new LightBuffer();
+  const frameLightBuffer = (): void => {
+    const shape = ARENAS[save.current.settings.arenaId].shape;
+    const m = 4; // margin so perimeter walls fall inside the buffer
+    if (shape.kind === 'rect') {
+      lightBuffer.configure(-shape.halfW - m, -shape.halfZ - m, shape.halfW + m, shape.halfZ + m);
+    } else {
+      const r = shape.radius + m;
+      lightBuffer.configure(-r, -r, r, r);
+    }
+  };
+  frameLightBuffer();
+  setArenaLightBuffer(lightBuffer);
   let arena = new ArenaView(scene);
 
   const world = new World(seed, save.current.permanentUpgrades);
+
+  // Feed the projectile light buffer from EVERY emitter, not just player bolts.
+  // One accumulation pass (begin → add… → commit); cost is the sprite count, not a
+  // light per source. Airborne sources (grenade, lobbed enemy shots) shrink + dim
+  // their FLOOR glow with height so the light reads as lifting off the ground.
+  const LIGHT_GRENADE = new Color(1.0, 0.5, 0.18); // orange
+  const LIGHT_ENEMY = new Color(0.85, 0.3, 0.95); // hostile magenta
+  const LIGHT_SHARD = new Color(0.3, 0.85, 0.7); // xp cyan-green
+  const LIGHT_BOUNTY = new Color(1.0, 0.78, 0.32); // relic gold
+  const LIGHT_WEAPON = new Color(1.0, 0.66, 0.34); // crate warm gold
+  const LIGHT_HEALTH = new Color(1.0, 0.32, 0.28); // medkit red
+  const accumulateLights = (alpha: number): void => {
+    lightBuffer.begin();
+    // Player bolts — full glow, tinted by weapon family.
+    const pp = world.weaponSystem.projectiles;
+    for (let i = 0; i < pp.count; i++) {
+      const x = pp.prevX[i]! + (pp.posX[i]! - pp.prevX[i]!) * alpha;
+      const z = pp.prevZ[i]! + (pp.posZ[i]! - pp.prevZ[i]!) * alpha;
+      lightBuffer.add(x, z, PROJ_LIGHT_COLS[pp.style[i]!] ?? PROJ_LIGHT_COLS[0]!, 1, 1);
+    }
+    // Grenades — floor glow shrinks/dims as the lob rises (peak ≈ 2.6 over base 0.4).
+    const gr = world.grenades;
+    for (let i = 0; i < gr.count; i++) {
+      const t = Math.min(1, Math.max(0, (gr.posY[i]! - 0.4) / 2.6));
+      const f = 1 - t * 0.85; // near 0.15 at the apex
+      lightBuffer.add(gr.posX[i]!, gr.posZ[i]!, LIGHT_GRENADE, 1.3 * f, 1.2 * f);
+    }
+    // Enemy projectiles — lobbed shots arc (height fades the floor glow); guns flat.
+    const ep = world.enemyAttacks.projectiles;
+    for (let i = 0; i < ep.count; i++) {
+      const h = ep.height(i, alpha);
+      const f = 1 - Math.min(1, h / 4) * 0.8;
+      const x = ep.prevX[i]! + (ep.posX[i]! - ep.prevX[i]!) * alpha;
+      const z = ep.prevZ[i]! + (ep.posZ[i]! - ep.prevZ[i]!) * alpha;
+      lightBuffer.add(x, z, LIGHT_ENEMY, 1, 0.8 * f);
+    }
+    // Pickups — subtle, low static floor glow so they're findable on the dark stage.
+    const sh = world.shards;
+    for (let i = 0; i < sh.count; i++)
+      lightBuffer.add(sh.posX[i]!, sh.posZ[i]!, LIGHT_SHARD, 0.5, 0.4);
+    const bp = world.bounties.pool;
+    for (let i = 0; i < bp.count; i++)
+      lightBuffer.add(bp.posX[i]!, bp.posZ[i]!, LIGHT_BOUNTY, 1.1, 0.7);
+    const wd = world.weaponDrops.pool;
+    for (let i = 0; i < wd.count; i++)
+      lightBuffer.add(wd.posX[i]!, wd.posZ[i]!, LIGHT_WEAPON, 1, 0.6);
+    const hd = world.healthDrops.pool;
+    for (let i = 0; i < hd.count; i++)
+      lightBuffer.add(hd.posX[i]!, hd.posZ[i]!, LIGHT_HEALTH, 0.9, 0.6);
+    lightBuffer.commit();
+  };
+
   const playerView = new PlayerView(scene, world.player);
-  const enemyView = new EnemyView(scene);
+  const enemyView = new EnemyView(scene, lightBuffer);
   const statusMarkers = new StatusMarkerView(scene);
   const groundShadowView = new GroundShadowView(scene);
   const enemyHealthbars = new EnemyHealthbarView(scene);
@@ -193,6 +267,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const corpseView = new CorpseView(scene);
   const petView = new PetView(scene);
   const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
+  const grenadeRange = new GrenadeRangeView(scene);
   const aimDirs = new Float32Array(64); // reused per frame (multishot fan)
   const effects = new Effects(scene);
   const floorReflect = new FloorReflectionView(scene);
@@ -200,6 +275,8 @@ async function boot(parent: HTMLElement): Promise<void> {
   const chainView = new ChainView(scene);
   const bloodView = new BloodView(scene);
   bloodView.setPlayer(playerView.group, world.player); // accumulating body gore (T39)
+  const gibView = new GibView(scene); // flung mesh chunks on kills + corpse detonations
+  const meteorView = new MeteorView(scene); // Moonshot orbital strikes (falling rock + telegraph)
   const shake = new CameraShake();
   // Optional orbit/zoom (right-drag + wheel) with a reset; shake rides on top.
   const arenaControls = createControls(camera, canvas, window.innerWidth / window.innerHeight);
@@ -281,6 +358,8 @@ async function boot(parent: HTMLElement): Promise<void> {
       arenaId: save.current.settings.arenaId,
       showCountdown: save.current.settings.showCountdown,
       cameraControls: save.current.settings.cameraControls,
+      showGrenadeRange: save.current.settings.showGrenadeRange,
+      projectileLighting: save.current.settings.projectileLighting,
       ambientOcclusion: save.current.settings.ambientOcclusion,
       colorblind: save.current.accessibility.colorblindPalette,
     });
@@ -473,8 +552,11 @@ async function boot(parent: HTMLElement): Promise<void> {
     audio.applyVolumes();
     effects.reduceFlash = s.reduceFlash;
     bloodView.reduceFlash = s.reduceFlash;
+    gibView.reduceFlash = s.reduceFlash;
     shake.intensity = s.screenShake;
     enemyHealthbars.enabled = s.enemyHealthbars;
+    grenadeRange.enabled = s.showGrenadeRange;
+    lightBuffer.setStrength(s.projectileLighting ? 1 : 0);
     enemyView.setToon(s.toonShading);
     playerView.setToon(s.toonShading);
     post.setAO(s.ambientOcclusion);
@@ -504,6 +586,8 @@ async function boot(parent: HTMLElement): Promise<void> {
     // Switching the arena rebuilds the pit geometry + reframes the camera live.
     if (patch.arenaId !== undefined) {
       setActiveArena(patch.arenaId);
+      frameLightBuffer(); // re-frame the light buffer to the new arena's bounds first
+      setArenaLightBuffer(lightBuffer);
       arena.dispose(scene);
       arena = new ArenaView(scene);
       frameArena(camera, window.innerWidth / window.innerHeight);
@@ -572,10 +656,13 @@ async function boot(parent: HTMLElement): Promise<void> {
         effects.consume(fxEvents);
         chainView.consume(fxEvents);
         bloodView.consume(fxEvents);
+        gibView.consume(fxEvents);
+        meteorView.consume(fxEvents);
         floorReflect.consume(fxEvents);
         for (const e of fxEvents) {
           if (e.kind === 'dmg') floating.addDamage(e.x, e.z, e.dx, e.variant);
           else audio.play(e.kind);
+          if (e.kind === 'levelup') playerView.levelUp(); // RPG ascension flourish on the hero
         }
         world.fx.clear();
       }
@@ -606,6 +693,8 @@ async function boot(parent: HTMLElement): Promise<void> {
       floorReflect.update(fxDt);
       chainView.update(fxDt);
       bloodView.update(fxDt);
+      gibView.update(fxDt);
+      meteorView.update(fxDt);
       chainView.sync();
 
       // Orbit/zoom owns the camera pose; shake rides ON TOP. Undo last frame's
@@ -642,6 +731,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       statusMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
+      accumulateLights(alpha); // all emitters → the projectile light buffer
       grenadeView.sync(world.grenades);
       floorReflect.sync(world.weaponSystem.projectiles, alpha);
       enemyProjectileView.sync(world.enemyAttacks.projectiles, alpha);
@@ -699,11 +789,25 @@ async function boot(parent: HTMLElement): Promise<void> {
           Math.min(range, cursorDist),
           pl.stats.collisionRadius + 0.4,
         );
+        // Grenade range cross on the SAME aim direction — its reach (12u) is
+        // decoupled from weapon range, so mark it explicitly. Multi-purpose like the
+        // aim line: clamps to the cursor when it's closer than max (marks where the
+        // grenade actually LANDS), else sits at the max-throw cap. Only when aiming.
+        grenadeRange.sync(
+          pl.pos.x,
+          pl.pos.z,
+          ax,
+          az,
+          Math.min(cursorDist, GRENADE_MAX_THROW),
+          pl.aim.has,
+        );
       } else {
         aimLine.hide();
+        grenadeRange.sync(0, 0, 0, 0, 0, false);
       }
 
       const r0 = performance.now();
+      lightBuffer.render(renderer); // accumulate bolt light into the top-down RT first
       post.render(); // bloom post-stack (scene+camera bound in the pass)
       renderMs = performance.now() - r0;
 
@@ -722,6 +826,7 @@ async function boot(parent: HTMLElement): Promise<void> {
         level: world.player.level,
         xp01: world.player.xp / world.player.xpToNext,
         countdown: world.countdown,
+        bossEta: world.bossEta(),
         enemiesAlive: world.enemies.count,
         weapon: world.weaponSystem.weapons[0]?.def.displayName ?? '',
         shieldCharges: world.player.shieldCharges,
@@ -776,37 +881,43 @@ async function boot(parent: HTMLElement): Promise<void> {
       if (world.ended && world.result && !endShown) {
         endShown = true;
         const r = world.result;
-        lastGlory = gloryFor(
-          r,
-          ARENAS[save.current.settings.arenaId].gloryMult * world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
-        );
-        save.mutate((p) => {
-          p.currencies.martianGlory += lastGlory;
-          // Felling the Gatekeeper (or winning the run) permanently unlocks Act 2.
-          if (world.stats.bossKills > 0 || r.won) p.unlocks['boss-beaten'] = true;
-          // Update the global best AND the per-arena / per-character buckets so
-          // Records can break down "best run" by where + who (T65).
-          const bump = (rec: RecordData): void => {
-            rec.bestTimeSec = Math.max(rec.bestTimeSec, r.durationSec);
-            rec.bestLevel = Math.max(rec.bestLevel, r.level);
-            rec.mostKills = Math.max(rec.mostKills, r.kills);
-          };
-          bump(p.records);
-          // Best for THIS (arena × character) combo — both shape the run.
-          const key = arenaCharacterKey(p.settings.arenaId, ACTIVE_CHARACTER.id);
-          p.recordsByArenaCharacter[key] ??= emptyRecord();
-          bump(p.recordsByArenaCharacter[key]);
-          p.runHistory.unshift({
-            at: Date.now(),
-            durationSec: r.durationSec,
-            level: r.level,
-            kills: r.kills,
+        // A dev-tampered run NEVER banks Glory / records / history (V35) — still show
+        // the summary so the flow works, just don't pollute the save.
+        lastGlory = world.cheated
+          ? 0
+          : gloryFor(
+              r,
+              ARENAS[save.current.settings.arenaId].gloryMult * world.player.gloryMult, // ARENA/INFAMY Glory mult (T35)
+            );
+        if (!world.cheated) {
+          save.mutate((p) => {
+            p.currencies.martianGlory += lastGlory;
+            // Slaying the Gatekeeper (or winning the run) permanently unlocks Act 2.
+            if (world.stats.bossKills > 0 || r.won) p.unlocks['boss-beaten'] = true;
+            // Update the global best AND the per-arena / per-character buckets so
+            // Records can break down "best run" by where + who (T65).
+            const bump = (rec: RecordData): void => {
+              rec.bestTimeSec = Math.max(rec.bestTimeSec, r.durationSec);
+              rec.bestLevel = Math.max(rec.bestLevel, r.level);
+              rec.mostKills = Math.max(rec.mostKills, r.kills);
+            };
+            bump(p.records);
+            // Best for THIS (arena × character) combo — both shape the run.
+            const key = arenaCharacterKey(p.settings.arenaId, ACTIVE_CHARACTER.id);
+            p.recordsByArenaCharacter[key] ??= emptyRecord();
+            bump(p.recordsByArenaCharacter[key]);
+            p.runHistory.unshift({
+              at: Date.now(),
+              durationSec: r.durationSec,
+              level: r.level,
+              kills: r.kills,
+            });
+            p.runHistory = p.runHistory.slice(0, 50);
           });
-          p.runHistory = p.runHistory.slice(0, 50);
-        });
-        void save.flush();
-        pushMeta();
-        pushProfile();
+          void save.flush();
+          pushMeta();
+          pushProfile();
+        }
         const sum = world.runSummary();
         uiActions.setSheet(world.characterSheet());
         uiActions.setResult({
@@ -915,11 +1026,115 @@ async function boot(parent: HTMLElement): Promise<void> {
   });
   window.addEventListener('beforeunload', () => void save.flush());
 
+  // Dev control board bridge (T74). Every action routes through the real sim/save
+  // APIs (world.devXxx / save.mutate) — ⊥ a bespoke pipeline (V35). Live grants flag
+  // world.cheated so the run never banks (gated above). Permanents/Glory honour a
+  // PERSIST flag: persist → write the profile (a real grant); else → run-only.
+  const dev = {
+    upgrades: DEV_UPGRADE_CATALOG,
+    weapons: WEAPONS.map((w) => ({ id: w.id, name: w.displayName })),
+    permanents: PERMANENT_UPGRADES.map((p) => ({
+      id: p.id,
+      name: p.name,
+      branch: p.branch,
+      maxLevel: p.maxLevel,
+    })),
+    enemies: ENEMY_BY_VARIANT.flatMap((t, v) =>
+      t ? [{ variant: v, name: ENEMY_DISPLAY_NAME[v] ?? `Variant ${v}` }] : [],
+    ),
+    grantUpgrade: (id: string) => world.devGrantUpgrade(id),
+    upgradeLevelOf: (id: string) => world.upgradeLevelOf(id),
+    setWeapon: (id: string) => world.devSetWeapon(id),
+    evolve: () => world.devTryEvolve(),
+    addLevels: (n: number) => world.devAddLevels(n),
+    heal: () => world.devHeal(),
+    toggleGodmode: () => world.devToggleGodmode(),
+    godmode: () => world.devGodmode,
+    spawn: (variant: number, count: number) => world.devSpawn(variant, count),
+    forceBoss: () => world.devForceBoss(),
+    clearEnemies: () => world.devClearEnemies(),
+    openBossReward: () => world.devOpenBossReward(),
+    weaponId: () => world.weaponSystem.primaryId ?? '',
+    glory: () => save.current.currencies.martianGlory,
+    ownedPermanent: (id: string) => save.current.permanentUpgrades[id] ?? 0,
+    grantGlory: (amount: number) => {
+      save.mutate((p) => {
+        p.currencies.martianGlory = Math.max(0, p.currencies.martianGlory + amount);
+      });
+      pushMeta();
+    },
+    setPermanent: (id: string, level: number, persist: boolean) => {
+      const lvl = Math.max(0, Math.floor(level));
+      if (persist) {
+        save.mutate((p) => {
+          if (lvl <= 0) delete p.permanentUpgrades[id];
+          else p.permanentUpgrades[id] = lvl;
+        });
+        world.setPermanents(save.current.permanentUpgrades);
+      } else {
+        // Run-only: a throwaway level map applied at the NEXT run start (Enter Pit /
+        // restart) — doesn't touch the profile.
+        const ephemeral = { ...save.current.permanentUpgrades };
+        if (lvl <= 0) delete ephemeral[id];
+        else ephemeral[id] = lvl;
+        world.setPermanents(ephemeral);
+      }
+      pushMeta();
+    },
+    // Scenario = a portable snapshot of a build setup (weapon + owned card levels +
+    // permanent-tree levels). Export to share / version / drive automated tests;
+    // import to reconstruct it instantly (T74 scenario presets).
+    exportScenario: (): string => {
+      const upgrades: Record<string, number> = {};
+      for (const u of DEV_UPGRADE_CATALOG) {
+        const lvl = world.upgradeLevelOf(u.id);
+        if (lvl > 0) upgrades[u.id] = lvl;
+      }
+      return JSON.stringify(
+        {
+          weapon: world.weaponSystem.primaryId ?? null,
+          upgrades,
+          permanents: { ...save.current.permanentUpgrades },
+        },
+        null,
+        2,
+      );
+    },
+    applyScenario: (text: string, persist: boolean): string | null => {
+      let s: { weapon?: unknown; upgrades?: unknown; permanents?: unknown };
+      try {
+        s = JSON.parse(text) as typeof s;
+      } catch {
+        return 'invalid JSON';
+      }
+      if (typeof s !== 'object' || s === null) return 'not a scenario object';
+      if (typeof s.weapon === 'string') world.devSetWeapon(s.weapon);
+      if (s.permanents && typeof s.permanents === 'object') {
+        for (const [id, lvl] of Object.entries(s.permanents as Record<string, unknown>)) {
+          if (typeof lvl === 'number') dev.setPermanent(id, lvl, persist);
+        }
+      }
+      if (s.upgrades && typeof s.upgrades === 'object') {
+        // Raise each card to its target level (grants are additive +1 per call).
+        for (const [id, target] of Object.entries(s.upgrades as Record<string, unknown>)) {
+          if (typeof target !== 'number') continue;
+          for (let cur = world.upgradeLevelOf(id); cur < target; cur++) {
+            if (!world.devGrantUpgrade(id)) break; // unknown id → stop that card
+          }
+        }
+      }
+      pushMeta();
+      return null; // ok
+    },
+  };
+  uiActions.setDev(dev);
+
   // Dev hook for e2e / debugging invisible sim state (execution rule 11). Temp.
   (window as unknown as { __MARS__: unknown }).__MARS__ = {
     world,
     effects,
     save,
+    dev,
     refreshMeta: pushMeta,
   };
 }

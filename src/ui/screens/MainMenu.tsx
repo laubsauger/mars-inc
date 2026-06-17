@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useUiStore, type MenuView } from '../store';
+import { ControlsReference } from '../controls-reference';
 import { SocialFooter } from '../SocialFooter';
 import { WEAPONS } from '../../content/weapons/index';
 import { PERMANENT_UPGRADES } from '../../content/permanent/index';
@@ -296,6 +297,12 @@ export function SettingsControls() {
       <SettingRow label="ENEMY HEALTH BARS">
         <Toggle on={s.enemyHealthbars} onChange={(v) => set({ enemyHealthbars: v })} />
       </SettingRow>
+      <SettingRow label="GRENADE RANGE MARKER">
+        <Toggle on={s.showGrenadeRange} onChange={(v) => set({ showGrenadeRange: v })} />
+      </SettingRow>
+      <SettingRow label="PROJECTILE LIGHTING">
+        <Toggle on={s.projectileLighting} onChange={(v) => set({ projectileLighting: v })} />
+      </SettingRow>
       <SettingRow label="TOON / INK SHADING">
         <Toggle on={s.toonShading} onChange={(v) => set({ toonShading: v })} />
       </SettingRow>
@@ -317,70 +324,6 @@ export function SettingsControls() {
       <SettingRow label="ORBIT / ZOOM CAMERA">
         <Toggle on={s.cameraControls} onChange={(v) => set({ cameraControls: v })} />
       </SettingRow>
-    </div>
-  );
-}
-
-// Live keybinds, sourced from the input layer (core/input.ts) and the screen
-// handlers (UpgradeScreen / GameOverScreen). Update here when bindings change —
-// rebinding is a later pass, so this is the canonical reference for now.
-const CONTROL_GROUPS: { group: string; rows: { keys: string[]; action: string }[] }[] = [
-  {
-    group: 'Combat',
-    rows: [
-      { keys: ['W', 'A', 'S', 'D'], action: 'Move' },
-      { keys: ['↑', '↓', '←', '→'], action: 'Move (alt)' },
-      { keys: ['Shift'], action: 'Sprint' },
-      { keys: ['Mouse'], action: 'Aim' },
-      { keys: ['Space'], action: 'Toggle auto-fire' },
-      { keys: ['E', 'F'], action: 'Pick up / equip' },
-      { keys: ['Esc'], action: 'Pause' },
-    ],
-  },
-  {
-    group: 'Upgrade draft',
-    rows: [
-      { keys: ['1', '2', '3'], action: 'Pick upgrade' },
-      { keys: ['R'], action: 'Reroll' },
-    ],
-  },
-  {
-    group: 'Game over',
-    rows: [
-      { keys: ['Enter'], action: 'Restart run' },
-      { keys: ['Esc'], action: 'Back to menu' },
-    ],
-  },
-];
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex min-w-[1.6rem] items-center justify-center rounded-sm border border-rust bg-pit/70 px-1.5 py-0.5 text-[11px] font-bold text-bone/90 shadow-[inset_0_-1px_0_rgba(0,0,0,0.5)]">
-      {children}
-    </kbd>
-  );
-}
-
-function ControlsReference() {
-  return (
-    <div className="space-y-4">
-      {CONTROL_GROUPS.map((g) => (
-        <div key={g.group} className="rounded-md border border-rust/70 bg-umber/80 px-6 py-3">
-          <div className="mb-2 text-[10px] uppercase tracking-widest text-gold">{g.group}</div>
-          <div className="divide-y divide-rust/25">
-            {g.rows.map((r) => (
-              <div key={r.action} className="flex items-center justify-between gap-4 py-2">
-                <span className="text-sm text-bone/80">{r.action}</span>
-                <span className="flex flex-wrap items-center justify-end gap-1">
-                  {r.keys.map((k) => (
-                    <Kbd key={k}>{k}</Kbd>
-                  ))}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -883,7 +826,7 @@ function GloryTree() {
                     d={branchPath(from, to)}
                     fill="none"
                     stroke={style.stroke}
-                    strokeWidth={lit ? 1.8 : 2.2}
+                    strokeWidth={lit ? 1.1 : 1.4}
                     opacity={open ? (lit ? 0.3 : 0.12) : 0.05}
                     strokeLinecap="round"
                     // Blur is EXPENSIVE — apply the feGaussianBlur halo only to the
@@ -896,7 +839,7 @@ function GloryTree() {
                     d={branchPath(from, to)}
                     fill="none"
                     stroke={open ? style.stroke : '#5b4a3a'}
-                    strokeWidth={lit ? 0.75 : 0.55}
+                    strokeWidth={lit ? 0.5 : 0.38}
                     opacity={open ? (lit ? 1 : 0.85) : 0.4}
                     strokeLinecap="round"
                     strokeDasharray={open ? undefined : '1.5 1.5'}
@@ -955,17 +898,20 @@ function GloryTree() {
             //  • maxed (completed)        → gold ring + filled, gold ★ badge
             //  • allocated (owned, < max) → solid branch colour + glow ring
             //  • buyable (afford next)    → branch outline, pulsing
-            //  • PRICED OUT (afford fail) → solid branch ring + RED "needs glory" glow + ◈cost
-            //  • locked (prereq missing)  → grey, dashed, ⊘
+            //  • PRICED OUT (afford fail) → branch colour, GOLD "needs glory" rim + ◈cost
+            //  • locked (prereq missing)  → grey, dashed, faint, ⊘
+            // Locked reads GREY+DASHED (unreachable); priced-out reads full branch
+            // colour with a GOLD cost glow (reachable, just save up) — never confuse
+            // "can't path here yet" with "can't afford yet".
             const stateClass = !reachable
-              ? 'border-dashed border-bone/15 bg-pit/80 text-bone/20 opacity-60'
+              ? 'border-dashed border-bone/12 bg-pit/85 text-bone/15 opacity-45 saturate-0'
               : maxed
                 ? 'border-gold bg-[radial-gradient(circle_at_35%_30%,rgba(255,210,63,0.28),rgba(7,5,4,0.92)_62%)] text-gold shadow-[0_0_26px_rgba(255,210,63,0.4)]'
                 : owned
                   ? `${style.border} ${style.text} ${style.ring} bg-pit`
                   : buyable
                     ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
-                    : `${style.border} text-bone/55 saturate-50 bg-[radial-gradient(circle_at_50%_50%,rgba(255,59,48,0.16),rgba(7,5,4,0.92)_68%)] shadow-[0_0_0_1px_rgba(255,59,48,0.35),0_0_18px_rgba(255,59,48,0.22)]`;
+                    : `${style.border} ${style.text} bg-pit shadow-[0_0_0_1px_rgba(255,210,63,0.4),0_0_16px_rgba(255,210,63,0.2)]`;
             return (
               <button
                 key={p.id}
@@ -991,7 +937,7 @@ function GloryTree() {
                       maxed
                         ? 'border-gold bg-gold text-pit'
                         : pricedOut
-                          ? 'border-bleed bg-pit text-bleed'
+                          ? 'border-gold/70 bg-pit text-gold'
                           : 'border-rust bg-umber text-bone'
                     }`}
                   >
@@ -1276,7 +1222,7 @@ function ActSelector() {
                 </div>
                 <div className="text-sm font-black text-bone/45">??? ? ? ???</div>
                 <div className="mt-0.5 text-[11px] leading-tight text-bone/40">
-                  Fell the Gatekeeper in Act 1 to unlock the next contract.
+                  Slay the Gatekeeper in Act 1 to unlock the next contract.
                 </div>
               </div>
             );

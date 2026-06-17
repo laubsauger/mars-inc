@@ -14,7 +14,8 @@ export type FxKind =
   | 'levelup'
   | 'bounty'
   | 'ember' // visual-only status flecks (burn) — NEVER plays a sound
-  | 'corpseblast'; // overkill-corpse detonation — TOXIC-GREEN so it reads ⊥ gold explosions
+  | 'corpseblast' // overkill-corpse detonation — TOXIC-GREEN so it reads ⊥ gold explosions
+  | 'meteor'; // Moonshot orbital strike telegraph — render drops a rock that lands on the fuse
 
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family
@@ -32,7 +33,8 @@ export interface FxEvent {
   kind: FxKind;
   x: number;
   z: number;
-  // muzzle: fire dir. impact/blood: incoming travel dir (0 = radial). else 0.
+  // muzzle: fire dir. impact/blood: incoming travel dir (0 = radial).
+  // meteor: dx = fall time (s), dz = blast radius. else 0.
   dx: number;
   dz: number;
   // death/blood: enemy variant. impact: ImpactProfile. else 0.

@@ -17,7 +17,7 @@
 import { EnemyPool, EnemyState, ENEMY_BY_VARIANT } from '../enemies';
 import type { SpatialHash } from '../spatial-hash';
 import type { Rng } from '../../core/rng';
-import type { FxQueue } from '../fx';
+import { type FxQueue, ImpactProfile } from '../fx';
 import { type Player, hitPlayer } from '../player';
 import { applyAreaDamage } from './aoe';
 import type { KillEvent } from './weapon-system';
@@ -147,7 +147,10 @@ export class CorpseSystem {
         if (player.corpseMeteorThreshold > 0 && p.stored[i]! >= player.corpseMeteorThreshold) {
           p.state[i] = CState.Meteor;
           p.fuse[i] = MOONSHOT_DELAY;
-          fx.push('teleport', p.posX[i]!, p.posZ[i]!); // telegraph ring (V30)
+          // Orbital-strike telegraph: a real meteor cue — the render drops a rock
+          // from the sky timed to land when the fuse expires (fall time in dx,
+          // blast radius in dz). V30 still telegraphs the danger zone on the ground.
+          fx.push('meteor', p.posX[i]!, p.posZ[i]!, MOONSHOT_DELAY, MOONSHOT_RADIUS);
         } else if (player.corpseBallistics) {
           const t = this.nearestEnemy(enemies, hash, p.posX[i]!, p.posZ[i]!);
           if (t >= 0) {
@@ -219,13 +222,26 @@ export class CorpseSystem {
         x,
         z,
         radius,
-        { amount, damageType: 'explosive', fx },
+        {
+          amount,
+          damageType: 'explosive',
+          fx,
+          hitFx: true, // sparks + blood on each enemy → the blast reads as real hits
+          falloff: 0.4, // bites hardest at the core
+          // Physically punch a hole — meteors clear a crater, corpses shove a lane.
+          knockback: meteor ? 46 : Math.min(34, 12 + stored * 0.12),
+        },
         rng,
       );
       // Distinct TOXIC-GREEN burst so an overkill-corpse detonation reads clearly
       // apart from a normal (gold) explosive blast — you can SEE the recycling.
       fx.push('corpseblast', x, z);
-      if (meteor) fx.push('death', x, z, 0, 0, p.variant[i]!); // extra punch
+      // Meteor lands with a heavy explosive shockwave (Blast profile) + a death
+      // poof scaled to the crater, on TOP of the falling-rock cue the render drops.
+      if (meteor) {
+        fx.push('impact', x, z, 0, 0, ImpactProfile.Blast);
+        fx.push('death', x, z, radius * 0.5, 0, p.variant[i]!);
+      }
 
       // Liability danger (V30): the player takes a fraction if caught in the blast.
       if (player.corpsePlayerDanger) {

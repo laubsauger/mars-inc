@@ -149,7 +149,7 @@ describe('CorpseSystem Moonshot (catastrophe)', () => {
     // First step: arms the meteor + telegraph, doesn't land yet.
     sys.step(p, pool, hash, new Rng(1), fx, 0.1);
     expect(sys.pool.count).toBe(1);
-    expect(fx.events.some((e) => e.kind === 'teleport')).toBe(true); // telegraph
+    expect(fx.events.some((e) => e.kind === 'meteor')).toBe(true); // orbital-strike telegraph
     // Let the delay elapse → it strikes.
     const dealt = sys.step(p, pool, hash, new Rng(1), fx, 2.0);
     expect(dealt).toBeGreaterThan(0);

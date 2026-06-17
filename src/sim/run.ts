@@ -10,7 +10,7 @@ export interface RunStats {
   timeSurvived: number; // seconds (= world.elapsed at death)
   level: number; // level reached
   upgradesTaken: number; // draft picks applied
-  bossKills: number; // bosses felled this run
+  bossKills: number; // bosses slain this run
   killsByVariant: number[]; // kills bucketed by enemy variant (for the summary)
 }
 

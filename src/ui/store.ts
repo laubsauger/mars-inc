@@ -34,7 +34,7 @@ export interface ProfileView {
   mostKills: number;
   runCount: number;
   byCombo: RecordRow[];
-  /** True once the player has ever felled the Gatekeeper — gates Act 2 (T-Act). */
+  /** True once the player has ever slain the Gatekeeper — gates Act 2 (T-Act). */
   bossDefeated: boolean;
   /** Weapon ids DISCOVERED (started with or picked up in a run); the Arsenal shows
    *  ??? for the rest until found (discovery progression). */
@@ -57,6 +57,8 @@ export interface SettingsView {
   arenaId: 'cold-vault' | 'rust-crown';
   showCountdown: boolean;
   cameraControls: boolean;
+  showGrenadeRange: boolean;
+  projectileLighting: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
@@ -91,6 +93,7 @@ export interface HudState {
   level: number;
   xp01: number; // 0..1 progress to next level
   countdown: number; // > 0 → pre-combat countdown showing (T20)
+  bossEta: number | null; // real seconds to the next boss; null = boss on field / n/a
   enemiesAlive: number;
   weapon: string; // current primary weapon display name (T33)
   shieldCharges: number; // current recharging-shield charges (T40)
@@ -221,9 +224,49 @@ export interface MetaState {
   permanents: PermanentView[];
 }
 
+/** Dev control board bridge (T74) — set by boot glue. All actions route through
+ *  the real sim/save APIs (world.devXxx / save.mutate); the board just calls them.
+ *  Static lists (`upgrades`/`weapons`/`permanents`/`enemies`) are read-only metadata. */
+export interface DevBridge {
+  upgrades: ReadonlyArray<{
+    id: string;
+    name: string;
+    rarity: string;
+    maxLevel: number;
+    tags: readonly string[];
+  }>;
+  weapons: ReadonlyArray<{ id: string; name: string }>;
+  permanents: ReadonlyArray<{ id: string; name: string; branch: string; maxLevel: number }>;
+  enemies: ReadonlyArray<{ variant: number; name: string }>;
+  grantUpgrade: (id: string) => boolean;
+  upgradeLevelOf: (id: string) => number;
+  setWeapon: (id: string) => boolean;
+  evolve: () => boolean;
+  addLevels: (n: number) => void;
+  heal: () => void;
+  toggleGodmode: () => boolean;
+  godmode: () => boolean;
+  spawn: (variant: number, count: number) => void;
+  forceBoss: () => void;
+  clearEnemies: () => void;
+  openBossReward: () => void;
+  weaponId: () => string;
+  glory: () => number;
+  ownedPermanent: (id: string) => number;
+  grantGlory: (amount: number) => void;
+  setPermanent: (id: string, level: number, persist: boolean) => void;
+  /** Serialize the current weapon + card levels + permanents to a portable JSON. */
+  exportScenario: () => string;
+  /** Reconstruct a scenario from JSON. Returns an error string, or null on success. */
+  applyScenario: (text: string, persist: boolean) => string | null;
+}
+
 export interface UiStore {
   screen: Screen;
   menuView: MenuView;
+  /** Dev control board (T74): open state + the boot-set action bridge. */
+  devOpen: boolean;
+  dev: DevBridge | null;
   hud: HudState;
   boss: BossView;
   announce: AnnounceState | null;
@@ -301,6 +344,8 @@ export interface UiStore {
   setResetPermanents: (fn: () => void) => void;
   setResetProgress: (fn: () => void) => void;
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) => void;
+  toggleDev: () => void;
+  setDev: (dev: DevBridge) => void;
 }
 
 const INITIAL_HUD: HudState = {
@@ -313,6 +358,7 @@ const INITIAL_HUD: HudState = {
   level: 1,
   xp01: 0,
   countdown: 3,
+  bossEta: null,
   enemiesAlive: 0,
   weapon: 'Contractual Sidearm',
   shieldCharges: 0,
@@ -357,12 +403,16 @@ const INITIAL_SETTINGS: SettingsView = {
   arenaId: 'cold-vault',
   showCountdown: false,
   cameraControls: false,
+  showGrenadeRange: true,
+  projectileLighting: true,
   colorblind: 'off',
 };
 
 export const useUiStore = create<UiStore>((set) => ({
   screen: 'boot',
   menuView: 'root',
+  devOpen: false,
+  dev: null,
   hud: INITIAL_HUD,
   boss: { active: false, hp01: 0, phase: 0, phases: 3, name: '' },
   announce: null,
@@ -423,6 +473,8 @@ export const useUiStore = create<UiStore>((set) => ({
   setResetPermanents: (resetPermanents) => set({ resetPermanents }),
   setResetProgress: (resetProgress) => set({ resetProgress }),
   setApplySetting: (applySetting) => set({ applySetting }),
+  toggleDev: () => set((s) => ({ devOpen: !s.devOpen })),
+  setDev: (dev) => set({ dev }),
 }));
 
 // Non-React accessors for the boot/sim glue (avoid importing hooks there).
@@ -459,4 +511,5 @@ export const uiActions = {
   setResetProgress: (fn: () => void) => useUiStore.getState().setResetProgress(fn),
   setApplySetting: (fn: (patch: Partial<SettingsView>) => void) =>
     useUiStore.getState().setApplySetting(fn),
+  setDev: (dev: DevBridge) => useUiStore.getState().setDev(dev),
 };

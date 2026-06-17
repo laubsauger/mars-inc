@@ -7,6 +7,8 @@ import {
   CapsuleGeometry,
   Color,
   ConeGeometry,
+  CylinderGeometry,
+  Float32BufferAttribute,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -35,6 +37,8 @@ const OUTLINE = COL.nearBlack;
 const PLATE_W = 1.9; // health-plate width (world units)
 const PLATE_H = 0.26;
 const FILL_W = PLATE_W - 0.12;
+const LEVEL_DUR = 0.85; // level-up flourish duration (s)
+const PILLAR_H = 5.5; // ascension light-pillar height (world units)
 
 export class PlayerView {
   readonly group: Group;
@@ -51,6 +55,12 @@ export class PlayerView {
   private platePhase = 0; // drives the low-health pulse
   private shield!: Mesh;
   private shieldMat!: MeshBasicMaterial;
+  // Level-up ascension flourish: a rising gold light pillar + a brief gold body
+  // glow. Driven by `levelTimer` (counts down from LEVEL_DUR). Fires on ANY level
+  // source (XP or quest relic) so the card draft never opens "out of nowhere".
+  private pillar!: Mesh;
+  private pillarMat!: MeshBasicMaterial;
+  private levelTimer = 0;
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -133,7 +143,39 @@ export class PlayerView {
     this.shield.visible = false;
     this.group.add(this.shield);
 
+    // Ascension pillar — an open gold cone flaring upward, vertex-faded bottom→top
+    // so it reads as a beam of light, not a solid tube. Hidden until a level-up.
+    const cone = new CylinderGeometry(1.6, 0.7, PILLAR_H, 24, 1, true); // rTop > rBottom = flares up
+    const pc = cone.attributes.position!;
+    const pcol = new Float32Array(pc.count * 3);
+    for (let i = 0; i < pc.count; i++) {
+      // Bright at the base, fading to nothing at the top (y in [−H/2, +H/2]).
+      const t = (pc.getY(i) + PILLAR_H / 2) / PILLAR_H; // 0 base → 1 top
+      const b = (1 - t) * (1 - t); // soft fade
+      pcol[i * 3] = pcol[i * 3 + 1] = pcol[i * 3 + 2] = b;
+    }
+    cone.setAttribute('color', new Float32BufferAttribute(pcol, 3));
+    this.pillarMat = new MeshBasicMaterial({
+      color: ACCENT,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.pillar = new Mesh(cone, this.pillarMat);
+    this.pillar.position.y = PILLAR_H / 2; // base sits on the floor
+    this.pillar.visible = false;
+    this.pillar.renderOrder = 3;
+    this.group.add(this.pillar);
+
     scene.add(this.group);
+  }
+
+  /** Fire the level-up flourish (call on any level-up, from any source). */
+  levelUp(): void {
+    this.levelTimer = LEVEL_DUR;
   }
 
   /** Compact health plate: black ink backplate, chipped red fill, brass end caps,
@@ -187,13 +229,25 @@ export class PlayerView {
     this.bodyMat = next; // keep the hurt flash pointed at the live material
   }
 
-  /** Decay + apply the hurt flash as a red emissive shimmer on the body. */
+  /** Decay + apply the hurt flash (red) / level-up glow (gold) on the body. */
   update(dt: number): void {
-    if (this.flash <= 0) return;
-    this.flash = Math.max(0, this.flash - dt * 6); // ~0.16s
-    const k = this.flash * this.flash;
-    this.bodyMat.emissive.setRGB(0.9 * k, 0.05 * k, 0.05 * k);
-    this.bodyMat.emissiveIntensity = 1;
+    if (this.levelTimer > 0) this.levelTimer = Math.max(0, this.levelTimer - dt);
+    // Hurt flash wins over the level glow (you should always read damage).
+    if (this.flash > 0) {
+      this.flash = Math.max(0, this.flash - dt * 6); // ~0.16s
+      const k = this.flash * this.flash;
+      this.bodyMat.emissive.setRGB(0.9 * k, 0.05 * k, 0.05 * k);
+      this.bodyMat.emissiveIntensity = 1;
+    } else if (this.levelTimer > 0) {
+      // Gold body glow that pulses up then eases out across the flourish.
+      const p = 1 - this.levelTimer / LEVEL_DUR; // 0 → 1
+      const k = Math.sin(p * Math.PI); // in-out
+      this.bodyMat.emissive.setRGB(0.95 * k, 0.7 * k, 0.18 * k);
+      this.bodyMat.emissiveIntensity = 1;
+    } else if (this.bodyMat.emissiveIntensity !== 0) {
+      this.bodyMat.emissive.setRGB(0, 0, 0); // clear once both flourishes are done
+      this.bodyMat.emissiveIntensity = 0;
+    }
   }
 
   /** Interpolate render transform between prev and current sim pos by alpha. */
@@ -207,6 +261,27 @@ export class PlayerView {
     // camera's world quaternion is the right local orientation).
     this.healthPlate.quaternion.copy(camera.quaternion);
     this.syncShield(player);
+    this.syncLevelPillar();
+  }
+
+  /** Rising gold light pillar during the level-up flourish (radial cone → no
+   *  billboarding needed; reads the same from any camera yaw). */
+  private syncLevelPillar(): void {
+    if (this.levelTimer <= 0) {
+      if (this.pillar.visible) {
+        this.pillar.visible = false;
+        this.pillarMat.opacity = 0;
+      }
+      return;
+    }
+    this.pillar.visible = true;
+    const p = 1 - this.levelTimer / LEVEL_DUR; // 0 → 1
+    // Punchy bright start that eases out; a quick rise so it reads as "ascending".
+    this.pillarMat.opacity = (1 - p) * (1 - p) * 0.9;
+    const sy = 0.55 + p * 0.7; // grows up
+    this.pillar.scale.set(0.9 + p * 0.25, sy, 0.9 + p * 0.25);
+    this.pillar.position.y = (sy * PILLAR_H) / 2; // keep the base anchored on the floor
+    this.pillar.rotation.y += 0.06; // slow spin → subtle shimmer on the cone seams
   }
 
   /** Shield bubble: visible only with a charge up; opacity + a soft pulse track

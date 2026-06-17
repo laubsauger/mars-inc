@@ -24,17 +24,22 @@ import {
   RingGeometry,
   SpotLight,
 } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { ARENA_RADIUS, GATE_COUNT } from '../sim/constants';
 import { activeArena } from '../sim/arena';
 import { EnemyState, type EnemyPool } from '../sim/enemies';
 import { COL, OUTLINE as OUTLINE_W } from './art/palette';
 import { batchStatic } from './geometry-batch';
+import type { LightBuffer } from './light-buffer';
 
 import { PlaneGeometry } from 'three';
 
 // Warm floor family (dusty Mars), cool structural family (gunmetal), gold accent.
-const FLOOR = COL.umberShadow;
-const FLOOR_PANEL = COL.oldRust;
+// Floor base + panels are dropped a NOTCH below the palette tokens so saturated
+// combat accents (gold/cyan tracers, blasts) win readability on a darker stage —
+// applies to both arenas (one ArenaView builds either pit).
+const FLOOR = COL.umberShadow.clone().multiplyScalar(0.72);
+const FLOOR_PANEL = COL.oldRust.clone().multiplyScalar(0.8);
 const FLOOR_LINE = COL.warmLine;
 const TRIM = COL.kineticGold;
 const OUTLINE = COL.nearBlack;
@@ -56,6 +61,28 @@ const DOOR_OPEN_RANGE = 7; // a telegraphing enemy within this of a gate opens i
 
 function mat(color: Color, roughness = 0.85, metalness = 0.12): MeshStandardMaterial {
   return new MeshStandardMaterial({ color, roughness, metalness });
+}
+
+/** Module-scoped handle to the projectile light buffer, set before an ArenaView is
+ *  built. `litMat` bakes its emissive sample into floor/wall materials so tracers
+ *  spill light onto them. Null → plain materials (e.g. headless/tests). */
+let activeLightBuffer: LightBuffer | null = null;
+export function setArenaLightBuffer(lb: LightBuffer | null): void {
+  activeLightBuffer = lb;
+}
+
+/** A surface material that receives projectile light: a node-material clone of
+ *  `mat` whose emissive is the light buffer's world-XZ sample. Falls back to a
+ *  plain standard material when no light buffer is wired. Same APPEARANCE key for
+ *  identical args, so the static batcher still merges these into one draw. */
+function litMat(color: Color, roughness = 0.85, metalness = 0.12): MeshStandardMaterial {
+  if (!activeLightBuffer) return mat(color, roughness, metalness);
+  const m = new MeshStandardNodeMaterial();
+  m.color = color;
+  m.roughness = roughness;
+  m.metalness = metalness;
+  m.emissiveNode = activeLightBuffer.emissiveNode();
+  return m as unknown as MeshStandardMaterial;
 }
 
 // Mark a flat gate/floor piece as a DECAL: drawn before the movers and with depth-
@@ -137,7 +164,7 @@ export class ArenaView {
    *  gate recesses at the side midpoints (static; no animated doors yet). */
   private buildRect(halfW: number, halfZ: number, scene: Scene): void {
     // Floor.
-    const floor = new Mesh(new PlaneGeometry(halfW * 2, halfZ * 2), mat(FLOOR, 0.95, 0.04));
+    const floor = new Mesh(new PlaneGeometry(halfW * 2, halfZ * 2), litMat(FLOOR, 0.95, 0.04));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     floor.renderOrder = FLOOR_ORDER; // floor below all decals + movers
@@ -195,7 +222,7 @@ export class ArenaView {
     // Perimeter walls (gunmetal slabs just outside the rim), with gate gaps at the
     // side midpoints. Built as boxes; BackSide isn't needed since the camera looks
     // down and in.
-    const wallMat = mat(new Color('#2b3038'), 0.85, 0.25);
+    const wallMat = litMat(new Color('#2b3038'), 0.85, 0.25);
     const wallH = 5;
     const gateHalf = 5; // opening half-width at each side midpoint
     const wallSeg = (cx: number, cz: number, w: number, d: number): void => {

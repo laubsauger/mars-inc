@@ -17,7 +17,10 @@ const RARITY_TEXT: Record<string, string> = {
 
 export function RunSheet({ sheet, compact = false }: { sheet: SheetView; compact?: boolean }) {
   return (
-    <div className="grid grid-cols-2 gap-3 font-mono">
+    // Attributes is a short fixed column; abilities take the remaining width so a
+    // long build list isn't crammed into a narrow half (minmax(0,…) lets the inner
+    // multi-column grid shrink instead of overflowing).
+    <div className="grid grid-cols-[18rem_minmax(0,1fr)] gap-3 font-mono">
       {/* Attributes */}
       <div className="rounded-md border border-rust/40 bg-umber/40 p-4">
         <div className="mb-2 flex items-baseline justify-between border-b border-rust/30 pb-1">
@@ -40,13 +43,15 @@ export function RunSheet({ sheet, compact = false }: { sheet: SheetView; compact
           ABILITIES — {sheet.upgrades.length}
         </div>
         <div
-          className={`flex flex-col gap-1.5 overflow-y-auto pr-1 ${compact ? 'max-h-44' : 'max-h-64'}`}
+          className={`grid auto-rows-min grid-cols-1 gap-x-5 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-2 ${
+            compact ? 'max-h-[46vh]' : 'max-h-[60vh]'
+          }`}
         >
           {sheet.upgrades.length === 0 && <span className="text-xs text-bone/40">none yet</span>}
           {sheet.upgrades.map((u) => {
             const maxed = u.level >= u.maxLevel;
             return (
-              <div key={u.name} className="border-b border-rust/15 pb-1.5 last:border-0 last:pb-0">
+              <div key={u.name} className="border-b border-rust/15 pb-1.5">
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                   <span className={`font-bold ${RARITY_TEXT[u.rarity] ?? 'text-bone/85'}`}>
                     {u.name}

@@ -36,7 +36,7 @@ export function BossRewardScreen() {
 
   return (
     <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center bg-pit/85 font-mono">
-      <div className="mb-1 text-xs tracking-[0.5em] text-gold">GATEKEEPER FELLED</div>
+      <div className="mb-1 text-xs tracking-[0.5em] text-gold">GATEKEEPER SLAIN</div>
       <div className="mb-8 text-2xl font-black tracking-widest text-bone">CLAIM YOUR SPOILS</div>
       <div className="flex gap-4">
         {boss.options.map((o, i) => (

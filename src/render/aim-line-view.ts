@@ -41,7 +41,7 @@ export class AimLineView {
     const mat = new MeshBasicMaterial({
       color: COL.kineticGold,
       transparent: true,
-      opacity: 0.26, // subtle aid, not in-your-face
+      opacity: 0.16, // subtle aid, not in-your-face — sits under the combat layer
       blending: AdditiveBlending,
       depthWrite: false,
       // Draw over the floor inlays/seams but let the player/enemies sit on top.

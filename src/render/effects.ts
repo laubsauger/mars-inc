@@ -12,6 +12,7 @@ import {
   Color,
   DynamicDrawUsage,
   InstancedBufferAttribute,
+  BufferAttribute,
   AdditiveBlending,
   type BufferGeometry,
   type Scene,
@@ -59,6 +60,7 @@ class EffectPool {
     capacity: number,
     yOffset: number,
     depthTest = true,
+    vertexColors = false,
   ) {
     // Solid additive geometry (no texture). CanvasTexture maps don't bind under
     // the WebGPU backend here; flat discs/rings render reliably like the
@@ -74,6 +76,10 @@ class EffectPool {
       depthWrite: false,
       depthTest,
       toneMapped: false,
+      // A vertex-coloured disc (bright centre → black rim) gives a SOFT radial
+      // gradient under additive blending — no texture (§B1), no hard solid rim.
+      // Multiplies with instanceColor, so per-instance fade still works.
+      vertexColors,
     });
     this.mesh = new InstancedMesh(geo, mat, capacity);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -169,6 +175,18 @@ class EffectPool {
   }
 }
 
+/** A unit disc whose CENTRE vertex is white and RIM vertices are black. Under
+ *  additive blending this reads as a soft radial glow that fades to nothing at the
+ *  edge — a gradient without a texture (§B1). Colour comes from instanceColor. */
+function softDiscGeo(segments = 28): CircleGeometry {
+  const g = new CircleGeometry(0.5, segments);
+  const n = g.attributes.position!.count; // centre vertex (0) + rim ring
+  const colors = new Float32Array(n * 3); // rim stays (0,0,0) → fades out
+  colors[0] = colors[1] = colors[2] = 1; // centre = full bright
+  g.setAttribute('color', new BufferAttribute(colors, 3));
+  return g;
+}
+
 const _tmp = new Color();
 // Muted cyan for the sprint wake — additive shieldCyan at full is too loud.
 const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
@@ -181,14 +199,20 @@ const TRAIL_CYAN = new Color(0.12, 0.46, 0.56);
 // Dimmed muzzle gold — the full-bright flash was too hot/wide. Precomputed (a
 // per-shot clone would allocate in the hot FX path, V5).
 const MUZZLE_COL = COL.kineticGold.clone().multiplyScalar(0.6);
-const BLAST_RING = new Color(0.95, 0.42, 0.12);
-const BLAST_CORE = new Color(1.1, 0.66, 0.26);
-const BLAST_DUST = new Color(0.28, 0.14, 0.07);
+// Subdued explosive palette: a soft ember GLOW (radial gradient) carries the body
+// of the blast; a faint thin ring marks the zone edge. Kept dim — it's a starter
+// crowd tool, not a screen-eating fireball. Additive + bloom amplify, so base
+// values stay low.
+const BLAST_GLOW = new Color(0.6, 0.26, 0.09);
+const BLAST_RING = new Color(0.5, 0.22, 0.07);
+const BLAST_DUST = new Color(0.2, 0.1, 0.05);
 
 export class Effects {
   private muzzle: EffectPool;
   private impact: EffectPool;
   private dust: EffectPool;
+  /** Soft radial-gradient glow (vertex-coloured disc) — the body of an explosion. */
+  private glow: EffectPool;
   private sprintTimer = 0;
   /** Accessibility flash reduction (T36): dampen muzzle/impact brightness + density. */
   reduceFlash = false;
@@ -202,6 +226,8 @@ export class Effects {
     // flash over the body reads correct.
     this.impact = new EffectPool(scene, new RingGeometry(0.34, 0.5, 40), 512, 0.7, false);
     this.dust = new EffectPool(scene, new CircleGeometry(0.5, 16), 1024, 0.3);
+    // Soft-edged radial glow (vertex gradient) for subdued explosion bodies.
+    this.glow = new EffectPool(scene, softDiscGeo(28), 128, 0.32, true, true);
   }
 
   /** Spawn from drained sim FX events. */
@@ -410,9 +436,27 @@ export class Effects {
     // SPARK — a bright disc that SHRINKS (s0 > s1, never expands) + a directional
     // streak — so a normal blaster / drone hit never looks like an explosion.
     if (profile === ImpactProfile.Blast) {
-      this.impact.spawn({ x, z, s0: 0.5, s1: 2.6, life: 0.3, spin: 0, color: BLAST_RING });
-      this.impact.spawn({ x, z, s0: 0.9, s1: 0.2, life: 0.14, spin: 0, color: BLAST_CORE });
-      this.dust.spawn({ x, z, s0: 1.2, s1: 2.4, life: 0.36, spin: 3, color: BLAST_DUST });
+      // Blast radius (world units) rides in dx; 0 → a default pop for radius-less
+      // callers. The glow/dust discs have geometry radius 0.5, so a scale of `2·r`
+      // makes a disc whose edge sits at the world radius `r`.
+      const r = dx > 0 ? dx : 1.3;
+      const disc = 2 * r;
+      // SOFT radial glow is the body of the blast — a gradient that fades out, so no
+      // hard solid circle. Dim + brief: a subdued puff, not a screen-filling flash.
+      this.glow.spawn({
+        x,
+        z,
+        s0: disc * 0.55,
+        s1: disc * 0.92,
+        life: 0.28,
+        spin: 1,
+        color: BLAST_GLOW,
+      });
+      // One faint, thin shockwave ring marks the damage-zone EDGE (so the footprint
+      // still reads) without the bright fill that was eating visual space.
+      this.impact.spawn({ x, z, s0: disc * 0.4, s1: disc, life: 0.26, spin: 0, color: BLAST_RING });
+      // A little low dust for weight, kept under the zone.
+      this.dust.spawn({ x, z, s0: r * 0.5, s1: r * 1.1, life: 0.3, spin: 2, color: BLAST_DUST });
       return;
     }
     const sparkCol =
@@ -450,9 +494,10 @@ export class Effects {
     this.muzzle.update(dt);
     this.impact.update(dt);
     this.dust.update(dt);
+    this.glow.update(dt);
   }
 
   get count(): number {
-    return this.muzzle.live + this.impact.live + this.dust.live;
+    return this.muzzle.live + this.impact.live + this.dust.live + this.glow.live;
   }
 }

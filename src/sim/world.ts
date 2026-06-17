@@ -3,7 +3,7 @@
 
 import { Rng } from '../core/rng';
 import { type Player, createPlayer, stepPlayer, resetPlayer } from './player';
-import { EnemyPool, ENEMY_DISPLAY_NAME, splitOnDeath } from './enemies';
+import { EnemyPool, ENEMY_DISPLAY_NAME, ENEMY_BY_VARIANT, splitOnDeath } from './enemies';
 import { EnemySystem } from './enemy-system';
 import { EnemyAttackSystem } from './enemy-attacks';
 import { BossController } from './boss';
@@ -16,11 +16,12 @@ import { WaveDirector, computeAdaptation, difficultyScale } from './director/wav
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
 import { CorpseSystem } from './combat/corpses';
-import { GrenadeSystem } from './combat/grenades';
+import { GrenadeSystem, GRENADE_MAX_THROW } from './combat/grenades';
 import { PetSystem } from './combat/pets';
 import { radialPush } from './combat/knockback';
 import { equip } from './combat/weapon';
 import { contractualSidearm } from '../content/weapons/contractual-sidearm';
+import { weaponById } from '../content/weapons/index';
 import { ShardPool } from './xp';
 import { emitShards, stepXp } from './xp-system';
 import { stepXpResource } from './xp-resource';
@@ -37,10 +38,13 @@ import { type RunStats, type RunResult, newRunStats, resetRunStats, computeResul
 import {
   type UpgradeDefinition,
   type UpgradeLevels,
+  type DraftBoost,
   rollDraft,
   available,
   applyUpgrade,
   taken,
+  isOffense,
+  OFFENSE_TAGS,
 } from './progression/upgrades';
 import { previewUpgrade, type UpgradeChange } from './progression/preview';
 import { UPGRADES } from '../content/upgrades/index';
@@ -65,6 +69,22 @@ const DRAFT_POOL: UpgradeDefinition[] = [
   ...SYNERGY_UPGRADES,
   ...NECRO_UPGRADES,
 ];
+
+/** Flat upgrade list for the dev control board (T74): exactly the ids the run can
+ *  grant (DRAFT_POOL), with display data. ⊥ the live defs — read-only metadata. */
+export const DEV_UPGRADE_CATALOG: ReadonlyArray<{
+  id: string;
+  name: string;
+  rarity: string;
+  maxLevel: number;
+  tags: readonly string[];
+}> = DRAFT_POOL.map((u) => ({
+  id: u.id,
+  name: u.name,
+  rarity: u.rarity,
+  maxLevel: u.maxLevel,
+  tags: u.tags,
+}));
 
 /** Rich post-game summary (T23) — what the run actually became. */
 export interface RunSummary {
@@ -210,6 +230,11 @@ export class World {
   private readonly upgradeLevels: UpgradeLevels = {};
   /** Owned permanent (meta) upgrade levels, applied to the player at run start. */
   private permanents: PermanentLevels;
+  /** Dev control board (T74): set true the moment any dev grant touches this run —
+   *  main gates record/Glory banking on it (V35: a tampered run never banks). */
+  cheated = false;
+  /** Dev godmode (T74): while set, the step keeps the player invulnerable. */
+  devGodmode = false;
 
   constructor(seed: number, permanents: PermanentLevels = {}) {
     this.seed = seed >>> 0;
@@ -233,6 +258,11 @@ export class World {
 
   get alive(): boolean {
     return this.player.health > 0;
+  }
+
+  /** Real seconds until the next boss (HUD countdown); null while one is on the field. */
+  bossEta(): number | null {
+    return this.director.timeToNextBoss(this.elapsed, this.enemies);
   }
 
   /** Begin combat from the menu: fresh run, countdown starts (T27). The driver
@@ -263,6 +293,10 @@ export class World {
     this.tick++;
     this.elapsed += dt;
 
+    // Dev godmode (T74): hold the player invulnerable each step (uses the existing
+    // i-frame channel → the damage pipeline already honours it, V3).
+    if (this.devGodmode) this.player.invuln = Math.max(this.player.invuln, 0.5);
+
     const healthBefore = this.player.health;
 
     // Fixed system order (§14.3): player → director → enemy AI/contact → weapons → triggers → XP.
@@ -278,9 +312,9 @@ export class World {
       dt,
       computeAdaptation(this.mods),
       // Fold the Act's difficulty multiplier into the spawn-time HP scale (Act 2's
-      // hosts are tankier) — still spawn-time only, never re-scales live units.
-      difficultyScale(this.elapsed, this.stats.bossKills, this.player.level) *
-        activeArena().difficultyMult,
+      // hosts are tankier). Scale is boss-kill-only — spawn-time only, never
+      // re-scales live units (no time/level runaway).
+      difficultyScale(this.stats.bossKills) * activeArena().difficultyMult,
       this.fx,
     );
     this.enemySystem.step(this.player, this.tick, dt, this.fx);
@@ -428,6 +462,9 @@ export class World {
     if (this.bounties.collectedThisStep > 0) {
       this.pendingLevelUps += this.bounties.collectedThisStep;
       if (!this.leveling) this.levelUpDelay = Math.max(this.levelUpDelay, LEVELUP_DELAY);
+      // Same ascension flourish as an XP level-up — the draft opens either way, so
+      // the player gets the same "why did the card screen pop?" cue (T-levelfx).
+      this.fx.push('levelup', this.player.pos.x, this.player.pos.z);
     }
     // Corpse / overkill builds (T65): overkilled kills leave bodies; corpses
     // detonate / launch / chain / call meteors (pipeline-routed, V3/V21).
@@ -573,7 +610,9 @@ export class World {
           x,
           z,
           radius,
-          { amount: amount * procCoef, fx: this.fx }, // magnitude scales by coef (V32)
+          // magnitude scales by coef (V32); hitFx + shove so trigger blasts (Singularity
+          // etc.) read as real explosions, not silent damage.
+          { amount: amount * procCoef, fx: this.fx, hitFx: true, knockback: 22 },
           this.rng,
         );
         this.hitTriggerDamage += d;
@@ -614,10 +653,9 @@ export class World {
     const ddx = tx - px;
     const ddz = tz - pz;
     const d = Math.hypot(ddx, ddz);
-    const MAX_THROW = 12;
-    if (d > MAX_THROW) {
-      tx = px + (ddx / d) * MAX_THROW;
-      tz = pz + (ddz / d) * MAX_THROW;
+    if (d > GRENADE_MAX_THROW) {
+      tx = px + (ddx / d) * GRENADE_MAX_THROW;
+      tz = pz + (ddz / d) * GRENADE_MAX_THROW;
     }
     this.grenades.throwAt(px, pz, tx, tz);
     this.grenadeCd = 1.2 * m.grenadeCdMult;
@@ -655,7 +693,7 @@ export class World {
           x,
           z,
           radius,
-          { amount, fx: this.fx },
+          { amount, fx: this.fx, hitFx: true, knockback: 22 },
           this.rng,
         );
         this.hitTriggerDamage += d;
@@ -701,7 +739,7 @@ export class World {
                   ax,
                   az,
                   radius,
-                  { amount, fx: this.fx },
+                  { amount, fx: this.fx, hitFx: true, knockback: 22 },
                   this.rng,
                 );
                 this.hitTriggerDamage += d;
@@ -744,7 +782,7 @@ export class World {
           x,
           z,
           radius,
-          { amount, fx: this.fx },
+          { amount, fx: this.fx, hitFx: true, knockback: 22 },
           this.rng,
         );
         dealt += d;
@@ -785,6 +823,8 @@ export class World {
     this.bossReward = false;
     this.bossRewardChoices = [];
     this.banished.clear();
+    this.cheated = false; // a fresh run is clean until a dev grant touches it (T74/V35)
+    this.devGodmode = false;
     this.countdown = this.countdownEnabled ? COUNTDOWN_SECONDS : 0;
     this.started = false;
     for (const k of Object.keys(this.upgradeLevels)) delete this.upgradeLevels[k];
@@ -825,6 +865,37 @@ export class World {
     resetRunStats(this.stats);
   }
 
+  /** How many OFFENSIVE upgrades the build owns (kill-power foundations). */
+  private offenseOwned(): number {
+    let n = 0;
+    for (const id in this.upgradeLevels) {
+      if ((this.upgradeLevels[id] ?? 0) <= 0) continue;
+      const def = DRAFT_POOL.find((u) => u.id === id);
+      if (def && isOffense(def)) n++;
+    }
+    return n;
+  }
+
+  /** Foundation pity (T-pity): if the build has drafted little/no kill power by the
+   *  time the boss gearcheck looms, nudge the draft odds toward offence so the
+   *  player at least SEES a damage option. Soft — never forces a pick, and switches
+   *  off the moment they have a real offensive base. Returns undefined = no nudge.
+   *
+   *  Tuning: a build with ZERO offence ramps hard from L2 (×2) so unlucky players
+   *  don't stall before the boss; a single-offence build gets a light late nudge so
+   *  it isn't a one-trick going into the fight. */
+  private foundationBoost(): DraftBoost | undefined {
+    const offense = this.offenseOwned();
+    const lvl = this.player.level;
+    let mult = 1;
+    if (offense === 0 && lvl >= 2) {
+      mult = Math.min(5, 1 + (lvl - 1) * 1.5); // L2 ×2 · L3 ×3.5 · L4+ ×5 (capped)
+    } else if (offense === 1 && lvl >= 5) {
+      mult = 1.6; // mild diversification nudge deeper in
+    }
+    return mult > 1 ? { tags: OFFENSE_TAGS, mult } : undefined;
+  }
+
   /** Roll a fresh draft, keeping any locked entries (T41). `keep` = upgrade ids
    *  to preserve in place (for reroll); empty for a new level-up draft. */
   private rollInto(keep: ReadonlySet<string>): UpgradeDefinition[] {
@@ -840,6 +911,7 @@ export class World {
       level: this.player.level,
       luck: this.player.luck,
       banished: exclude,
+      boost: this.foundationBoost(),
     });
     return [...kept, ...fresh];
   }
@@ -893,6 +965,7 @@ export class World {
             level: this.player.level,
             luck: this.player.luck,
             banished: exclude,
+            boost: this.foundationBoost(),
           })
         : [];
     return [...forced, ...fresh];
@@ -1008,6 +1081,105 @@ export class World {
     };
   }
 
+  // ── Dev control board (T74) ──────────────────────────────────────────────
+  // Every grant routes through the SAME real APIs the run uses (applyUpgrade /
+  // weaponSystem.setPrimary / enemies.spawn / openBossReward) and flags the run
+  // `cheated` so main never banks records or Glory (V35). ⊥ a bespoke pipeline.
+
+  /** Owned level of an upgrade — the board shows the current stack. */
+  upgradeLevelOf(id: string): number {
+    return this.upgradeLevels[id] ?? 0;
+  }
+
+  /** Apply an upgrade by id at +1 level (bypasses the draft). False if id unknown. */
+  devGrantUpgrade(id: string): boolean {
+    const def = DRAFT_POOL.find((u) => u.id === id);
+    if (!def) return false;
+    applyUpgrade(
+      def,
+      { player: this.player, mods: this.mods, effects: this.effects },
+      this.upgradeLevels,
+    );
+    this.stats.upgradesTaken += 1;
+    this.maybeEvolve(); // a grant may complete a weapon-evolution combo (T34)
+    this.cheated = true;
+    return true;
+  }
+
+  /** Swap the primary weapon by id. False if id unknown. */
+  devSetWeapon(id: string): boolean {
+    const def = weaponById(id);
+    if (!def) return false;
+    this.weaponSystem.setPrimary(def);
+    this.cheated = true;
+    return true;
+  }
+
+  /** Force the primary weapon's evolution if its combo is available. False if none. */
+  devTryEvolve(): boolean {
+    const id = this.weaponSystem.primaryId;
+    if (!id) return false;
+    const evo = availableEvolution(id, this.upgradeLevels);
+    if (!evo) return false;
+    this.weaponSystem.setPrimary(evo.evolved);
+    this.justEvolved = evo.evolved.displayName;
+    this.cheated = true;
+    return true;
+  }
+
+  /** Queue N level-ups → the normal draft flow opens next step. */
+  devAddLevels(n: number): void {
+    this.pendingLevelUps += Math.max(0, Math.floor(n));
+    this.cheated = true;
+  }
+
+  /** Full heal. */
+  devHeal(): void {
+    this.player.health = this.player.maxHealth;
+    this.cheated = true;
+  }
+
+  /** Toggle godmode (held invulnerable each step). Returns the new state. */
+  devToggleGodmode(): boolean {
+    this.devGodmode = !this.devGodmode;
+    if (this.devGodmode) this.cheated = true;
+    return this.devGodmode;
+  }
+
+  /** Spawn `count` of an enemy variant at telegraphed points around the player. */
+  devSpawn(variant: number, count: number): void {
+    const type = ENEMY_BY_VARIANT[variant];
+    if (!type) return;
+    const n = Math.max(1, Math.min(64, Math.floor(count)));
+    for (let k = 0; k < n; k++) {
+      const ang = this.rng.next() * Math.PI * 2;
+      const dist = 5 + this.rng.next() * 4;
+      const x = this.player.pos.x + Math.cos(ang) * dist;
+      const z = this.player.pos.z + Math.sin(ang) * dist;
+      this.enemies.spawn(type, x, z, 0.6, this.tick + k);
+    }
+    this.cheated = true;
+  }
+
+  /** Make the wave director field a boss on the next step (respects its scaling). */
+  devForceBoss(): void {
+    this.director.forceBossNow();
+    this.cheated = true;
+  }
+
+  /** Wipe every active enemy + reset the boss controller. */
+  devClearEnemies(): void {
+    this.enemies.count = 0;
+    this.boss.reset();
+    this.cheated = true;
+  }
+
+  /** Force-open the boss-reward draft (test the major-reward flow without a kill). */
+  devOpenBossReward(): void {
+    this.cheated = true;
+    this.openBossReward();
+  }
+
   /** Boss kill → open the 3-choice major reward and freeze the sim (T43, V22). */
   private openBossReward(): void {
     this.stats.bossKills += 1;
@@ -1018,7 +1190,7 @@ export class World {
   }
 
   /** Rich post-game summary for the end screen (T23): final weapon, the build
-   *  (upgrades taken), kills broken down by enemy type, bosses felled. */
+   *  (upgrades taken), kills broken down by enemy type, bosses slain. */
   runSummary(): RunSummary {
     const killsByType = this.stats.killsByVariant
       .map((count, v) => ({ name: ENEMY_DISPLAY_NAME[v] ?? `Variant ${v}`, count: count ?? 0 }))
@@ -1087,13 +1259,14 @@ export class World {
         value: upTo(m.fireRateMult * live.fireRateMult, m.fireRateMult * probe.fireRateMult, xMult),
       },
       {
-        label: 'Crit bonus',
+        label: 'Crit chance',
         value: upTo(
           m.critChanceAdd + live.critAdd,
           m.critChanceAdd + probe.critAdd,
           (n) => `+${pct(n)}`,
         ),
       },
+      { label: 'Crit damage', value: xMult(m.critDamageMult) },
       { label: 'Range', value: `×${m.rangeMult.toFixed(2)}` },
       { label: 'Projectiles', value: `${m.projectileCount}` },
       { label: 'Pierce', value: m.pierce > 0 ? `+${m.pierce}` : '—' },

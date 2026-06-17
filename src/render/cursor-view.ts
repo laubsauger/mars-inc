@@ -15,7 +15,10 @@ export class CursorView {
     const color = COL.kineticGold;
     const onTop = (m: Mesh): Mesh => {
       m.rotation.x = -Math.PI / 2;
-      m.renderOrder = 12; // above gate plates / floor decals
+      // Above gate plates / floor decals, but BELOW the projectile layer (order 10)
+      // so bolts visibly fly OVER the reticle. depthTest stays off so it never sinks
+      // under gate aprons (it's a HUD-ish marker).
+      m.renderOrder = 6;
       return m;
     };
     // Outer ring.
@@ -25,7 +28,7 @@ export class CursorView {
         new MeshBasicMaterial({
           color,
           transparent: true,
-          opacity: 0.85,
+          opacity: 0.55,
           depthTest: false,
           depthWrite: false,
           toneMapped: false,
@@ -37,7 +40,7 @@ export class CursorView {
     const tickMat = new MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.45,
       depthTest: false,
       depthWrite: false,
       toneMapped: false,

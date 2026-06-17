@@ -151,6 +151,12 @@ export class WaveDirector {
     return this.boss;
   }
 
+  /** Dev (T74): drop the boss-wave countdown so the next step fields a boss now
+   *  (still goes through the normal spawn + HP-scale path; ignored if one's up). */
+  forceBossNow(): void {
+    this.bossWaveTimer = 0;
+  }
+
   private pickType(rng: Rng, elapsed: number, houndBias: number): EnemyType {
     // Specials (elites + RANGED) are a small, slowly-growing SLICE of the swarm —
     // they spice the fodder, never replace it. ONE gate decides "special or
@@ -192,6 +198,16 @@ export class WaveDirector {
     return false;
   }
 
+  /** Real seconds until the next boss arrives, for the HUD countdown — `null` while
+   *  a boss is already on the field (the boss bar takes over). Mirrors the spawn
+   *  gate: pre-first-boss it's the BOSS_AT threshold (in real time), then the
+   *  recurring BOSS_PERIOD wave timer. (Estimate: ignores the count<cap hold.) */
+  timeToNextBoss(elapsed: number, pool: EnemyPool): number | null {
+    if (this.bossOnField(pool)) return null;
+    if (!this.boss) return Math.max(0, BOSS_AT * TIMELINE_STRETCH - elapsed);
+    return Math.max(0, this.bossWaveTimer);
+  }
+
   /** Spawn-time HP scale for fodder this step (run-phase escalation, T44). */
   private hpScale = 1;
   private teleTimer = TELE_PERIOD; // countdown to the next teleport wave (T33+)
@@ -222,7 +238,7 @@ export class WaveDirector {
     // Recurring boss waves (V22 hinge × N): the first Gatekeeper at BOSS_AT, then a
     // TOUGHER one each BOSS_PERIOD after the previous falls — you fight through an
     // escalating gauntlet of bosses, not a single milestone. Each boss's HP scales
-    // with how many you've already felled (× the Act multiplier). Spawned free
+    // with how many you've already slain (× the Act multiplier). Spawned free
     // (not from the bank) and only while none is on the field (≤ cap, V8).
     if (elapsed >= BOSS_AT && pool.count < cap) {
       if (this.bossOnField(pool)) {
@@ -376,23 +392,18 @@ export class WaveDirector {
 }
 
 /**
- * Run-phase difficulty scale (T44): a global multiplier on FODDER health so the
- * roster keeps pace with the player's growing damage — the curve ramps with time
- * AND steps up per boss kill (bosses are the progression hinge, §G). Bounded
- * growth, deterministic (pure function of run state). Boss HP is NOT scaled.
+ * Run-phase difficulty scale (T44): a multiplier on FODDER spawn health. The ONLY
+ * source is boss kills — slaying a boss in the current run makes SUBSEQUENT spawns
+ * tankier (bosses are the progression hinge, §G). NO time/level ramp: those made
+ * HP balloon continuously and, since field units keep their spawn HP, produced a
+ * runaway where new waves vastly out-tanked the ones already on the floor.
+ *
+ * Applied at spawn ONLY (the director folds it into `pool.spawn`'s hpScale); live
+ * units are NEVER re-scaled (V12) — a monster keeps the HP it spawned with for life.
+ * Boss HP is not scaled. Deterministic (pure function of bossKills).
  */
-export function difficultyScale(elapsed: number, bossKills: number, level = 1): number {
-  // Enemy HP must KEEP PACE with the player or everything becomes paper. Three
-  // compounding sources, all from the start (no flat early phase — a maxed build
-  // levels fast and would otherwise wipe weak waves forever):
-  //   • LEVEL — the dominant term: player damage scales with level/upgrades, so
-  //     enemy HP scales with level too (they never fall behind your output).
-  //   • TIME — an accelerating quadratic so a long farm meets ever-tankier hosts.
-  //   • BOSS kills — a step each boss felled (the gauntlet ratchets up).
-  // Applied at spawn only; live units are never re-scaled (V12). Act mult stacks.
-  const t = elapsed / TIMELINE_STRETCH;
-  const lvl = 1 + Math.max(0, level - 1) * 0.16;
-  return (1 + t * 0.04 + t * t * 0.0007 + bossKills * 1.5) * lvl;
+export function difficultyScale(bossKills: number): number {
+  return 1 + Math.max(0, bossKills) * 0.5; // +50% spawn HP per boss slain
 }
 
 /** Seconds between waves — long at the open, shrinking to a floor. */

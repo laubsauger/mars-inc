@@ -20,6 +20,8 @@ export interface SettingsData {
   arenaId: ArenaId; // which pit to play (circle Rust Crown / rect Cold Vault)
   showCountdown: boolean; // pre-combat 3s countdown (default off — saves dev time)
   cameraControls: boolean; // opt-in orbit/zoom camera (default off — players nudged it by accident)
+  showGrenadeRange: boolean; // grenade max-range cross marker on the aim line (default on)
+  projectileLighting: boolean; // bolts spill light onto floor/walls via the light buffer (default on)
 }
 
 export interface AccessibilityData {
@@ -125,6 +127,8 @@ export function defaultSettings(): SettingsData {
     arenaId: 'cold-vault',
     showCountdown: false,
     cameraControls: false,
+    showGrenadeRange: true,
+    projectileLighting: true,
   };
 }
 

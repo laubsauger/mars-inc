@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useUiStore, type AnnounceState } from './store';
+import { ControlsReference } from './controls-reference';
 
 // Shared "juice" backdrop — a warm ember-tinted radial that's saturated in the
 // core and falls off softly to nothing (no hard disc/border). Reused by the boss
@@ -58,50 +59,91 @@ function AbilitySlot({
   name,
   progress,
   accent,
-  badge,
+  charges,
+  maxCharges,
 }: {
   icon: string;
   keyLabel: string;
   name: string;
   progress: number; // 0..1 (1 = ready)
   accent: string; // hex
-  badge?: string | undefined; // small count/state in the corner
+  charges?: number | undefined; // current charges available
+  maxCharges?: number | undefined; // total charges (>1 → show pips)
 }) {
-  const ready = progress >= 1;
+  const p = Math.max(0, Math.min(1, progress));
+  const ready = p >= 1;
+  const deg = p * 360;
+  // 0..1 → 2-digit alpha hex, so the border + glow can ramp with the recharge.
+  const a2 = (v: number): string =>
+    Math.round(Math.max(0, Math.min(1, v)) * 255)
+      .toString(16)
+      .padStart(2, '0');
   return (
     <div
       title={name}
-      className="relative flex h-14 w-14 items-center justify-center rounded-md border-2 bg-pit/82 font-mono shadow-[0_8px_24px_rgba(0,0,0,0.5),inset_0_0_0_1px_rgba(7,5,4,0.8)]"
+      className="relative flex h-14 w-14 items-center justify-center rounded-md border-2 bg-pit/82 font-mono"
       style={{
-        borderColor: ready ? accent : 'rgba(143,63,36,0.7)',
-        boxShadow: ready ? `0 0 18px ${accent}66, inset 0 0 0 1px rgba(7,5,4,0.8)` : undefined,
+        // Border brightens + the glow grows as the slot charges → the border IS
+        // part of the readout, full accent + bloom the instant it's ready.
+        borderColor: ready ? accent : `${accent}${a2(0.3 + 0.6 * p)}`,
+        boxShadow: `0 0 ${8 + 14 * p}px ${accent}${a2(0.12 + 0.5 * p)}, inset 0 0 0 1px rgba(7,5,4,0.8)`,
       }}
     >
+      {!ready && (
+        <>
+          {/* Darken the whole face while charging so "not ready" reads at a glance. */}
+          <div className="pointer-events-none absolute inset-0 rounded-[3px] bg-pit/70" />
+          {/* The charged arc, swept in the accent colour — the prominent reveal. */}
+          <div
+            className="pointer-events-none absolute inset-0 rounded-[3px]"
+            style={{
+              background: `conic-gradient(from 0deg, ${accent}8c ${deg}deg, transparent ${deg}deg)`,
+            }}
+          />
+          {/* Bright leading-edge "sweep hand" that travels the ring as it fills. */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ transform: `rotate(${deg}deg)` }}
+          >
+            <div
+              className="absolute left-1/2 top-0 h-1/2 w-[2px] -translate-x-1/2 origin-bottom"
+              style={{ background: accent, boxShadow: `0 0 7px ${accent}` }}
+            />
+          </div>
+        </>
+      )}
       <span
-        className="text-2xl leading-none"
-        style={{ color: ready ? accent : 'rgba(244,228,212,0.45)' }}
+        className="relative text-2xl leading-none"
+        style={{
+          color: ready ? accent : 'rgba(244,228,212,0.55)',
+          textShadow: ready ? `0 0 10px ${accent}99` : undefined,
+        }}
       >
         {icon}
       </span>
-      {!ready && (
-        // Dark wedge covers the REMAINING cooldown; shrinks clockwise as it fills.
-        <div
-          className="pointer-events-none absolute inset-0 rounded-md"
-          style={{
-            background: `conic-gradient(transparent ${progress * 360}deg, rgba(7,5,4,0.66) 0deg)`,
-          }}
-        />
-      )}
-      <span className="absolute -top-1.5 left-1 text-[9px] font-black uppercase tracking-widest text-bone/45">
+      <span className="absolute -top-1.5 left-1 z-10 text-[9px] font-black uppercase tracking-widest text-bone/55">
         {keyLabel}
       </span>
-      {badge ? (
-        <span
-          className="absolute -bottom-1.5 -right-1.5 rounded-full border px-1 text-[10px] font-black tabular-nums"
-          style={{ borderColor: accent, color: accent, background: 'rgba(7,5,4,0.9)' }}
-        >
-          {badge}
-        </span>
+      {/* Charge pips — one per max charge, filled = available. Makes it obvious the
+          ability is still usable while a spent charge recharges (sprint, etc.). */}
+      {maxCharges && maxCharges > 1 ? (
+        <div className="absolute -bottom-1.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5">
+          {Array.from({ length: maxCharges }).map((_, i) => {
+            const filled = i < (charges ?? 0);
+            return (
+              <span
+                key={i}
+                className="h-1.5 w-1.5 rotate-45 border"
+                style={{
+                  borderColor: accent,
+                  background: filled ? accent : 'rgba(7,5,4,0.85)',
+                  boxShadow: filled ? `0 0 5px ${accent}aa` : undefined,
+                  opacity: filled ? 1 : 0.4,
+                }}
+              />
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );
@@ -131,7 +173,8 @@ function HotBar() {
         name="Sprint"
         progress={sprintProgress}
         accent="#32d7ff"
-        badge={sprintMax > 1 ? `${charges}/${sprintMax}` : undefined}
+        charges={charges}
+        maxCharges={sprintMax}
       />
       {autoShoot ? (
         <div className="mb-1 self-center rounded-sm border border-toxic/70 bg-toxic/12 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-toxic">
@@ -142,13 +185,43 @@ function HotBar() {
   );
 }
 
+/** Compact boss-arrival countdown that sits beside the run clock — a quiet amber
+ *  ticket that flips to an urgent pulsing bleed-red inside the last 15s. Hidden
+ *  while a boss is on the field (the boss health bar takes over). */
+function BossCountdown() {
+  const eta = useUiStore((s) => s.hud.bossEta);
+  const countdown = useUiStore((s) => s.hud.countdown);
+  if (eta == null || countdown > 0) return null;
+  const urgent = eta <= 15;
+  const m = Math.floor(eta / 60);
+  const sec = Math.floor(eta % 60);
+  const label = eta <= 0 ? 'INBOUND' : `${m}:${sec.toString().padStart(2, '0')}`;
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-xs tracking-widest transition-colors ${
+        urgent
+          ? 'animate-pulse border-bleed/70 bg-bleed/15 text-bleed shadow-[0_0_14px_rgba(255,59,48,0.3)]'
+          : 'border-ember/50 bg-pit/60 text-ember/90'
+      }`}
+      title="Time until the next Warden arrives"
+    >
+      <span className="text-[0.7rem] leading-none">⚠</span>
+      <span className="text-[0.6rem] font-black uppercase opacity-70">Warden</span>
+      <span className="tabular-nums">{label}</span>
+    </div>
+  );
+}
+
 function Timer() {
   const elapsed = useUiStore((s) => s.hud.elapsed);
   const m = Math.floor(elapsed / 60);
   const sec = Math.floor(elapsed % 60);
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 font-mono text-lg tracking-widest text-bone/90">
-      {m}:{sec.toString().padStart(2, '0')}
+    <div className="absolute top-4 left-1/2 flex -translate-x-1/2 items-center gap-3 font-mono">
+      <span className="text-lg tracking-widest text-bone/90">
+        {m}:{sec.toString().padStart(2, '0')}
+      </span>
+      <BossCountdown />
     </div>
   );
 }
@@ -407,26 +480,11 @@ function ResetView() {
   );
 }
 
-// First-run controls card. Shows once (localStorage), auto-dismisses, or "Got it".
-// `keys` are rendered as individual chips (matching the Settings → Controls tab).
-const CONTROL_ROWS: { keys: string[]; action: string }[] = [
-  { keys: ['W', 'A', 'S', 'D'], action: 'Move' },
-  { keys: ['Left Click (hold)'], action: 'Fire' },
-  { keys: ['Space'], action: 'Toggle auto-fire' },
-  { keys: ['Right Click'], action: 'Throw grenade' },
-  { keys: ['Shift'], action: 'Sprint' },
-  { keys: ['E', 'F'], action: 'Pick up weapon' },
-  { keys: ['Esc'], action: 'Pause' },
-];
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex min-w-[1.6rem] items-center justify-center rounded-sm border border-rust bg-umber/80 px-1.5 py-0.5 text-[11px] font-black tracking-wide text-bone/90 shadow-[inset_0_-1px_0_rgba(0,0,0,0.5)]">
-      {children}
-    </kbd>
-  );
-}
-
+// First-run field briefing — a START GATE: the sim is held (world.started=false)
+// until the player dismisses. Reuses the shared ControlsReference table (single
+// source of truth with Settings → Controls), shows just the Combat group. By
+// default it reappears every fresh load so a new player gets a second chance to
+// read it; ticking "Don't show again" persists the suppression.
 function ControlsHint() {
   const screen = useUiStore((s) => s.screen);
   const startCombat = useUiStore((s) => s.startCombat);
@@ -437,38 +495,40 @@ function ControlsHint() {
       return false;
     }
   });
+  const [dontShow, setDontShow] = useState(false);
   if (seen || screen !== 'arena') return null;
-  // This briefing is a START GATE — the sim is held (world.started=false) until the
-  // player clicks "Got it". No auto-dismiss: nothing should begin behind it.
   const dismiss = () => {
-    setSeen(true);
-    try {
-      localStorage.setItem('mars:controls-seen', '1');
-    } catch {
-      /* ignore */
+    setSeen(true); // hide for THIS session regardless
+    if (dontShow) {
+      try {
+        localStorage.setItem('mars:controls-seen', '1'); // persist only on opt-out
+      } catch {
+        /* ignore */
+      }
     }
     startCombat(); // begin the countdown + spawns now
   };
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-[28%] w-80 -translate-x-1/2 border-2 border-gold/70 bg-pit/92 p-4 font-mono shadow-[0_18px_60px_rgba(0,0,0,0.72),inset_0_0_0_1px_rgba(240,200,121,0.12)]">
+    <div className="pointer-events-auto absolute left-1/2 top-[22%] w-80 -translate-x-1/2 border-2 border-gold/70 bg-pit/92 p-4 font-mono shadow-[0_18px_60px_rgba(0,0,0,0.72),inset_0_0_0_1px_rgba(240,200,121,0.12)]">
       <div className="mb-0.5 text-center text-[10px] uppercase tracking-widest text-dust">
         Mars Inc field briefing
       </div>
       <div className="mb-2.5 text-center text-sm font-black uppercase tracking-widest text-gold">
         Controls
       </div>
-      <div className="flex flex-col gap-1.5">
-        {CONTROL_ROWS.map(({ keys, action }) => (
-          <div key={action} className="flex items-center justify-between gap-3 text-xs">
-            <span className="flex shrink-0 flex-wrap items-center gap-1">
-              {keys.map((k) => (
-                <Kbd key={k}>{k}</Kbd>
-              ))}
-            </span>
-            <span className="text-bone/70">{action}</span>
-          </div>
-        ))}
+      <ControlsReference only={['Combat']} />
+      <div className="mt-2 text-center text-[10px] leading-relaxed text-bone/45">
+        Full list lives in <span className="text-bone/70">Settings → Controls</span>.
       </div>
+      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 text-[11px] text-bone/65">
+        <input
+          type="checkbox"
+          checked={dontShow}
+          onChange={(e) => setDontShow(e.target.checked)}
+          className="h-3.5 w-3.5 accent-gold"
+        />
+        Don&apos;t show this again
+      </label>
       <button
         onClick={dismiss}
         className="mt-3 w-full rounded-sm border border-gold/60 bg-gold/12 py-1.5 text-xs font-black uppercase tracking-widest text-gold transition hover:bg-gold/20 focus:outline-none"
