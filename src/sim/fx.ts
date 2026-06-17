@@ -19,6 +19,11 @@ export type FxKind =
   | 'laser' // player hitscan beam — x,z = origin; dx,dz = END point (absolute, not a dir)
   | 'toxiccloud'; // Toxic Bloom — a lingering green gas puff (dx = radius)
 
+/** High bit OR'd into a 'blood' event's `variant` to flag a CRIT hit → the view
+ *  sprays a more violent, further, tighter directional jet (coup-de-grâce read).
+ *  Enemy variants are < 64, so this bit rides alongside without collision. */
+export const BLOOD_CRIT_BIT = 64;
+
 /** Per-weapon-family hit read (T37, art doc Effects Plan). Carried on `impact`
  *  events in `variant` so the render layer spawns a distinct hit FX per family
  *  (a sidearm tick must not look like an explosive blast). 0 = generic (enemy

@@ -51,6 +51,9 @@ const CROWD = new Color('#140f0d');
 const PORTAL_FLOOR = new Color('#0c0a0b'); // near-black tunnel floor (reads as depth)
 const PORTAL_BACK = new Color('#1a0f0c'); // dim back wall
 const PORTAL_GLOW = new Color('#ff5a2a'); // ominous warm light enemies emerge from
+// Gate-ROOM interior (ceiling + side walls): darker than the steel/WALL so the
+// recess reads as a shadowed hole behind the opening, not a lit alcove.
+const PORTAL_ROOM = new Color('#15171c');
 
 const GATE_GAP = 0.14; // angular half-gap cut in the wall at each gate (portal opening)
 const PORTAL_DEPTH = 9; // how far the spawn chamber extends out through the wall
@@ -578,7 +581,7 @@ export class ArenaView {
 
     const ceil = new Mesh(
       new BoxGeometry(roomHalf * 2 + 0.8, 0.8, PORTAL_DEPTH),
-      mat(STEEL_DARK, 1, 0.1),
+      mat(PORTAL_ROOM, 1, 0.1),
     );
     ceil.position.set(cos * innerMid, GATE_HEIGHT + 0.1, sin * innerMid);
     ceil.rotation.y = faceY;
@@ -588,7 +591,7 @@ export class ArenaView {
     for (const side of [-1, 1]) {
       const sw = new Mesh(
         new BoxGeometry(0.8, GATE_HEIGHT + 0.4, PORTAL_DEPTH),
-        mat(STEEL_DARK, 1, 0.12),
+        mat(PORTAL_ROOM, 1, 0.12),
       );
       sw.position.set(
         cos * innerMid + tx * side * (roomHalf + 0.4),

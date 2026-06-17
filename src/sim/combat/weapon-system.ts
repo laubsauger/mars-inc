@@ -27,7 +27,7 @@ import { knockbackFrom } from './knockback';
 import { wallDistance } from '../arena';
 import type { RunMods } from '../progression/mods';
 import type { ConditionalResult } from '../progression/effects';
-import { type FxQueue, ImpactProfile } from '../fx';
+import { type FxQueue, ImpactProfile, BLOOD_CRIT_BIT } from '../fx';
 
 /** Weapon family → its NON-EXPLOSIVE hit-FX profile (art doc: each family reads
  *  distinctly). The explosion (Blast) FX is NOT assigned here — it's added at fire
@@ -353,7 +353,7 @@ export class WeaponSystem {
         enemies.health[e]! -= mit.toHealth;
       }
       fx.push('impact', enemies.posX[e]!, enemies.posZ[e]!, dx, dz, ImpactProfile.Arc);
-      emitBlood(fx, enemies, e, dx, dz);
+      emitBlood(fx, enemies, e, dx, dz, out.crit);
       fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
       if (out.crit) this.critThisStep = true;
       if (onHit) onHit(e, out.crit, procCoef, mit.toHealth);
@@ -455,8 +455,8 @@ export class WeaponSystem {
             );
           }
           // Blood spurt on biological hits, thrown along the projectile's travel
-          // direction (art doc: matter exits away from the hit face).
-          emitBlood(fx, enemies, e, pr.velX[i]!, pr.velZ[i]!);
+          // direction (art doc: matter exits away from the hit face). Crit → violent.
+          emitBlood(fx, enemies, e, pr.velX[i]!, pr.velZ[i]!, out.crit);
           // Floating damage number at the enemy (amount in dx, crit flag in variant).
           fx.push('dmg', enemies.posX[e]!, enemies.posZ[e]!, mit.toHealth, 0, out.crit ? 1 : 0);
           if (out.crit) this.critThisStep = true;
@@ -648,7 +648,14 @@ export class WeaponSystem {
  *  direction (un-normalized ok); the render layer throws spurts that way and
  *  drops a directional floor decal. Mechanical enemies (no `gore`) spray nothing
  *  — their death dust covers it. Carries the enemy variant for blood vs ichor. */
-function emitBlood(fx: FxQueue, enemies: EnemyPool, e: number, hx: number, hz: number): void {
+function emitBlood(
+  fx: FxQueue,
+  enemies: EnemyPool,
+  e: number,
+  hx: number,
+  hz: number,
+  crit = false,
+): void {
   const v = enemies.variant[e]!;
   if (!ENEMY_BY_VARIANT[v]?.gore) return;
   const l = Math.hypot(hx, hz) || 1;
@@ -658,7 +665,8 @@ function emitBlood(fx: FxQueue, enemies: EnemyPool, e: number, hx: number, hz: n
   // center — on big units a center spawn buries the spray inside the mesh where
   // it gets occluded ("swallowed"). Push it just past the surface so it clears.
   const r = enemies.radius[e]! * 0.9;
-  fx.push('blood', enemies.posX[e]! + ux * r, enemies.posZ[e]! + uz * r, ux, uz, v);
+  const variant = crit ? v | BLOOD_CRIT_BIT : v;
+  fx.push('blood', enemies.posX[e]! + ux * r, enemies.posZ[e]! + uz * r, ux, uz, variant);
 }
 
 /** Returns a unit aim direction (x,z) for the weapon, or null if no target.

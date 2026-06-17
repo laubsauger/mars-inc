@@ -20,7 +20,7 @@ import {
 } from 'three';
 import { ENEMY_BY_VARIANT } from '../sim/enemies';
 import { clampPoint } from '../sim/arena';
-import type { FxEvent } from '../sim/fx';
+import { type FxEvent, BLOOD_CRIT_BIT } from '../sim/fx';
 import { COL } from './art/palette';
 
 const BLOOD_WALL_INSET = 0.25; // keep spray + decals this far inside the wall
@@ -189,14 +189,24 @@ export class BloodView {
   consume(events: readonly FxEvent[]): void {
     for (const e of events) {
       if (e.kind === 'blood') {
-        const c = goreColor(e.variant);
+        // High bit = CRIT (the killing-blow read) → more matter, more force, a
+        // tighter jet down the shot line. The low bits are the enemy variant.
+        const crit = (e.variant & BLOOD_CRIT_BIT) !== 0;
+        const variant = e.variant & (BLOOD_CRIT_BIT - 1);
+        const c = goreColor(variant);
         if (c) {
-          const sz = goreScale(e.variant);
+          const sz = goreScale(variant);
           // Per-hit "gush" — skewed low so most hits are a modest spritz and the
           // odd one ERUPTS. Makes the amount visibly vary shot to shot.
           const gush = 0.35 + rnd() * rnd() * 1.9;
-          const n = Math.min(24, Math.max(2, Math.round((this.reduceFlash ? 3 : 5) * sz * gush)));
-          this.spray(e.x, e.z, e.dx, e.dz, c, n, 0.8 + rnd() * 0.8, sz);
+          const critN = crit ? 1.7 : 1; // a crit throws noticeably more droplets
+          const cap = crit ? 34 : 24;
+          const n = Math.min(
+            cap,
+            Math.max(2, Math.round((this.reduceFlash ? 3 : 5) * sz * gush * critN)),
+          );
+          const force = (0.8 + rnd() * 0.8) * (crit ? 1.6 : 1); // crit splashes further
+          this.spray(e.x, e.z, e.dx, e.dz, c, n, force, sz, crit);
           this.coatPlayer(e.x, e.z, c, sz);
         }
       } else if (e.kind === 'death') {
@@ -223,18 +233,23 @@ export class BloodView {
     n: number,
     force: number,
     sizeMul = 1,
+    crit = false,
   ): void {
     const hasDir = dirX * dirX + dirZ * dirZ > 1e-4;
     const base = hasDir ? Math.atan2(dirZ, dirX) : 0;
     // Horizontal reach scales with the enemy — a small pistol kill flicks blood a
     // short way, a brute paints the floor far. Keeps tier-1 splatter near the body.
-    const reach = Math.max(0.5, Math.min(1.6, sizeMul));
+    // Crit reaches further (the coup-de-grâce throws matter well out).
+    const reach = Math.max(0.5, Math.min(1.6, sizeMul)) * (crit ? 1.35 : 1);
     for (let k = 0; k < n; k++) {
       if (this.dCount >= MAX_DROPLETS) break;
       // TIGHT cone around the shot direction (exits the victim along the bullet
       // line) so the spray reads as a directional jet, not a radial puff. Full
       // circle only on death (dir≈0). A few stray wide droplets keep it organic.
-      const spread = rnd() < 0.18 ? 0.9 : 0.32; // mostly tight, occasional flick
+      // Crit tightens the cone → a hard directional spurt down the fire line.
+      const wide = crit ? 0.55 : 0.9;
+      const tight = crit ? 0.18 : 0.32;
+      const spread = rnd() < 0.18 ? wide : tight;
       const ang = hasDir ? base + (rnd() - 0.5) * spread : rnd() * Math.PI * 2;
       // Bias speed along the jet so streaks elongate down the shot line.
       const sp = (4 + rnd() * 7) * force * reach;
