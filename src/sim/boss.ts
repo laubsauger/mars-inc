@@ -226,7 +226,7 @@ export class BossController {
       const ddz = player.pos.z - bz;
       const rr = enemies.radius[b]! + player.stats.collisionRadius + 0.3;
       if (ddx * ddx + ddz * ddz <= rr * rr) {
-        hitPlayer(player, CHARGE_DMG);
+        hitPlayer(player, CHARGE_DMG, { variant: enemies.variant[b]!, kind: 'charge' });
         this.chargeHit = true;
         fx.push('impact', bx, bz, this.dirX, this.dirZ);
       }

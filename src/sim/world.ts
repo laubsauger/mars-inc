@@ -63,7 +63,20 @@ export interface RunSummary {
   bossKills: number;
   killsByType: { name: string; count: number }[];
   upgrades: { name: string; level: number }[];
+  /** What dealt the killing blow (death only) — unit + attack label + damage. */
+  fatalBlow: { unit: string; attack: string; damage: number } | null;
 }
+
+/** Player-damage `kind` → readable attack label for the game-over cause-of-death. */
+const ATTACK_LABEL: Record<string, string> = {
+  contact: 'Collision',
+  charge: 'Charge Slam',
+  laser: 'Ion Beam',
+  projectile: 'Gunfire',
+  blast: 'Mortar Blast',
+  frost: 'Frost Blast',
+  unknown: 'Unknown',
+};
 
 const COUNTDOWN_SECONDS = 3;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
@@ -1180,11 +1193,22 @@ export class World {
     const upgrades = Object.entries(this.draftCtl.upgradeLevels)
       .map(([id, level]) => ({ name: DRAFT_POOL.find((u) => u.id === id)?.name ?? id, level }))
       .sort((a, b) => b.level - a.level);
+    // Cause of death — the last landed blow (death runs only; a win leaves health > 0).
+    const ld = this.player.lastDamage;
+    const fatalBlow =
+      this.player.health <= 0 && ld
+        ? {
+            unit: ENEMY_DISPLAY_NAME[ld.variant] ?? 'Unknown',
+            attack: ATTACK_LABEL[ld.kind] ?? 'Unknown',
+            damage: ld.amount,
+          }
+        : null;
     return {
       weapon: this.weaponSystem.weapons[0]?.def.displayName ?? '—',
       bossKills: this.stats.bossKills,
       killsByType,
       upgrades,
+      fatalBlow,
     };
   }
 

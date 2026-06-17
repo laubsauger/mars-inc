@@ -61,7 +61,7 @@ function stepStomps(pool: EnemyPool, attacks: EnemyAttackSystem, dt: number): vo
     if (growth < STOMP_MIN_GROWTH) continue; // a fresh one just bites; only a fed one slams
     const radius = pool.radius[g]! * STOMP_RADIUS_MULT;
     const damage = STOMP_DMG_BASE + growth * STOMP_DMG_PER_GROWTH;
-    attacks.hazardAt(pool.posX[g]!, pool.posZ[g]!, radius, STOMP_FUSE, damage); // telegraphed AoE
+    attacks.hazardAt(pool.posX[g]!, pool.posZ[g]!, radius, STOMP_FUSE, damage, GARG_VARIANT); // telegraphed AoE
   }
 }
 

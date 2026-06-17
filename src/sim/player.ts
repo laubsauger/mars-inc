@@ -71,6 +71,10 @@ export interface Player {
   /** Glory-Tree reweave run modifiers (T35/T67). Set by permanents at run start. */
   draftSize: number; // draft options shown per level-up (default 3; ARSENAL widens it)
   reviveCharges: number; // survive a lethal hit, then consume one (BIOLOGY)
+  /** Last damage instance that ACTUALLY landed (passed i-frames/shield). On death the
+   *  most recent one IS the fatal blow → the game-over "cause of death" card. `variant`
+   *  255 = unknown source. `amount` is the effective health lost. */
+  lastDamage: { variant: number; kind: string; amount: number } | null;
   droneDamageMult: number; // COMMAND: scales companion-drone damage
   gloryMult: number; // ARENA/INFAMY: multiplies Glory earned from this run
   /** Chill (slow) from enemy frost effects (T33): time left + speed multiplier. */
@@ -154,6 +158,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     damageTakenMult: 1,
     draftSize: 3,
     reviveCharges: 0,
+    lastDamage: null,
     droneDamageMult: 1,
     gloryMult: 1,
     bonusRerolls: 0,
@@ -225,6 +230,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.damageTakenMult = 1;
   p.draftSize = 3;
   p.reviveCharges = 0;
+  p.lastDamage = null;
   p.droneDamageMult = 1;
   p.gloryMult = 1;
   p.bonusRerolls = 0;
@@ -353,7 +359,11 @@ export const HIT_IFRAMES = 0.6; // short invuln after damage (§5.5)
  * Apply contact damage to the player. No-op during i-frames or sprint
  * collision-forgiveness (§5.3). Returns true if the hit landed.
  */
-export function hitPlayer(p: Player, amount: number): boolean {
+export function hitPlayer(
+  p: Player,
+  amount: number,
+  source?: { variant: number; kind: string },
+): boolean {
   if (p.invuln > 0 || p.sprint.forgiveness > 0) return false;
   // Shield absorbs the whole instance, then breaks and starts its recharge. Still
   // grants i-frames so a crowd can't strip every charge in one tick.
@@ -363,7 +373,14 @@ export function hitPlayer(p: Player, amount: number): boolean {
     p.invuln = HIT_IFRAMES;
     return false; // no health lost → callers see "no damage landed"
   }
-  p.health = Math.max(0, p.health - amount * p.damageTakenMult);
+  const dealt = amount * p.damageTakenMult;
+  p.health = Math.max(0, p.health - dealt);
+  // Record the landed blow → on death the last one is the fatal one (cause of death).
+  p.lastDamage = {
+    variant: source?.variant ?? 255,
+    kind: source?.kind ?? 'unknown',
+    amount: Math.round(dealt),
+  };
   p.invuln = HIT_IFRAMES;
   // Revive charge (BIOLOGY keystone, T35): a lethal hit is survived once, not fatal.
   if (p.health <= 0 && p.reviveCharges > 0) {

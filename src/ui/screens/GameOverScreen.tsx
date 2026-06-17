@@ -89,6 +89,29 @@ export function GameOverScreen() {
       {/* Body — the ONLY scroller; flex-1 + min-h-0 so it absorbs the overflow */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4">
         <div className="mx-auto flex w-[64rem] max-w-[94vw] flex-col gap-3 py-1">
+          {result.fatalBlow && (
+            <div className="flex items-center gap-4 rounded-md border border-bleed/50 bg-bleed/10 px-5 py-3 shadow-[inset_0_0_0_1px_rgba(7,5,4,0.6)]">
+              <span className="text-3xl text-bleed drop-shadow-[0_0_8px_rgba(255,59,48,0.5)]">
+                ☠
+              </span>
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.3em] text-bleed/80">
+                  Cause of death
+                </div>
+                <div className="truncate text-lg font-black text-bone">
+                  {result.fatalBlow.unit}
+                  <span className="px-2 text-bone/40">·</span>
+                  <span className="text-bone/85">{result.fatalBlow.attack}</span>
+                </div>
+              </div>
+              <div className="ml-auto shrink-0 text-right">
+                <div className="text-[10px] uppercase tracking-widest text-dust">Killing blow</div>
+                <div className="text-2xl font-black text-bleed tabular-nums">
+                  −{result.fatalBlow.damage}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <Panel title="SURVIVAL">
               <Stat label="Time" value={fmtTime(result.durationSec)} />

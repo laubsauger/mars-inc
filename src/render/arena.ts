@@ -363,10 +363,15 @@ export class ArenaView {
     sill.position.set(0, 0.1, -0.2);
     sill.userData.batchDynamic = true; // live material (per-gate red tint) — never batch
     g.add(sill);
-    const sillTop = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
-    sillTop.position.set(0, wallH - 0.4, -0.2); // just under the lintel — mirrors the floor sill
-    sillTop.userData.batchDynamic = true;
-    g.add(sillTop);
+    // Ceiling sill mirrors the floor — but SKIP it on the near gate: with its lintel
+    // culled it would float at the top of the opening and clutter the read of what's
+    // walking through the bottom gate.
+    if (!nearGate) {
+      const sillTop = new Mesh(new BoxGeometry(gateHalf * 2, 0.14, 0.3), glowMat);
+      sillTop.position.set(0, wallH - 0.4, -0.2); // just under the lintel — mirrors the floor sill
+      sillTop.userData.batchDynamic = true;
+      g.add(sillTop);
+    }
 
     // Two sliding door halves over the gap. Parented to the gate group (already
     // oriented), so in LOCAL space the slide axis is +x and faceY = 0. World mouth

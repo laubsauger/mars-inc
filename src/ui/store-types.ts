@@ -92,6 +92,8 @@ export interface RunResultView {
   gloryEarned: number;
   killsByType: { name: string; count: number }[];
   upgrades: { name: string; level: number }[];
+  /** Cause of death (death runs only): the unit, attack, and damage of the fatal blow. */
+  fatalBlow: { unit: string; attack: string; damage: number } | null;
 }
 
 /** HUD slice — pushed from the sim each frame (or throttled). Combat-hot values

@@ -55,6 +55,7 @@ export const TIMELINE_STRETCH = 2;
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
 // gap shrinks, groups grow, and more gates open as the run escalates.
+const WAVE_DISPLAY_PERIOD = 8; // escalation-seconds per HUD "wave" tick (coarse readout)
 const WAVE_GAP_START = 1.2; // seconds between waves at the open — snappy, ⊥ draggy
 const WAVE_GAP_MIN = 0.45; // late-game floor — waves crash in fast deep in the run
 
@@ -442,6 +443,10 @@ export class WaveDirector {
     // Stretch the escalation clock: every threshold below reads this slowed time,
     // so the run ramps over ~270s instead of ~90s (dt accrual stays real-time).
     elapsed = elapsed / TIMELINE_STRETCH;
+    // HUD wave readout: a COARSE escalation-time tick, NOT the per-pulse spawn counter
+    // (pulses fire every ~0.5–1.2s → it ballooned to ~200 by minute 2). One "wave" per
+    // WAVE_DISPLAY_PERIOD of escalation time reads as steady, sane progression.
+    this.waveNumber = Math.floor(elapsed / WAVE_DISPLAY_PERIOD) + 1;
     const b = budgetAt(elapsed);
     const pace = clamp(adapt.pace, PACE_MIN, PACE_MAX); // re-clamp: director owns bounds (V12)
     const houndBias = clamp(adapt.houndBias, 0, BIAS_MAX);
@@ -504,7 +509,6 @@ export class WaveDirector {
       this.waveTimer -= dt;
       if (this.waveTimer <= 0) {
         this.waveTimer = waveGap(elapsed);
-        this.waveNumber++;
         this.spawnWave(pool, rng, elapsed, houndBias, cap);
       }
 

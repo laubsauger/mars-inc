@@ -1149,6 +1149,7 @@ async function boot(parent: HTMLElement): Promise<void> {
           gloryEarned: lastGlory,
           killsByType: sum.killsByType,
           upgrades: sum.upgrades,
+          fatalBlow: sum.fatalBlow,
         });
         uiActions.setScreen('gameover');
       }

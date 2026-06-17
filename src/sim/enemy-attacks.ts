@@ -58,6 +58,7 @@ export class EnemyProjectilePool {
   readonly blastRadius = new Float32Array(MAX_ENEMY_PROJECTILES);
   readonly fuse = new Float32Array(MAX_ENEMY_PROJECTILES);
   readonly frost = new Uint8Array(MAX_ENEMY_PROJECTILES); // 1 = lands a frost hazard
+  readonly ownerVariant = new Uint8Array(MAX_ENEMY_PROJECTILES); // firing enemy (255 = unknown)
 
   /** Render-only arc height (visual `y`, never sim — V4). 0 at ends, peak mid.
    *  Gun rounds fly flat (no arc) — they're straight tracers. */
@@ -89,6 +90,7 @@ export class EnemyProjectilePool {
       this.blastRadius[i] = this.blastRadius[last]!;
       this.fuse[i] = this.fuse[last]!;
       this.frost[i] = this.frost[last]!;
+      this.ownerVariant[i] = this.ownerVariant[last]!;
     }
   }
 }
@@ -104,8 +106,17 @@ export class HazardPool {
   readonly damage = new Float32Array(MAX_HAZARDS);
   /** 0 = explosive blast, 1 = frost (chills the player) — distinct telegraph. */
   readonly kind = new Uint8Array(MAX_HAZARDS);
+  readonly ownerVariant = new Uint8Array(MAX_HAZARDS); // enemy that armed it (255 = unknown)
 
-  spawn(x: number, z: number, radius: number, fuse: number, damage: number, kind = 0): number {
+  spawn(
+    x: number,
+    z: number,
+    radius: number,
+    fuse: number,
+    damage: number,
+    kind = 0,
+    ownerVariant = 255,
+  ): number {
     if (this.count >= MAX_HAZARDS) return -1;
     const i = this.count++;
     this.posX[i] = x;
@@ -115,6 +126,7 @@ export class HazardPool {
     this.fuseTotal[i] = fuse;
     this.damage[i] = damage;
     this.kind[i] = kind;
+    this.ownerVariant[i] = ownerVariant;
     return i;
   }
 
@@ -128,6 +140,7 @@ export class HazardPool {
       this.fuseTotal[i] = this.fuseTotal[last]!;
       this.damage[i] = this.damage[last]!;
       this.kind[i] = this.kind[last]!;
+      this.ownerVariant[i] = this.ownerVariant[last]!;
     }
   }
 }
@@ -302,8 +315,9 @@ export class EnemyAttackSystem {
       }
       enemies.attackCd[e] = attack.cooldown;
       fx.push('muzzle', ex + ax * 0.6, ez + az * 0.6, ax, az); // shot tell (V9 spirit)
-      if (attack.kind === 'lob') this.lob(ex, ez, player, attack, rng);
-      else if (attack.kind === 'gun') this.gun(ex, ez, player, attack, rng);
+      const ov = enemies.variant[e]!;
+      if (attack.kind === 'lob') this.lob(ex, ez, player, attack, rng, ov);
+      else if (attack.kind === 'gun') this.gun(ex, ez, player, attack, rng, ov);
     }
   }
 
@@ -332,7 +346,7 @@ export class EnemyAttackSystem {
           Math.hypot(player.pos.x - cx, player.pos.z - cz) <=
             b.width[i]! + player.stats.collisionRadius
         ) {
-          hitPlayer(player, b.damage[i]!);
+          hitPlayer(player, b.damage[i]!, { variant: b.ownerVariant[i]!, kind: 'laser' });
         }
         fx.push('impact', cx, cz, b.dirX[i]!, b.dirZ[i]!); // beam scorch where it lands
       } else {
@@ -347,10 +361,22 @@ export class EnemyAttackSystem {
     player: Player,
     a: { range: number; speed: number; damage: number; spread: number; burst?: number },
     rng: Rng,
+    ownerVariant = 255,
   ): void {
     const pellets = Math.max(1, a.burst ?? 1);
     for (let b = 0; b < pellets; b++) {
-      this.gunShot(ex, ez, player.pos.x, player.pos.z, a.speed, a.damage, a.spread, a.range, rng);
+      this.gunShot(
+        ex,
+        ez,
+        player.pos.x,
+        player.pos.z,
+        a.speed,
+        a.damage,
+        a.spread,
+        a.range,
+        rng,
+        ownerVariant,
+      );
     }
   }
 
@@ -360,11 +386,12 @@ export class EnemyAttackSystem {
     player: Player,
     a: { speed: number; fuse: number; blastRadius: number; damage: number; freeze?: boolean },
     rng: Rng,
+    ownerVariant = 255,
   ): void {
     // Aim at the player's ground point with a little scatter so it's dodgeable.
     const tx = player.pos.x + (rng.next() - 0.5) * 2;
     const tz = player.pos.z + (rng.next() - 0.5) * 2;
-    this.lobAt(ex, ez, tx, tz, a.speed, a.fuse, a.blastRadius, a.damage, a.freeze);
+    this.lobAt(ex, ez, tx, tz, a.speed, a.fuse, a.blastRadius, a.damage, a.freeze, ownerVariant);
   }
 
   // ---- Public spawn primitives (shared by initiate + the boss, T33) ----------
@@ -381,6 +408,7 @@ export class EnemyAttackSystem {
     blastRadius: number,
     damage: number,
     freeze = false,
+    ownerVariant = 255,
   ): void {
     const pr = this.projectiles;
     if (pr.count >= MAX_ENEMY_PROJECTILES) return;
@@ -401,6 +429,7 @@ export class EnemyAttackSystem {
     pr.blastRadius[i] = blastRadius;
     pr.fuse[i] = fuse;
     pr.frost[i] = freeze ? 1 : 0;
+    pr.ownerVariant[i] = ownerVariant;
   }
 
   /** Fire one straight round from (ex,ez) toward (tx,tz) with a spread cone. */
@@ -414,6 +443,7 @@ export class EnemyAttackSystem {
     spread: number,
     range: number,
     rng: Rng,
+    ownerVariant = 255,
   ): void {
     const pr = this.projectiles;
     if (pr.count >= MAX_ENEMY_PROJECTILES) return;
@@ -433,11 +463,19 @@ export class EnemyAttackSystem {
     pr.damage[i] = damage;
     pr.blastRadius[i] = 0;
     pr.fuse[i] = 0;
+    pr.ownerVariant[i] = ownerVariant;
   }
 
   /** Arm a ground hazard directly (the boss slam shockwave). */
-  hazardAt(x: number, z: number, radius: number, fuse: number, damage: number): void {
-    this.hazards.spawn(x, z, radius, fuse, damage);
+  hazardAt(
+    x: number,
+    z: number,
+    radius: number,
+    fuse: number,
+    damage: number,
+    ownerVariant = 255,
+  ): void {
+    this.hazards.spawn(x, z, radius, fuse, damage, 0, ownerVariant);
   }
 
   private advanceProjectiles(player: Player, dt: number, fx: FxQueue): void {
@@ -455,7 +493,9 @@ export class EnemyAttackSystem {
         const dx = pr.posX[i]! - player.pos.x;
         const dz = pr.posZ[i]! - player.pos.z;
         if (dx * dx + dz * dz <= hitR * hitR) {
-          if (hitPlayer(player, pr.damage[i]!)) {
+          if (
+            hitPlayer(player, pr.damage[i]!, { variant: pr.ownerVariant[i]!, kind: 'projectile' })
+          ) {
             fx.push('dmg', player.pos.x, player.pos.z, pr.damage[i]!, 0, 2);
           }
           fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
@@ -475,6 +515,7 @@ export class EnemyAttackSystem {
           pr.fuse[i]!,
           pr.damage[i]!,
           pr.frost[i]!,
+          pr.ownerVariant[i]!,
         );
         fx.push('impact', pr.posX[i]!, pr.posZ[i]!);
         pr.kill(i);
@@ -496,10 +537,12 @@ export class EnemyAttackSystem {
       if (inside) {
         if (hz.kind[i] === 1) {
           applyChill(player, 2.5, 0.5); // 50% slow for 2.5s
-          if (hitPlayer(player, hz.damage[i]!)) {
+          if (hitPlayer(player, hz.damage[i]!, { variant: hz.ownerVariant[i]!, kind: 'frost' })) {
             fx.push('dmg', player.pos.x, player.pos.z, hz.damage[i]!, 0, 2);
           }
-        } else if (hitPlayer(player, hz.damage[i]!)) {
+        } else if (
+          hitPlayer(player, hz.damage[i]!, { variant: hz.ownerVariant[i]!, kind: 'blast' })
+        ) {
           fx.push('dmg', player.pos.x, player.pos.z, hz.damage[i]!, 0, 2);
         }
       }
