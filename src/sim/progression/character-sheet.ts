@@ -54,14 +54,17 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
   // ACTIVE right now; a separate best-case probe gives the "up to" potential.
   const e = ctx.enemies;
   let nearest = Infinity;
+  let nearby = 0;
   for (let i = 0; i < e.count; i++) {
     const dx = e.posX[i]! - p.pos.x;
     const dz = e.posZ[i]! - p.pos.z;
     const d2 = dx * dx + dz * dz;
     if (d2 < nearest) nearest = d2;
+    if (d2 <= 49) nearby++; // within 7m (LOCAL_CROWD_RADIUS) — crowd cards read this
   }
   const live = ctx.effects.evalConditionals({
     enemiesOnScreen: e.count,
+    enemiesNearby: nearby,
     nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
     firingRampSec: ctx.firingRampSec,
     hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 0,
@@ -71,6 +74,7 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
   });
   const probe = ctx.effects.evalConditionals({
     enemiesOnScreen: 99,
+    enemiesNearby: 99,
     nearestDist: 999,
     firingRampSec: 12,
     hpFrac: 0.01,

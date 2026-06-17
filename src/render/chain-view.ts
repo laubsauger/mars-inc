@@ -1,13 +1,18 @@
-// Chain-lightning arcs (T33 readability). Without a visible bolt, chained damage
-// is invisible — numbers just pop on far enemies. This draws a short-lived jagged
-// arc from the struck enemy to each chained one, as additive cyan line segments
-// (one mesh, pooled, V6). Pure view: consumes 'chain' FX events (V2).
+// Chain-lightning arcs (T33 readability). Without a visible bolt, chained damage is
+// invisible — numbers just pop on far enemies. This draws a short-lived JAGGED bolt
+// from the struck enemy to each chained one. Built as flat additive QUAD segments in
+// one InstancedMesh (WebGPU-safe, §B1: LineSegments / LineBasicMaterial don't render
+// under the WebGPU backend — they collapse, which is why the old line bolt was
+// invisible). Pure view (V2): consumes 'chain' FX events.
 
 import {
-  LineSegments,
-  BufferGeometry,
-  Float32BufferAttribute,
-  LineBasicMaterial,
+  InstancedMesh,
+  PlaneGeometry,
+  MeshBasicMaterial,
+  Object3D,
+  Color,
+  DynamicDrawUsage,
+  InstancedBufferAttribute,
   AdditiveBlending,
   type Scene,
 } from 'three';
@@ -15,38 +20,51 @@ import type { FxEvent } from '../sim/fx';
 import { COL } from './art/palette';
 
 const MAX_BOLTS = 64;
-const SEGS = 5; // jag subdivisions per bolt
-const TTL = 0.13; // brief flicker → reads as electricity
+const SEGS = 4; // few subdivisions → a clean CONNECTING line with a slight kink
+const CAP = MAX_BOLTS * SEGS; // quad instances
+const TTL = 0.18; // hold a touch longer so the link between targets registers
 const Y = 0.85; // enemy mid-height
-const JAG = 0.7; // max perpendicular jag offset
+const JAG = 0.28; // small jag — reads as a taut arc, not chaotic forks
+const WIDTH = 0.12; // bolt thickness
+const COLOR = COL.shieldCyan.clone().multiplyScalar(1.8); // hot cyan, blooms white
+
+// Deterministic-ish per-segment jitter without Math.random in the hot path (render
+// only, but keep it cheap + stable per bolt). Hash of (boltSeed, segment).
+function jag(seed: number, s: number): number {
+  const h = Math.sin(seed * 12.9898 + s * 78.233) * 43758.5453;
+  return (h - Math.floor(h) - 0.5) * 2; // −1..1
+}
 
 export class ChainView {
-  readonly mesh: LineSegments;
+  private mesh: InstancedMesh;
+  private dummy = new Object3D();
+  private tmp = new Color();
   private fromX = new Float32Array(MAX_BOLTS);
   private fromZ = new Float32Array(MAX_BOLTS);
   private toX = new Float32Array(MAX_BOLTS);
   private toZ = new Float32Array(MAX_BOLTS);
   private age = new Float32Array(MAX_BOLTS);
+  private seed = new Float32Array(MAX_BOLTS); // per-bolt jag seed (stable while alive)
   private count = 0;
-  private pos: Float32Array;
-  private attr: Float32BufferAttribute;
+  private nextSeed = 1;
 
   constructor(scene: Scene) {
-    this.pos = new Float32Array(MAX_BOLTS * SEGS * 2 * 3);
-    const geo = new BufferGeometry();
-    this.attr = new Float32BufferAttribute(this.pos, 3);
-    this.attr.setUsage(35048); // DynamicDraw
-    geo.setAttribute('position', this.attr);
-    const mat = new LineBasicMaterial({
-      color: COL.shieldCyan,
+    const mat = new MeshBasicMaterial({
+      color: 0xffffff, // instanceColor carries the cyan tint + fade
       transparent: true,
-      opacity: 0.9,
       blending: AdditiveBlending,
       depthWrite: false,
+      depthTest: false, // a bolt between bodies must not be clipped by them
+      toneMapped: false,
     });
-    this.mesh = new LineSegments(geo, mat);
+    this.mesh = new InstancedMesh(new PlaneGeometry(1, 1), mat, CAP);
+    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    const buf = new Float32Array(CAP * 3).fill(1);
+    this.mesh.instanceColor = new InstancedBufferAttribute(buf, 3);
+    this.mesh.instanceColor.setUsage(DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 9;
+    this.mesh.count = 0;
     scene.add(this.mesh);
   }
 
@@ -56,9 +74,10 @@ export class ChainView {
       const i = this.count++;
       this.fromX[i] = e.x;
       this.fromZ[i] = e.z;
-      this.toX[i] = e.dx;
+      this.toX[i] = e.dx; // 'chain' carries the END point in dx,dz (absolute)
       this.toZ[i] = e.dz;
       this.age[i] = 0;
+      this.seed[i] = this.nextSeed++;
     }
   }
 
@@ -72,48 +91,55 @@ export class ChainView {
         this.toX[i] = this.toX[last]!;
         this.toZ[i] = this.toZ[last]!;
         this.age[i] = this.age[last]!;
+        this.seed[i] = this.seed[last]!;
       }
     }
   }
 
-  /** Rebuild the jagged line geometry for the active bolts. */
   sync(): void {
-    let v = 0;
+    let inst = 0;
     for (let i = 0; i < this.count; i++) {
       const ax = this.fromX[i]!;
       const az = this.fromZ[i]!;
       const bx = this.toX[i]!;
       const bz = this.toZ[i]!;
-      // Perpendicular (normalized) for the jag offset.
       const dx = bx - ax;
       const dz = bz - az;
       const len = Math.hypot(dx, dz) || 1;
-      const px = -dz / len;
-      const pz = dx / len;
+      const ux = dx / len;
+      const uz = dz / len;
+      const px = -uz; // perpendicular (in the ground plane) for the jag
+      const pz = ux;
+      const fade = 1 - this.age[i]! / TTL;
+      // Bright core that flickers as it dies → electricity.
+      const flick = 0.7 + 0.3 * (jag(this.seed[i]!, 99) * 0.5 + 0.5);
+      this.tmp.copy(COLOR).multiplyScalar(fade * flick);
       let prevX = ax;
-      let prevY = Y;
       let prevZ = az;
       for (let s = 1; s <= SEGS; s++) {
         const t = s / SEGS;
         const end = s === SEGS;
-        // Jag fades to 0 at both ends so the bolt connects cleanly.
-        const taper = Math.sin(t * Math.PI);
-        const off = end ? 0 : (Math.random() - 0.5) * 2 * JAG * taper;
+        const taper = Math.sin(t * Math.PI); // jag fades to 0 at both ends → clean joins
+        const off = end ? 0 : jag(this.seed[i]!, s) * JAG * taper;
         const nx = ax + dx * t + px * off;
         const nz = az + dz * t + pz * off;
-        const ny = Y + (end ? 0 : (Math.random() - 0.5) * 0.4 * taper);
-        this.pos[v++] = prevX;
-        this.pos[v++] = prevY;
-        this.pos[v++] = prevZ;
-        this.pos[v++] = nx;
-        this.pos[v++] = ny;
-        this.pos[v++] = nz;
+        // Quad segment prev → n, flat on a plane at Y, long axis along the segment.
+        const sdx = nx - prevX;
+        const sdz = nz - prevZ;
+        const slen = Math.hypot(sdx, sdz) || 1e-3;
+        this.dummy.position.set((prevX + nx) / 2, Y, (prevZ + nz) / 2);
+        this.dummy.rotation.set(-Math.PI / 2, 0, Math.atan2(-sdz, sdx));
+        this.dummy.scale.set(slen, WIDTH, 1);
+        this.dummy.updateMatrix();
+        this.mesh.setMatrixAt(inst, this.dummy.matrix);
+        this.mesh.setColorAt(inst, this.tmp);
+        inst++;
         prevX = nx;
-        prevY = ny;
         prevZ = nz;
       }
     }
-    this.mesh.geometry.setDrawRange(0, this.count * SEGS * 2);
-    this.attr.needsUpdate = true;
+    this.mesh.count = inst;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 }

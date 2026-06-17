@@ -13,6 +13,7 @@ function apply(id: string): BuildEffects {
 
 const BASE: ConditionalCtx = {
   enemiesOnScreen: 3,
+  enemiesNearby: 3,
   nearestDist: 5,
   firingRampSec: 0,
   hpFrac: 1,
@@ -36,8 +37,8 @@ describe('advanced upgrades drive the build engine (T38)', () => {
 
   it('Crowd Control Clause: crit only against 12+ enemies', () => {
     const e = apply('crowd-clause');
-    expect(e.evalConditionals({ ...BASE, enemiesOnScreen: 5 }).critAdd).toBe(0);
-    expect(e.evalConditionals({ ...BASE, enemiesOnScreen: 20 }).critAdd).toBeCloseTo(0.15, 6);
+    expect(e.evalConditionals({ ...BASE, enemiesNearby: 5 }).critAdd).toBe(0);
+    expect(e.evalConditionals({ ...BASE, enemiesNearby: 20 }).critAdd).toBeCloseTo(0.15, 6);
   });
 
   it('Severance Package: registers an on-kill trigger that deals area damage', () => {

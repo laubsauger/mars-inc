@@ -216,18 +216,19 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'ricochet-rounds',
     name: 'Ricochet Rounds',
-    description: 'Spent shots BOUNCE far to a new enemy, one at a time (+1 bounce/level).',
+    description: 'Spent shots BOUNCE to a new enemy (+1 bounce/level). Bounces hit for a fraction.',
     tags: ['ricochet', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 4,
     baseWeight: 6,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      // +1 bounce per level (so level 1 = a single bounce, not two); later levels
-      // add reach + pump the retained damage from its weak base toward full strength.
+      // BASIC bounce — adds hops but the bounce hits SOFT (modest retain). The
+      // legendary Cascade is what turns ricochet into a real damage engine. Keeps a
+      // clear tier gap: this is reach, the capstone is power + lightning.
       mods.ricochet += 1;
-      mods.ricochetRange += 1.5;
-      mods.ricochetRetain = Math.min(0.9, mods.ricochetRetain + 0.16);
+      mods.ricochetRange += 1;
+      mods.ricochetRetain = Math.min(0.6, mods.ricochetRetain + 0.08);
     },
   },
   {
@@ -278,18 +279,17 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'apex-hunter',
     name: 'Apex Hunter',
-    description: 'Crit chance ramps up as the field thins — up to +30% as you mop up a wave.',
+    description: '+crit as the space around you clears — up to +30% with no enemies within 7m.',
     tags: ['conditional', 'crit'],
     rarity: 'rare',
     maxLevel: 1,
     baseWeight: 4,
     synergyWeight: 2,
     apply: ({ effects }) => {
-      // SMOOTH finisher (was a dead "≤3 enemies" gate — almost never true in dense
-      // waves). Scales 0 at 8+ enemies → full +30% as the wave empties, so it has
-      // real, varying uptime tied to clearing instead of an all-or-nothing threshold.
+      // SMOOTH finisher on the LOCAL crowd: full +30% when no one's near, fading to 0
+      // at 8 nearby. Rewards kiting/carving space, not an all-or-nothing arena gate.
       effects.addConditional((ctx) => ({
-        critAdd: Math.max(0, (8 - ctx.enemiesOnScreen) / 8) * 0.3,
+        critAdd: Math.max(0, (8 - ctx.enemiesNearby) / 8) * 0.3,
       }));
     },
   },

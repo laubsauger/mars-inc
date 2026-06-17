@@ -641,6 +641,7 @@ async function boot(parent: HTMLElement): Promise<void> {
 
       arena.update(world.enemies, fxDt); // animate gate doors as enemies enter
       playerView.update(fxDt); // decay the hurt flash
+      playerView.setBuff(world.buffGlow); // gold aura when an offense conditional is live
       playerView.sync(world.player, alpha, camera);
       groundShadowView.sync(world.enemies, alpha); // contact shadows (grounding)
       enemyView.sync(world.enemies, alpha);

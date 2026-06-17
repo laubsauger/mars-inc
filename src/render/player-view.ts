@@ -61,6 +61,11 @@ export class PlayerView {
   private pillar!: Mesh;
   private pillarMat!: MeshBasicMaterial;
   private levelTimer = 0;
+  // Build-buff aura: a gold ground ring that pulses brighter the "hotter" your active
+  // offense conditionals are (world.buffGlow 0..1) — a glanceable "a buff is LIVE" cue.
+  private buffAura!: Mesh;
+  private buffAuraMat!: MeshBasicMaterial;
+  private buffGlow = 0;
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -120,6 +125,23 @@ export class PlayerView {
     glow.position.y = 0.16;
     glow.renderOrder = 2;
     this.group.add(glow);
+
+    // Build-buff aura — a second, wider ring, invisible until an offense conditional
+    // is active (setBuff drives its opacity/scale). Additive gold so it reads as power.
+    this.buffAuraMat = new MeshBasicMaterial({
+      color: ACCENT,
+      transparent: true,
+      opacity: 0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.buffAura = new Mesh(new RingGeometry(1.7, 2.3, 48), this.buffAuraMat);
+    this.buffAura.rotation.x = -Math.PI / 2;
+    this.buffAura.position.y = 0.17;
+    this.buffAura.renderOrder = 2;
+    this.buffAura.visible = false;
+    this.group.add(this.buffAura);
 
     this.healthPlate = this.buildHealthPlate();
     this.healthFill = this.healthPlate.getObjectByName('fill') as Mesh;
@@ -262,6 +284,23 @@ export class PlayerView {
     this.healthPlate.quaternion.copy(camera.quaternion);
     this.syncShield(player);
     this.syncLevelPillar();
+    // Build-buff aura: opacity + scale track buffGlow, with a soft pulse so an active
+    // buff visibly "breathes". platePhase is advanced in syncHealthPlate above.
+    if (this.buffGlow > 0.02) {
+      this.buffAura.visible = true;
+      const pulse = 0.32 + 0.18 * Math.sin(this.platePhase * 4);
+      this.buffAuraMat.opacity = Math.min(0.6, this.buffGlow * pulse * 2);
+      const s = 1 + this.buffGlow * 0.18;
+      this.buffAura.scale.set(s, s, s);
+    } else if (this.buffAura.visible) {
+      this.buffAura.visible = false;
+    }
+  }
+
+  /** Render-only: how "hot" the active offense conditionals are (world.buffGlow 0..1).
+   *  Drives the gold buff aura. V2 — a pure view cue, never feeds back into sim. */
+  setBuff(glow: number): void {
+    this.buffGlow = glow;
   }
 
   /** Rising gold light pillar during the level-up flourish (radial cone → no

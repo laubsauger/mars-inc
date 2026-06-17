@@ -121,8 +121,8 @@ export class FloatingText {
       const isCrit = f === 1;
       const isSelf = f === 2;
       // Spring pop: overshoot the size on spawn, settle fast. Crits punch harder.
-      const pop = 1 + (isCrit ? 0.65 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
-      const base = isCrit ? 15 : isSelf ? 14 : 11;
+      const pop = 1 + (isCrit ? 0.45 : 0.5) * Math.exp(-age * (isCrit ? 13 : 16));
+      const base = isCrit ? 12 : isSelf ? 11 : 10;
       const val = Math.round(this.amt[i]!);
       out.push({
         id: `d${i}`,
@@ -161,7 +161,9 @@ export class FloatingText {
         // + the E prompt. Both get a backdrop (in FloatingLayer) so the name reads
         // over the busy floor regardless.
         color: inRange ? ACCENT.kineticGold : '#efe4cf',
-        size: inRange ? 14 : 12,
+        // Smaller (was 14/12) so a floor with several crates doesn't drown in big
+        // labels; the in-range one stays a touch larger to draw the eye.
+        size: inRange ? 12 : 10,
         opacity,
         kind: 'pickup',
         prompt: inRange, // E prompt ONLY when actually in equip range

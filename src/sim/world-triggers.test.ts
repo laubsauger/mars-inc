@@ -56,6 +56,23 @@ describe('Batch 1 build-lever wiring', () => {
     expect(fired).toBe(1);
   });
 
+  it('fires the breather trigger when LOCAL space clears (no enemy within 7m)', () => {
+    const w = started();
+    let fired = 0;
+    w.effects.on('breather', () => fired++);
+    // Enemy 3m from the player (origin) → nearby latches true.
+    const e = w.enemies.spawn(RUST_MITE, 3, 0, 0, 0);
+    w.enemies.state[e] = EnemyState.Active;
+    w.step(STEP);
+    expect(fired).toBe(0); // someone within 7m → no breathing room
+    // Push it far away (>7m) so the local space clears → breather fires once.
+    w.enemies.posX[e] = 30;
+    w.step(STEP);
+    expect(fired).toBe(1);
+    w.step(STEP);
+    expect(fired).toBe(1); // edge, not per-step
+  });
+
   // (recentCrit conditional is a one-line passthrough of recentCritTimer, set from
   //  weaponSystem.critThisStep — exercised by real crits in-sim; not unit-driven here
   //  because weaponSystem.step resets the flag at its start.)

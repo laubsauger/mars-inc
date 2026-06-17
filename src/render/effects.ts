@@ -401,6 +401,32 @@ export class Effects {
           });
           break;
         }
+        case 'toxiccloud': {
+          // Toxic Bloom — a LINGERING green gas puff (radius in dx). Several slow,
+          // long-lived dust discs so it reads as a hanging cloud, not a quick flash.
+          const r = e.dx > 0 ? e.dx : 3.5;
+          const gas = COL.toxicGreen.clone().multiplyScalar(0.4);
+          this.dust.spawn({ x: e.x, z: e.z, s0: r * 0.5, s1: r, life: 0.9, spin: 1, color: gas });
+          this.dust.spawn({
+            x: e.x,
+            z: e.z,
+            s0: r * 0.3,
+            s1: r * 0.8,
+            life: 0.7,
+            spin: -1.5,
+            color: gas,
+          });
+          this.impact.spawn({
+            x: e.x,
+            z: e.z,
+            s0: 0.5,
+            s1: r,
+            life: 0.4,
+            spin: 0,
+            color: COL.toxicGreen.clone().multiplyScalar(0.5),
+          });
+          break;
+        }
         case 'ember':
           // Tiny rising fire fleck on a burn tick — subtle, no sound.
           this.muzzle.spawn({

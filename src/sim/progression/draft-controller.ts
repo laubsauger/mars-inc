@@ -111,11 +111,11 @@ export class DraftController {
     maxLevel: number;
     changes: UpgradeChange[];
   } {
-    return {
-      level: taken(this.upgradeLevels, def.id),
-      maxLevel: def.maxLevel,
-      changes: previewUpgrade(def, this.deps.mods, this.deps.player, this.deps.effects),
-    };
+    const owned = taken(this.upgradeLevels, def.id);
+    const auto = previewUpgrade(def, this.deps.mods, this.deps.player, this.deps.effects);
+    // Merge any DECLARED effect magnitudes (trigger cards the auto-preview can't read).
+    const declared = def.previewStats?.(owned) ?? [];
+    return { level: owned, maxLevel: def.maxLevel, changes: [...auto, ...declared] };
   }
 
   /** Id of the card currently held by Lock for the next draft (UI), or null. */
@@ -256,6 +256,8 @@ export class DraftController {
             luck: this.deps.player.luck,
             banished: exclude,
             boost: this.foundationBoost(),
+            tagBias: this.deps.player.draftTagBias,
+            rarityBias: this.deps.player.draftRarityBias,
           })
         : [];
     return this.ensureMilestone([...forced, ...fresh], exclude);
@@ -299,6 +301,8 @@ export class DraftController {
       luck: this.deps.player.luck,
       banished: exclude,
       boost: this.foundationBoost(),
+      tagBias: this.deps.player.draftTagBias,
+      rarityBias: this.deps.player.draftRarityBias,
     });
     return [...kept, ...fresh];
   }

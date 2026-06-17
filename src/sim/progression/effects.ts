@@ -25,6 +25,10 @@ import type { ReactionId } from '../combat/reactions';
 export interface ConditionalCtx {
   /** Active enemies on the battlefield right now. */
   enemiesOnScreen: number;
+  /** Active enemies within the "local" radius around the player (crowd cards read
+   *  THIS, not the whole-arena count — the arena is always full, so arena-count crowd
+   *  bonuses were unconditional; a radius makes them reward actually being mobbed). */
+  enemiesNearby: number;
   /** Distance to the nearest active enemy (Infinity if none). */
   nearestDist: number;
   /** Seconds of sustained combat (ramps while enemies present, resets when clear). */
@@ -64,7 +68,8 @@ export type TriggerEvent =
   | 'shot'
   | 'lowHp'
   | 'sprint'
-  | 'waveClear'
+  | 'waveClear' // every enemy on the field is dead (rare — full clear)
+  | 'breather' // your LOCAL space cleared: no enemies within 7m (achievable via kiting)
   | 'reaction'; // a status reaction fired (T53 cross-upgrade hook)
 
 export interface TriggerCtx {

@@ -10,14 +10,17 @@ import type { KillEvent } from './combat/weapon-system';
 import type { WeaponSystem } from './combat/weapon-system';
 import { WEAPONS } from '../content/weapons/index';
 
-export const MAX_WEAPON_DROPS = 32;
+// Concurrent crate ceiling — kept LOW (was 32) so they can't blanket the floor with
+// labels; even 5+ on screen reads as clutter, so cap there.
+export const MAX_WEAPON_DROPS = 5;
 
 const BOSS_VARIANT = 2;
 const DROP_CHANCE = 0.004; // per ordinary kill — rare enough that a find feels earned
 // (at high kill counts 1.5% buried the floor in crates; ~0.4% keeps them special)
-const PICKUP_RADIUS = 1.6; // how close you must stand to equip a crate
-/** Seconds a crate lingers before it decays — long enough to reach, not forever. */
-export const DROP_TTL = 20;
+const PICKUP_RADIUS = 2.0; // how close you must stand to equip a crate
+/** Seconds a crate lingers before it decays — long enough to reach, not forever.
+ *  Shortened (was 20) so ignored crates clear off the floor instead of piling up. */
+export const DROP_TTL = 10;
 /** Last seconds of a crate's life: the view flashes it as a fade-out warning. */
 export const DROP_FADE = 4;
 // Droppable pool excludes the starter sidearm (index 0) — drops feel like finds.

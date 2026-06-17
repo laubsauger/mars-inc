@@ -58,6 +58,16 @@ export interface Player {
   magnetRadius: number;
   /** Raises the odds of rarer upgrades in the draft (T41). */
   luck: number;
+  /** Draft-SHAPING bias (Glory Tree, "Specialist" nodes): tag → weight multiplier.
+   *  Cards carrying a biased tag appear more often, so a permanent can steer WHICH
+   *  cards you're offered (a build direction) instead of granting the effect itself. */
+  draftTagBias: Record<string, number>;
+  /** Per-rarity draft-odds multiplier (Glory-Tree rarity nodes): rarity → multiplier,
+   *  e.g. { legendary: 1.4 }. Finer than `luck` (which lifts all rare+ tiers at once). */
+  draftRarityBias: Record<string, number>;
+  /** Incoming-damage multiplier (Infamy glass/rule keystones, e.g. Berserker's Pact).
+   *  Applied in hitPlayer — 1 = normal, >1 = you take more. Set by permanents at run start. */
+  damageTakenMult: number;
   /** Glory-Tree reweave run modifiers (T35/T67). Set by permanents at run start. */
   draftSize: number; // draft options shown per level-up (default 3; ARSENAL widens it)
   reviveCharges: number; // survive a lethal hit, then consume one (BIOLOGY)
@@ -139,6 +149,9 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     pickupRadius: 1.6,
     magnetRadius: 5,
     luck: 0,
+    draftTagBias: {},
+    draftRarityBias: {},
+    damageTakenMult: 1,
     draftSize: 3,
     reviveCharges: 0,
     droneDamageMult: 1,
@@ -207,6 +220,9 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.pickupRadius = 1.6;
   p.magnetRadius = 5;
   p.luck = 0;
+  p.draftTagBias = {};
+  p.draftRarityBias = {};
+  p.damageTakenMult = 1;
   p.draftSize = 3;
   p.reviveCharges = 0;
   p.droneDamageMult = 1;
@@ -347,7 +363,7 @@ export function hitPlayer(p: Player, amount: number): boolean {
     p.invuln = HIT_IFRAMES;
     return false; // no health lost → callers see "no damage landed"
   }
-  p.health = Math.max(0, p.health - amount);
+  p.health = Math.max(0, p.health - amount * p.damageTakenMult);
   p.invuln = HIT_IFRAMES;
   // Revive charge (BIOLOGY keystone, T35): a lethal hit is survived once, not fatal.
   if (p.health <= 0 && p.reviveCharges > 0) {

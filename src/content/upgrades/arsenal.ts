@@ -123,7 +123,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     // cap 30% was just too much (a near-flat +30% crit). Halved to +1%/enemy, +10%/lvl
     // cap, so it's a fair "fight in the crowd" bonus, not a free 30%.
     apply: ({ effects }) =>
-      effects.addConditional((c) => ({ critAdd: Math.min(0.1, c.enemiesOnScreen * 0.01) })),
+      effects.addConditional((c) => ({ critAdd: Math.min(0.1, c.enemiesNearby * 0.01) })),
   },
   {
     id: 'red-ledger',
@@ -202,16 +202,15 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'railgun-mandate',
     name: 'Railgun Mandate',
-    description: '+1 pierce, +12% range, +10% damage per level — punch a hole down the lane.',
-    tags: ['pierce', 'precision', 'range', 'damage'],
+    description: '+1 pierce per level, plus +8% damage per level — punch a hole down the lane.',
+    tags: ['pierce', 'precision', 'damage'],
     rarity: 'rare',
     maxLevel: 3,
     baseWeight: 4,
     synergyWeight: 2,
     apply: ({ mods }) => {
       mods.pierce += 1;
-      mods.rangeMult += 0.12;
-      mods.damageMult += 0.1;
+      mods.damageMult += 0.08;
     },
   },
   {
@@ -332,7 +331,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'ricochet-cascade',
     name: 'Ricochet Cascade',
-    description: 'CAPSTONE: bounces gain reach AND each bounce arcs lightning to the crowd.',
+    description:
+      'CAPSTONE: +3 bounces at FULL power (no falloff), +1 chain arc, +3 reach — each bounce arcs lightning to the crowd.',
     tags: ['ricochet', 'chain', 'energy'],
     requiresAnyTags: ['ricochet', 'chain'],
     rarity: 'legendary',
@@ -342,10 +342,12 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     role: 'converter',
     riskTier: 0,
     apply: ({ mods }) => {
-      mods.ricochet = mods.ricochet === 0 ? 2 : mods.ricochet + 1;
+      // The capstone leap over Ricochet Rounds: +3 hops, bounces hit at FULL damage
+      // (retain → 1, vs the uncommon's 0.6 cap), an extra reach, and a lightning arc.
+      mods.ricochet += 3;
       mods.chainCount = mods.chainCount === 0 ? 1 : mods.chainCount + 1;
-      mods.ricochetRange += 2;
-      mods.ricochetRetain = Math.min(0.9, mods.ricochetRetain + 0.25); // bounces hit far harder
+      mods.ricochetRange += 3;
+      mods.ricochetRetain = 1; // bounces deal full damage — the power tier of ricochet
     },
   },
   {

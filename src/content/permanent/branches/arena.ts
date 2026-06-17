@@ -69,16 +69,20 @@ export const ARENA_PERMANENTS: PermanentUpgrade[] = [
     },
   },
   {
-    id: 'wider-contracts',
-    name: 'Wider Contracts',
+    id: 'premium-contracts',
+    name: 'Premium Contracts',
     description:
-      'RULE: every level-up offers +1 upgrade choice — more shots at the build you want.',
+      'KEYSTONE: rare cards appear ×1.6 and legendary ×1.5 as often — quality, not quantity.',
     branch: 'arena',
     rarity: 'legendary',
     cost: 360,
     maxLevel: 1,
     apply: (p) => {
-      p.draftSize += 1;
+      // Better DRAFT QUALITY (rarer cards) instead of MORE cards on screen — a +1
+      // choice every level snowballs the build; nudging rarity odds keeps the 3-card
+      // decision tense but richer.
+      p.draftRarityBias['rare'] = (p.draftRarityBias['rare'] ?? 1) * 1.6;
+      p.draftRarityBias['legendary'] = (p.draftRarityBias['legendary'] ?? 1) * 1.5;
     },
   },
   {
@@ -160,15 +164,15 @@ export const ARENA_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'vip-access',
     name: 'VIP Access',
-    description: 'KEYSTONE: +30% Glory, +2 luck, AND +1 draft option — the whole meta, upgraded.',
+    description: 'KEYSTONE: +30% Glory, +3 luck, and rare cards appear ×1.4 as often.',
     branch: 'arena',
     rarity: 'legendary',
     cost: 420,
     maxLevel: 1,
     apply: (p) => {
       p.gloryMult += 0.3;
-      p.luck += 2;
-      p.draftSize += 1;
+      p.luck += 3;
+      p.draftRarityBias['rare'] = (p.draftRarityBias['rare'] ?? 1) * 1.4;
     },
   },
   {
@@ -182,6 +186,115 @@ export const ARENA_PERMANENTS: PermanentUpgrade[] = [
     apply: (_p, level, mods) => {
       mods.grenadeDamageMult += 0.3 * level;
       mods.grenadeKnockbackMult += 0.3 * level;
+    },
+  },
+  // ── SPECIALIST CONTRACTS (draft-shaping) — the clever progression: these don't
+  //    grant any effect, they STEER WHICH CARDS the draft offers, so you can commit
+  //    to an archetype across runs and actually assemble it. Each tag's draft weight
+  //    ×1.8 per level. They inform/synergize a build instead of copying a card. ──
+  {
+    id: 'demolition-license',
+    name: 'Demolition License',
+    description: 'DRAFT BIAS: explosive & AoE cards are offered ×1.8 more often per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (p, level) => {
+      const m = Math.pow(1.8, level);
+      p.draftTagBias['explosive'] = (p.draftTagBias['explosive'] ?? 1) * m;
+      p.draftTagBias['aoe'] = (p.draftTagBias['aoe'] ?? 1) * m;
+    },
+  },
+  {
+    id: 'hazmat-contract',
+    name: 'Hazmat Contract',
+    description:
+      'DRAFT BIAS: status/DoT cards (burn, chill, shock, corrode, bleed) ×1.8 more often per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (p, level) => {
+      const m = Math.pow(1.8, level);
+      for (const t of ['status', 'burn', 'chill', 'shock', 'corrode', 'bleed']) {
+        p.draftTagBias[t] = (p.draftTagBias[t] ?? 1) * m;
+      }
+    },
+  },
+  {
+    id: 'marksman-contract',
+    name: 'Marksman Contract',
+    description: 'DRAFT BIAS: crit & precision cards are offered ×1.8 more often per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (p, level) => {
+      const m = Math.pow(1.8, level);
+      p.draftTagBias['crit'] = (p.draftTagBias['crit'] ?? 1) * m;
+      p.draftTagBias['precision'] = (p.draftTagBias['precision'] ?? 1) * m;
+    },
+  },
+  {
+    id: 'kennel-contract',
+    name: 'Kennel Contract',
+    description: 'DRAFT BIAS: drone & summon cards are offered ×1.8 more often per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 150,
+    maxLevel: 2,
+    apply: (p, level) => {
+      const m = Math.pow(1.8, level);
+      p.draftTagBias['drone'] = (p.draftTagBias['drone'] ?? 1) * m;
+      p.draftTagBias['summon'] = (p.draftTagBias['summon'] ?? 1) * m;
+    },
+  },
+  {
+    id: 'specialist-mandate',
+    name: 'Specialist Mandate',
+    description:
+      'KEYSTONE: doubles the pull of EVERY draft-bias contract you own — go all-in on a specialty.',
+    branch: 'arena',
+    rarity: 'legendary',
+    cost: 420,
+    maxLevel: 1,
+    apply: (p) => {
+      // Square-ish amplifier: re-multiply each already-biased tag so a committed
+      // specialist's chosen archetype dominates their offered cards.
+      for (const t of Object.keys(p.draftTagBias)) {
+        p.draftTagBias[t] = (p.draftTagBias[t] ?? 1) * 1.6;
+      }
+    },
+  },
+  // ── RARITY-ODDS nodes — fine-grained draft-quality control (vs all-tiers `luck`). ──
+  {
+    id: 'connoisseur',
+    name: 'Connoisseur',
+    description: 'Uncommon cards appear ×1.25 and rare ×1.2 as often per level.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 160,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.draftRarityBias['uncommon'] = (p.draftRarityBias['uncommon'] ?? 1) * (1 + 0.25 * level);
+      p.draftRarityBias['rare'] = (p.draftRarityBias['rare'] ?? 1) * (1 + 0.2 * level);
+    },
+  },
+  {
+    id: 'all-or-nothing-contract',
+    name: 'All-or-Nothing Contract',
+    description:
+      'KEYSTONE GAMBLE: legendary cards appear ×2.2 as often — but commons appear ×0.4 as often.',
+    branch: 'arena',
+    rarity: 'legendary',
+    cost: 400,
+    maxLevel: 1,
+    apply: (p) => {
+      // The opposing choice to Premium Contracts: high-variance. You see far more
+      // legendaries but lose the safe common filler — feast or famine drafts.
+      p.draftRarityBias['legendary'] = (p.draftRarityBias['legendary'] ?? 1) * 2.2;
+      p.draftRarityBias['common'] = (p.draftRarityBias['common'] ?? 1) * 0.4;
     },
   },
 ];

@@ -61,11 +61,13 @@ export const RECOIL_UPGRADES: UpgradeDefinition[] = [
         ctx.fx.push('impact', ctx.x, ctx.z);
       }),
   },
-  // LIABILITY — fire rate RAMPS while a target exists; recoil firms up.
+  // LIABILITY — overdraw the gun: flat fire-rate gain paid for in recoil kick. No
+  // ramp/hold mechanic (we perma-fire — a "while you hold a target" ramp was always-on
+  // and meaningless). Straight trade: you fire faster, the gun fights you harder.
   {
     id: 'kinetic-overdraft',
     name: 'Kinetic Overdraft',
-    description: 'LIABILITY: fire rate ramps up while you hold a target; recoil grows.',
+    description: 'LIABILITY: +35% fire rate, but recoil kicks 45% harder — overdraw the gun.',
     tags: ['recoil', 'fire-rate', 'risk'],
     requiresAnyTags: ['recoil'],
     rarity: 'rare',
@@ -74,9 +76,9 @@ export const RECOIL_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'liability',
     riskTier: 2,
-    apply: ({ mods, effects }) => {
-      mods.recoilMult += 0.3;
-      effects.addConditional((c) => ({ fireRateMult: 1 + Math.min(0.6, c.firingRampSec * 0.06) }));
+    apply: ({ mods }) => {
+      mods.fireRateMult += 0.35;
+      mods.recoilMult += 0.45;
     },
   },
   // CATASTROPHE — recoil hauls you across the arena; every 100th shot erupts.

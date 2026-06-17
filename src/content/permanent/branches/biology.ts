@@ -102,7 +102,9 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
       'KEYSTONE: +1 shield charge that recharges far faster — a heartbeat between deaths.',
     branch: 'biology',
     rarity: 'legendary',
-    cost: 360,
+    // A from-start shield is one of the strongest defensive picks → priced as a deep,
+    // late-game grind (×3.4 legendary mult → ~1240 Glory), not a mid-layer pickup.
+    cost: 520,
     maxLevel: 1,
     apply: (p) => {
       p.shieldMax += 1;
@@ -158,14 +160,14 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'regen-mesh',
     name: 'Regenerative Mesh',
-    description: 'Clearing every enemy patches 5% of your max health per level.',
+    description: 'Open up space (no enemy within 7m) to patch 3% of your max health per level.',
     branch: 'biology',
     rarity: 'rare',
     cost: 200,
     maxLevel: 2,
     apply: (_p, level, _mods, effects) => {
-      const frac = 0.05 * level;
-      effects.on('waveClear', (c) => {
+      const frac = 0.03 * level;
+      effects.on('breather', (c) => {
         c.player.health = Math.min(c.player.maxHealth, c.player.health + c.player.maxHealth * frac);
       });
     },

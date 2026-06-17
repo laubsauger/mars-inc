@@ -38,14 +38,14 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'crowd-clause',
     name: 'Crowd Control Clause',
-    description: '+15% crit chance when 12+ enemies are present.',
+    description: '+15% crit chance while 8+ enemies are within 7m of you.',
     tags: ['crit', 'crowd'],
     rarity: 'uncommon',
     maxLevel: 2,
     baseWeight: 5,
     synergyWeight: 2,
     apply: ({ effects }) =>
-      effects.addConditional((c) => (c.enemiesOnScreen >= 12 ? { critAdd: 0.15 } : {})),
+      effects.addConditional((c) => (c.enemiesNearby >= 8 ? { critAdd: 0.15 } : {})),
   },
   // TRIGGER — on-kill shockwave (executioner / explosive direction).
   {

@@ -12,7 +12,7 @@ export const MAX_HEALTH_DROPS = 24;
 
 const DROP_CHANCE = 0.02; // per ordinary kill
 const HEAL = 25; // flat heal per pickup (clamped to maxHealth)
-const PICKUP_RADIUS = 1.4;
+const PICKUP_RADIUS = 1.8;
 /** Seconds a medkit lingers before it decays. */
 export const HEALTH_TTL = 16;
 export const HEALTH_FADE = 4; // last seconds: the view flashes a fade warning

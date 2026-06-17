@@ -58,6 +58,9 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['crit'],
     role: 'converter',
     riskTier: 1,
+    previewStats: (lvl) => [
+      { label: 'Crit splash', from: `${40 * lvl}% of hit`, to: `${40 * (lvl + 1)}% of hit` },
+    ],
     apply: ({ effects }) =>
       effects.on('crit', (ctx) => {
         if (ctx.hitDamage > 0) ctx.dealArea(ctx.x, ctx.z, 2.2, ctx.hitDamage * 0.4);
@@ -78,6 +81,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 1,
+    previewStats: () => [{ label: 'Panic shockwave', from: '—', to: '12 dmg + knockback, 4.5m' }],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 4.5, 12); // shove + light damage (knockback in the spec)
@@ -98,6 +102,10 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['panic', 'risk'],
     role: 'converter',
     riskTier: 2,
+    previewStats: () => [
+      { label: 'Low-HP nova', from: '—', to: '40 dmg, 5.5m' },
+      { label: 'Heal', from: '—', to: '10% max HP' },
+    ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 5.5, 40);
@@ -109,11 +117,13 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
       }),
   },
 
-  // ══ KITE & CLEAR — wiping the field is the payoff (rewards full clears) ═════════
+  // ══ KITE & CLEAR — open up LOCAL space (no enemy within 7m) for a payoff. Full
+  //    arena clears almost never happen here, so these reward good kiting instead. ══
   {
     id: 'breather',
     name: 'Breather',
-    description: 'Clearing every enemy patches you for 8% max health.',
+    description:
+      'Open up space (no enemy within 7m) to patch 4% max health per level — reward for kiting.',
     tags: ['sustain', 'defense'],
     grantsTags: ['sustain'],
     rarity: 'uncommon',
@@ -122,18 +132,26 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [
+      {
+        label: 'Heal on clearing space',
+        from: `${4 * lvl}% max HP`,
+        to: `${4 * (lvl + 1)}% max HP`,
+      },
+    ],
     apply: ({ effects }) =>
-      effects.on('waveClear', (ctx) => {
+      effects.on('breather', (ctx) => {
         ctx.player.health = Math.min(
           ctx.player.maxHealth,
-          ctx.player.health + ctx.player.maxHealth * 0.08,
+          ctx.player.health + ctx.player.maxHealth * 0.04,
         );
       }),
   },
   {
     id: 'overtime-bonus',
     name: 'Overtime Bonus',
-    description: 'Clearing every enemy grants 0.8s of invulnerability — a breather between waves.',
+    description:
+      'Opening up space (no enemy within 7m) grants 0.6s of invulnerability — kite to reset.',
     tags: ['sustain', 'tempo'],
     grantsTags: ['sustain'],
     rarity: 'rare',
@@ -143,9 +161,10 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['sustain'],
     role: 'converter',
     riskTier: 0,
+    previewStats: () => [{ label: 'Invuln on clearing space', from: '—', to: '0.6s' }],
     apply: ({ effects }) =>
-      effects.on('waveClear', (ctx) => {
-        ctx.player.invuln = Math.max(ctx.player.invuln, 0.8); // brief breathing room
+      effects.on('breather', (ctx) => {
+        ctx.player.invuln = Math.max(ctx.player.invuln, 0.6); // brief breathing room
       }),
   },
 
@@ -162,6 +181,9 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'primer',
     riskTier: 0,
+    previewStats: (lvl) => [
+      { label: 'Sprint burst', from: `${14 * lvl} dmg`, to: `${14 * (lvl + 1)} dmg` },
+    ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 3.5, 14);
@@ -183,6 +205,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 1,
     // A single big burst per sprint (the player-trigger dealArea shoves via the
     // pipeline knockback) — distinct from Slipstream's light, stackable chip.
+    previewStats: () => [{ label: 'Sprint blast', from: '—', to: '36 dmg, 5.5m' }],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 5.5, 36);

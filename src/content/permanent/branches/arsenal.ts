@@ -233,16 +233,17 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'executioners-clause',
     name: "Executioner's Clause",
-    description: 'KEYSTONE: crit chance climbs as the field thins — up to +40% finishing a wave.',
+    description:
+      'KEYSTONE: +crit as the space around you clears — up to +40% with nobody within 7m.',
     branch: 'arsenal',
     rarity: 'legendary',
     cost: 360,
     maxLevel: 1,
     apply: (_p, _level, _mods, effects) => {
-      // Smooth finisher (was a dead "≤3 enemies" gate): 0 at 10+ enemies → +40% as
-      // the wave empties. Real varying uptime, not an almost-never threshold.
+      // Smooth finisher on the LOCAL crowd: 0 at 10 nearby → +40% when clear. Real
+      // varying uptime tied to carving space, not an almost-never arena gate.
       effects.addConditional((c) => ({
-        critAdd: Math.max(0, (10 - c.enemiesOnScreen) / 10) * 0.4,
+        critAdd: Math.max(0, (10 - c.enemiesNearby) / 10) * 0.4,
       }));
     },
   },

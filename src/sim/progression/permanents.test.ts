@@ -21,10 +21,12 @@ describe('Glory-Tree permanents (T35 reweave — amplify, gate rules; no build-s
     expect(mods.critDamageMult).toBeCloseTo(1.8); // 1 + 0.4×2
   });
 
-  it('Wider Contracts is a RULE change — +1 draft option', () => {
+  it('Premium Contracts raises rare/legendary draft odds (quality, not +1 card)', () => {
     const p = createPlayer();
-    applyPermanents(p, { 'wider-contracts': 1 }, defaultMods(), new BuildEffects());
-    expect(p.draftSize).toBe(4);
+    applyPermanents(p, { 'premium-contracts': 1 }, defaultMods(), new BuildEffects());
+    expect(p.draftSize).toBe(3); // draft count unchanged — quality, not quantity
+    expect(p.draftRarityBias['rare']).toBeCloseTo(1.6, 6);
+    expect(p.draftRarityBias['legendary']).toBeCloseTo(1.5, 6);
   });
 
   it('Second Wind grants a revive charge (cheat death once)', () => {

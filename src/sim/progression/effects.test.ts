@@ -3,6 +3,7 @@ import { BuildEffects, type ConditionalCtx, type TriggerCtx } from './effects';
 
 const CTX: ConditionalCtx = {
   enemiesOnScreen: 5,
+  enemiesNearby: 5,
   nearestDist: 8,
   firingRampSec: 0,
   hpFrac: 1,

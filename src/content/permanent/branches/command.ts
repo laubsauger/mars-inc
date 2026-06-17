@@ -204,14 +204,14 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
   {
     id: 'war-room',
     name: 'War Room',
-    description: 'KEYSTONE: +40% drone damage and +1 upgrade choice in every draft.',
+    description: 'KEYSTONE: +40% drone damage and +1 draft reroll every run.',
     branch: 'command',
     rarity: 'legendary',
     cost: 560, // marquee Command keystone — firepower amp + a permanent draft edge
     maxLevel: 1,
     apply: (p) => {
       p.droneDamageMult += 0.4;
-      p.draftSize += 1;
+      p.bonusRerolls += 1; // a reroll, not an extra card on screen
     },
   },
 ];

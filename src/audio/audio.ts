@@ -181,7 +181,7 @@ export class AudioBus {
   /** Play a cue for an FX kind. Rate-limited per kind to avoid machine-gun stacking. */
   play(kind: FxKind): void {
     if (!this.ctx || !this.master) return;
-    if (kind === 'ember') return; // visual-only flecks (burn ticks) — silent by design
+    if (kind === 'ember' || kind === 'toxiccloud') return; // visual-only — silent by design
     const now = this.ctx.currentTime;
     const minGap = kind === 'muzzle' ? 0.04 : 0.02;
     if (now - (this.lastAt[kind] ?? -1) < minGap) return;

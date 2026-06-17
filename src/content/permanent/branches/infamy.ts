@@ -196,4 +196,35 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
       effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.2, damageMult: 1.12 } : {}));
     },
   },
+  // ── RULE-BREAKER keystones (Infamy = bend the rules; opposing tradeoffs that force
+  //    a real commitment — you can't have the all-defense AND the all-offense build). ──
+  {
+    id: 'berserkers-pact',
+    name: "Berserker's Pact",
+    description: 'KEYSTONE: +40% damage dealt — but you take +25% damage too. Pure aggression.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 480,
+    maxLevel: 1,
+    apply: (p, _level, mods) => {
+      mods.damageMult += 0.4;
+      p.damageTakenMult += 0.25; // the opposing pick to the Biology tank keystones
+    },
+  },
+  {
+    id: 'blood-money',
+    name: 'Blood Money',
+    description: 'CURSE: +30% Glory earned and +2 luck, but start each run with 15% less health.',
+    branch: 'infamy',
+    rarity: 'rare',
+    cost: 180,
+    maxLevel: 2,
+    apply: (p, level) => {
+      p.gloryMult += 0.3 * level;
+      p.luck += 2 * level;
+      const cut = Math.round(p.maxHealth * 0.15 * level);
+      p.maxHealth = Math.max(1, p.maxHealth - cut);
+      p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
 ];

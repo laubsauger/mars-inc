@@ -102,6 +102,7 @@ const PLAYER_BOOL_FIELDS: ReadonlyArray<[string, (p: Player) => boolean]> = [
 // battlefields and take, per metric, the one that deviates most from neutral.
 const PROBES: ReadonlyArray<{
   enemiesOnScreen: number;
+  enemiesNearby: number;
   nearestDist: number;
   firingRampSec: number;
   hpFrac: number;
@@ -109,9 +110,10 @@ const PROBES: ReadonlyArray<{
   recoilActive: boolean;
   stationarySec: number;
 }> = [
-  // Far + sparse + hurt + ramped (Restraining, Apex, lowHp, ramp, recoil, turret).
+  // Far + sparse + hurt + ramped (Restraining, Apex finisher, lowHp, ramp, recoil, turret).
   {
     enemiesOnScreen: 1,
+    enemiesNearby: 0,
     nearestDist: 999,
     firingRampSec: 12,
     hpFrac: 0.01,
@@ -122,6 +124,7 @@ const PROBES: ReadonlyArray<{
   // Near + swarmed + healthy (crowd / point-blank conditionals).
   {
     enemiesOnScreen: 99,
+    enemiesNearby: 99,
     nearestDist: 0.5,
     firingRampSec: 0,
     hpFrac: 1,

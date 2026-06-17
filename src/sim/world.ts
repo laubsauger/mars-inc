@@ -66,6 +66,7 @@ export interface RunSummary {
 
 const COUNTDOWN_SECONDS = 3;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
+const LOCAL_CROWD_RADIUS = 7; // m around the player counted as "nearby" for crowd cards
 const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
 
 const ZERO_INPUT: InputSnapshot = {
@@ -136,6 +137,12 @@ export class World {
   private wasLowHp = false;
   /** Were there enemies last step? → edge-detects a wave clear (all dead). */
   private hadEnemies = false;
+  /** Enemies within LOCAL_CROWD_RADIUS last eval — edge-detects a local-clear (breather). */
+  private lastNearby = 0;
+  /** Offense-conditional intensity 0..1 (render-only aura cue; V2 — render never writes it). */
+  buffGlow = 0;
+  /** Were enemies near you last step? → edge-detects "breathing room" (no one within 7m). */
+  private hadNearby = false;
   /** Render-facing FX events; the render layer drains this each frame. */
   readonly fx = new FxQueue();
   readonly director: WaveDirector;
@@ -411,6 +418,12 @@ export class World {
 
     // Dynamic build conditionals (T38): evaluate against live combat context.
     const cond = this.evalConditionals(dt);
+    // Offense-buff glow (render aura): how "hot" your conditionals are right now, 0..1.
+    // Render reads this to pulse a gold aura so an active buff is legible at a glance.
+    this.buffGlow = Math.min(
+      1,
+      Math.max(0, cond.damageMult - 1) + cond.critAdd + Math.max(0, cond.fireRateMult - 1),
+    );
     // Fire control (T-input): hold left-mouse to fire; Space toggles persistent
     // auto-fire. Default is manual so the player paces their own shots.
     if (this.input.toggleAuto) this.autoShoot = !this.autoShoot;
@@ -581,6 +594,13 @@ export class World {
       this.firePlayerTrigger('waveClear');
     }
     this.hadEnemies = enemiesNow;
+    // breather: fire when your LOCAL space clears (no enemy within 7m) — the
+    // achievable "breathing room" payoff in a design where a full arena clear isn't.
+    const nearbyNow = this.lastNearby > 0;
+    if (!nearbyNow && this.hadNearby && this.effects.has('breather')) {
+      this.firePlayerTrigger('breather');
+    }
+    this.hadNearby = nearbyNow;
 
     this.draftCtl.update(dt); // tick the flourish delay → open the draft when due
 
@@ -597,18 +617,26 @@ export class World {
     const n = e.count;
     this.firingRampSec = n > 0 ? Math.min(12, this.firingRampSec + dt) : 0;
     // Stand-still ramp: grows while holding position, resets the instant you move.
-    const moving = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5;
+    // "Holding position" tracks INPUT INTENT (no WASD), not actual velocity — recoil
+    // knockback constantly drifts you, so a velocity check never let Entrenchment ramp.
+    // Deliberate movement breaks it; getting shoved around does not (V4: intent on x,z).
+    const moving = Math.hypot(this.input.moveX, this.input.moveZ) > 0.1;
     this.stationarySec = moving ? 0 : Math.min(12, this.stationarySec + dt);
 
     let nearest = Infinity;
+    let nearby = 0;
+    const nearR2 = LOCAL_CROWD_RADIUS * LOCAL_CROWD_RADIUS;
     for (let i = 0; i < n; i++) {
       const dx = e.posX[i]! - this.player.pos.x;
       const dz = e.posZ[i]! - this.player.pos.z;
       const d2 = dx * dx + dz * dz;
       if (d2 < nearest) nearest = d2;
+      if (d2 <= nearR2) nearby++;
     }
+    this.lastNearby = nearby;
     return this.effects.evalConditionals({
       enemiesOnScreen: n,
+      enemiesNearby: nearby,
       nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
       firingRampSec: this.firingRampSec,
       hpFrac: this.player.maxHealth > 0 ? this.player.health / this.player.maxHealth : 0,
@@ -883,6 +911,8 @@ export class World {
     this.recentCritTimer = 0;
     this.wasLowHp = false;
     this.hadEnemies = false;
+    this.hadNearby = false;
+    this.lastNearby = 0;
     this.prevSprintActive = false;
     applyPermanents(this.player, this.permanents, this.mods, this.effects);
     // Draft resources read the permanent bonuses applied above (T35), so reset the

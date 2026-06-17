@@ -12,6 +12,7 @@ const byId = (id: string) => RECOIL_UPGRADES.find((u) => u.id === id)!;
 
 const CTX: ConditionalCtx = {
   enemiesOnScreen: 5,
+  enemiesNearby: 5,
   nearestDist: 6,
   firingRampSec: 0,
   hpFrac: 1,
@@ -47,16 +48,14 @@ describe('recoil build family (T55)', () => {
     expect(effects.evalConditionals({ ...CTX, recoilActive: true }).damageMult).toBeCloseTo(1.3, 6);
   });
 
-  it('Kinetic Overdraft ramps fire rate with sustained combat + raises recoil', () => {
+  it('Kinetic Overdraft is a flat fire-rate-for-recoil liability (no ramp/hold)', () => {
     const mods = defaultMods();
     const effects = new BuildEffects();
     apply(byId('kinetic-overdraft'), { player: createPlayer(), mods, effects });
-    expect(mods.recoilMult).toBeCloseTo(1.3, 6);
-    expect(effects.evalConditionals({ ...CTX, firingRampSec: 0 }).fireRateMult).toBe(1);
-    expect(effects.evalConditionals({ ...CTX, firingRampSec: 100 }).fireRateMult).toBeCloseTo(
-      1.6,
-      6,
-    ); // capped at +60%
+    expect(mods.fireRateMult).toBeCloseTo(1.35, 6); // +35% fire rate
+    expect(mods.recoilMult).toBeCloseTo(1.45, 6); // recoil kicks 45% harder
+    // No conditional registered — the old "while holding a target" ramp is gone.
+    expect(effects.evalConditionals({ ...CTX, firingRampSec: 100 }).fireRateMult).toBe(1);
   });
 
   it('the recoil cards are gated behind owning a recoil source', () => {

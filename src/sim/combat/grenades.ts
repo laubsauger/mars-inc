@@ -13,7 +13,7 @@ import { applyStatus } from './status';
 const MAX_GRENADES = 8;
 /** Max lob distance (world units). Exported so the aim overlay can draw the
  *  grenade's reach — its range is decoupled from weapon range, which confuses. */
-export const GRENADE_MAX_THROW = 15;
+export const GRENADE_MAX_THROW = 17;
 const SLING_SPEED = 15; // world units/s — constant, so a longer lob takes LONGER
 const MIN_FLIGHT = 0.14; // floor so a point-blank toss still arcs a touch
 const ARC_HEIGHT = 2.6; // visual lob height (y only — never affects sim, V4)

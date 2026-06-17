@@ -76,6 +76,13 @@ export interface UpgradeDefinition {
   /** Build-aware odds adjustments (own-tag conditioned multipliers). */
   weightRules?: readonly UpgradeWeightRule[];
 
+  /** Declared effect magnitudes for the card preview (T-clarity). The auto-preview
+   *  can only diff tracked stats/conditionals — it can't see inside a TRIGGER closure
+   *  (an on-kill nova, a sprint burst). A card with such effects declares the numbers
+   *  here so the draft still shows a concrete NOW→AFTER per level. `ownedLevel` = how
+   *  many levels already taken; return the cumulative before/after for the next pick. */
+  previewStats?: (ownedLevel: number) => { label: string; from: string; to: string }[];
+
   apply: (ctx: UpgradeContext) => void;
 }
 
@@ -155,9 +162,17 @@ const RARITY_BOOST: Record<Rarity, number> = {
   legendary: 1,
 };
 
-export function rarityWeight(rarity: Rarity, level: number, luck: number): number {
+export function rarityWeight(
+  rarity: Rarity,
+  level: number,
+  luck: number,
+  rarityBias?: Record<string, number>,
+): number {
   const scale = 1 + (level * 0.035 + luck * 0.12) * RARITY_BOOST[rarity];
-  return RARITY_BASE[rarity] * scale;
+  // Glory-Tree rarity nodes nudge a tier's odds (e.g. legendary ×1.4) — fine-grained
+  // alongside luck (which lifts ALL rare+ tiers). Pure multiplier, opt-in.
+  const bias = rarityBias?.[rarity] ?? 1;
+  return RARITY_BASE[rarity] * scale * bias;
 }
 
 /** Tags that mean "this upgrade actually raises kill throughput" — the offensive
@@ -212,6 +227,13 @@ export interface DraftParams {
   /** When set, only cards of these rarities are eligible (milestone "interesting"
    *  rolls draw from rare+ tiers). */
   rarityFilter?: ReadonlySet<Rarity> | undefined;
+  /** Persistent draft-SHAPING bias from Glory-Tree "Specialist" nodes: tag → weight
+   *  multiplier. A card's weight ×= the product of biases over its tags, so a meta
+   *  node can steer the draft toward a build direction (T-draftshape). */
+  tagBias?: Record<string, number> | undefined;
+  /** Per-rarity odds multiplier from Glory-Tree rarity nodes (e.g. {legendary: 1.4}).
+   *  Folded into rarityWeight — finer control than the all-tiers `luck` lever. */
+  rarityBias?: Record<string, number> | undefined;
 }
 
 /** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
@@ -231,6 +253,8 @@ function weightOf(
   luck: number,
   ownedLevel: number,
   boost?: DraftBoost,
+  tagBias?: Record<string, number>,
+  rarityBias?: Record<string, number>,
 ): number {
   // Synergy is the SUM of owned tag counts, but capped so one deep archetype can't
   // run away and crowd the draft with a single family (the "all pets" problem).
@@ -239,7 +263,8 @@ function weightOf(
   if (u.requiresAnyTags) for (const t of u.requiresAnyTags) synergy += counts.get(t) ?? 0;
   if (u.requiresAllTags) for (const t of u.requiresAllTags) synergy += counts.get(t) ?? 0;
   synergy = Math.min(synergy, 6); // cap the snowball — synergy biases, never dominates
-  let w = (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck);
+  let w =
+    (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck, rarityBias);
   // Damp the EXACT card by how many levels of it you already own → forces variety.
   if (ownedLevel > 0) w /= 1 + ownedLevel * REPEAT_DAMP;
   if (u.weightRules) {
@@ -253,6 +278,12 @@ function weightOf(
   // Foundation pity (T-pity): lift cards in the boosted tag set. Applied last so it
   // scales the fully-resolved weight.
   if (boost && u.tags.some((t) => boost.tags.has(t))) w *= boost.mult;
+  // Draft-shaping bias (Specialist tree nodes): a card's weight ×= the product of
+  // biases over its own tags ∪ grantsTags, so a permanent steers WHICH cards appear.
+  if (tagBias) {
+    for (const t of u.tags) w *= tagBias[t] ?? 1;
+    if (u.grantsTags) for (const t of u.grantsTags) w *= tagBias[t] ?? 1;
+  }
   return w;
 }
 
@@ -272,6 +303,8 @@ export function rollDraft(
   const level = params.level ?? 1;
   const luck = params.luck ?? 0;
   const boost = params.boost;
+  const tagBias = params.tagBias;
+  const rarityBias = params.rarityBias;
   const counts = ownedTags(registry, levels);
   let pool = available(registry, levels, params.banished, params.gates, counts);
   if (params.rarityFilter) pool = pool.filter((u) => params.rarityFilter!.has(u.rarity));
@@ -279,11 +312,21 @@ export function rollDraft(
 
   while (picks.length < count && pool.length > 0) {
     let total = 0;
-    for (const u of pool) total += weightOf(u, counts, level, luck, taken(levels, u.id), boost);
+    for (const u of pool)
+      total += weightOf(u, counts, level, luck, taken(levels, u.id), boost, tagBias, rarityBias);
     let r = rng.next() * total;
     let idx = 0;
     for (let i = 0; i < pool.length; i++) {
-      r -= weightOf(pool[i]!, counts, level, luck, taken(levels, pool[i]!.id), boost);
+      r -= weightOf(
+        pool[i]!,
+        counts,
+        level,
+        luck,
+        taken(levels, pool[i]!.id),
+        boost,
+        tagBias,
+        rarityBias,
+      );
       if (r <= 0) {
         idx = i;
         break;

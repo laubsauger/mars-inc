@@ -7,7 +7,16 @@ import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
 import { knockbackVelocity } from './movement';
 import type { FxQueue } from './fx';
-import { clampPoint } from './arena';
+import { clampPoint, interiorPoint, arenaContains } from './arena';
+
+const ACTIVATE_MARGIN = 1.4; // activate this far OUTSIDE the wall (in the gate) so the
+// march→steer turn is hidden in the tunnel, not a jerk over the visible threshold
+const ROAM_PERIOD = 280; // ticks (~4.7s) a roamer commits to one wander destination
+/** Cheap deterministic 0..1 hash (no Math.random in sim, V16). */
+function hash01(x: number): number {
+  const s = Math.sin(x) * 43758.5453;
+  return s - Math.floor(s);
+}
 
 const STEER_DIVISOR = 3; // re-steer each enemy every 3rd tick → ~20Hz
 const MAX_NEIGHBORS = 48; // cap separation neighbors (bounded cost, V6)
@@ -64,8 +73,16 @@ export class EnemySystem {
           p.posX[i]! += p.velX[i]! * dt;
           p.posZ[i]! += p.velZ[i]! * dt;
         }
+        // Go LIVE as it reaches the gate threshold (was a fixed timer that left it
+        // intangible for a second+ after it had clearly walked in). Activate a touch
+        // BEFORE the wall line (ACTIVATE_MARGIN, still in the gate tunnel) so the
+        // march→steer velocity re-orient happens back in the gate, not as a visible
+        // jerk over the step. The timer is a safety floor so anything that never
+        // enters still activates.
         p.stateTimer[i]! -= dt;
-        if (p.stateTimer[i]! <= 0) p.state[i] = EnemyState.Active;
+        if (p.stateTimer[i]! <= 0 || arenaContains(p.posX[i]!, p.posZ[i]!, ACTIVATE_MARGIN)) {
+          p.state[i] = EnemyState.Active;
+        }
         continue;
       }
 
@@ -93,9 +110,16 @@ export class EnemySystem {
           const adx = target.x - p.posX[i]!;
           const adz = target.z - p.posZ[i]!;
           if (adx * adx + adz * adz > aggro * aggro) {
-            const ang = i * 1.7 + p.steerPhase[i]! + tick * 0.02;
-            this.roam.x = p.posX[i]! + Math.cos(ang) * 6;
-            this.roam.z = p.posZ[i]! + Math.sin(ang) * 6;
+            // Wander toward a DESTINATION somewhere in the arena, re-picked every
+            // ROAM_PERIOD ticks (staggered per enemy so they don't all turn at once).
+            // Picking an interior point spreads roamers across the pit instead of
+            // orbiting their spawn gate. Deterministic from id + tick (V16/V21).
+            const epoch = Math.floor(tick / ROAM_PERIOD) + i;
+            const u = hash01(i * 0.731 + epoch * 1.139);
+            const v = hash01(i * 1.197 + epoch * 0.529 + 7.13);
+            const pt = interiorPoint(u, v, 0, 0.92); // anywhere well inside the wall
+            this.roam.x = pt.x;
+            this.roam.z = pt.z;
             seekTarget = this.roam;
             moveSpeed = p.speed[i]! * 0.45; // amble while patrolling
           }
