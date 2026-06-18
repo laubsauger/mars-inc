@@ -476,8 +476,8 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     description: 'Plant your feet: crit chance builds the longer you hold position.',
     tags: ['crit'],
     rarity: 'common',
-    maxLevel: 4,
-    baseWeight: 9,
+    maxLevel: 2, // was 4 — stop it re-offering every level-up (the "every draw" complaint)
+    baseWeight: 4, // was 9 — a niche primer, not a high-frequency staple
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,

@@ -77,8 +77,10 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: +60% damage, but your max health is HALVED. Win fast or die faster.',
     branch: 'infamy',
     rarity: 'legendary',
-    cost: 360,
+    cost: 480, // a run-defining rule-break — priced as a real legendary, not a rare
     maxLevel: 1,
+    // GATED: the glass-cannon rule-breaks are an earned power fantasy — clear Act 1 first.
+    gate: { unlock: 'act:rust-crown', requirement: 'Defeat the Gatekeeper (Act 1)' },
     apply: (p, _level, mods) => {
       mods.damageMult += 0.6;
       p.maxHealth = Math.max(1, Math.round(p.maxHealth * 0.5));
@@ -129,8 +131,9 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: +50% damage and +50% crit damage, paid with 40 max health.',
     branch: 'infamy',
     rarity: 'legendary',
-    cost: 400,
+    cost: 460,
     maxLevel: 1,
+    gate: { unlock: 'act:rust-crown', requirement: 'Defeat the Gatekeeper (Act 1)' },
     apply: (p, _level, mods) => {
       mods.damageMult += 0.5;
       mods.critDamageMult += 0.5;
@@ -145,8 +148,10 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
       'KEYSTONE: damage scales up to +80% as your health drops, AND you cheat death once.',
     branch: 'infamy',
     rarity: 'legendary',
-    cost: 480,
+    cost: 620, // revive + low-HP scaling = the apex of the risk lane; the deepest sink here
     maxLevel: 1,
+    // GATED: a second revive in the meta — earned by reaching Act 2 (the Magma Notary).
+    gate: { unlock: 'tree:biology-magma', requirement: 'Defeat the Magma Notary (Act 2)' },
     apply: (p, _level, _mods, effects) => {
       p.reviveCharges += 1;
       effects.addConditional((c) => ({ damageMult: 1 + 0.8 * (1 - c.hpFrac) }));
@@ -176,6 +181,7 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     rarity: 'legendary',
     cost: 520, // a run-defining gamble → one of the steepest nodes in the tree
     maxLevel: 1,
+    gate: { unlock: 'act:rust-crown', requirement: 'Defeat the Gatekeeper (Act 1)' },
     apply: (p, _level, _mods, effects) => {
       p.maxHealth = Math.max(1, p.maxHealth - 35);
       p.health = Math.min(p.health, p.maxHealth);
@@ -225,6 +231,24 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
       const cut = Math.round(p.maxHealth * 0.15 * level);
       p.maxHealth = Math.max(1, p.maxHealth - cut);
       p.health = Math.min(p.health, p.maxHealth);
+    },
+  },
+  // ── Creative addition: spite/thorns rule-breaker ────────────────────────────
+  {
+    id: 'spite-engine',
+    name: 'Spite Engine',
+    description:
+      'KEYSTONE: getting HIT detonates a retaliation blast — 1.5× the damage you took, dumped on everything within 5m. Make them pay for the bite.',
+    branch: 'infamy',
+    rarity: 'legendary',
+    cost: 460,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      // `hurt` fires the step the player took damage; magnitude = damage taken (V3).
+      effects.on('hurt', (c) => {
+        if (c.magnitude > 0) c.dealArea(c.x, c.z, 5, c.magnitude * 1.5);
+        c.fx.push('impact', c.x, c.z);
+      });
     },
   },
 ];

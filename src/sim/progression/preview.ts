@@ -112,6 +112,9 @@ const PROBES: ReadonlyArray<{
   recentCrit: boolean;
   recoilActive: boolean;
   stationarySec: number;
+  moving: boolean;
+  rageStacks: number;
+  movingSec: number;
 }> = [
   // Far + sparse + hurt + ramped (Restraining, Apex finisher, lowHp, ramp, recoil, turret).
   {
@@ -123,8 +126,11 @@ const PROBES: ReadonlyArray<{
     recentCrit: true,
     recoilActive: true,
     stationarySec: 12,
+    moving: false,
+    movingSec: 0,
+    rageStacks: 0,
   },
-  // Near + swarmed + healthy (crowd / point-blank conditionals).
+  // Near + swarmed + healthy + MOVING (crowd / point-blank / run-and-gun conditionals).
   {
     enemiesOnScreen: 99,
     enemiesNearby: 99,
@@ -134,6 +140,9 @@ const PROBES: ReadonlyArray<{
     recentCrit: false,
     recoilActive: false,
     stationarySec: 0,
+    moving: true,
+    movingSec: 12,
+    rageStacks: 12,
   },
 ];
 

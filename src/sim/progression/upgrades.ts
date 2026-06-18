@@ -151,11 +151,15 @@ export function available(
 // with rare/uncommon. Bases pulled down so the per-tier TOTALS land ~common 47% /
 // uncommon 32% / rare 18% / legendary+curse ~3% at base level (rarer tiers still climb
 // with level + luck from this lower floor).
+// Retuned (card-variety pass): commons are mostly plain stat fillers AND carry high
+// per-card baseWeight (9–12), so at common=1 a single common out-weighed any single
+// cool uncommon by ~4× → drafts felt repetitive ("Steady Aim on every draw"). Commons
+// pulled DOWN and uncommon/rare lifted so the big, interesting uncommon (45) + rare
+// (51) pools surface far more. Targets ~common 30% / uncommon 49% / rare 18% at base.
 const RARITY_BASE: Record<Rarity, number> = {
-  common: 1,
-  uncommon: 0.4, // lifted (was 0.26) — only ~9 commons exist, so early picks repeated
-  // them; richer uncommon pool now surfaces more often so the opening feels varied
-  rare: 0.18,
+  common: 0.7,
+  uncommon: 0.55,
+  rare: 0.24,
   corrupted: 0.1,
   prototype: 0.1,
   legendary: 0.06,
@@ -163,10 +167,10 @@ const RARITY_BASE: Record<Rarity, number> = {
 const RARITY_BOOST: Record<Rarity, number> = {
   common: 0,
   uncommon: 0.2,
-  rare: 0.5,
-  corrupted: 0.8,
-  prototype: 0.9,
-  legendary: 1,
+  rare: 0.85, // climbs faster with level/luck/boss-kills — rares should feel routine late
+  corrupted: 1.2,
+  prototype: 1.4,
+  legendary: 1.8, // the build-defining payoff: near-invisible early, real odds late-game
 };
 
 export function rarityWeight(

@@ -297,4 +297,20 @@ export const ARENA_PERMANENTS: PermanentUpgrade[] = [
       p.draftRarityBias['common'] = (p.draftRarityBias['common'] ?? 1) * 0.4;
     },
   },
+  // ── Creative addition: a draft-resource toolkit opener ──────────────────────
+  {
+    id: 'patrons-favor',
+    name: "Patron's Favor",
+    description:
+      'Start every run with +1 reroll AND +1 banish, plus +1 luck — walk in with the whole draft toolkit.',
+    branch: 'arena',
+    rarity: 'rare',
+    cost: 190,
+    maxLevel: 1,
+    apply: (p) => {
+      p.bonusRerolls += 1;
+      p.bonusBanishes += 1;
+      p.luck += 1;
+    },
+  },
 ];

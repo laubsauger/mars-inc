@@ -71,6 +71,9 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
     recentCrit: false,
     recoilActive: p.recoilTimer > 0,
     stationarySec: ctx.stationarySec,
+    moving: false,
+    movingSec: 0,
+    rageStacks: 0,
   });
   const probe = ctx.effects.evalConditionals({
     enemiesOnScreen: 99,
@@ -81,6 +84,9 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
     recentCrit: true,
     recoilActive: true,
     stationarySec: 12,
+    moving: true,
+    movingSec: 12,
+    rageStacks: 12,
   });
   // Show the CURRENTLY-active value, and "(up to MAX)" only when more is possible.
   const upTo = (now: number, max: number, fmt: (n: number) => string): string =>

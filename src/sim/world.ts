@@ -90,6 +90,8 @@ const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky i
 // not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.
 const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
 const TIME_WARP_MULT = 0.4; // enemy dt scale while Time Dilation is active (you keep full speed)
+const RAGE_CAP = 12; // max kill-streak stacks (rage/frenzy cards)
+const RAGE_WINDOW = 3; // seconds since the last kill before the whole streak breaks
 
 const ZERO_INPUT: InputSnapshot = {
   moveX: 0,
@@ -149,6 +151,8 @@ export class World {
   private firingRampSec = 0;
   /** Stand-still ramp (s): grows while the player holds position, resets on move. */
   private stationarySec = 0;
+  /** Mobility ramp (s): grows while the player moves, bleeds when still (run-and-gun). */
+  private movingSec = 0;
   /** Damage dealt by on-hit triggers this step (T39, folded into run stats). */
   private hitTriggerDamage = 0;
   /** Damage dealt by the repulsor nova this step (T42, folded into run stats). */
@@ -668,6 +672,12 @@ export class World {
 
     // Accumulate run stats from this step's authoritative events (V20).
     this.stats.kills += this.weaponSystem.kills.length;
+    // Kill-streak rage: each kill this step adds a stack (capped) + refreshes the
+    // streak window. Read by frenzy/bloodlust conditional cards.
+    if (this.weaponSystem.kills.length > 0) {
+      this.player.rage = Math.min(RAGE_CAP, this.player.rage + this.weaponSystem.kills.length);
+      this.player.rageTimer = RAGE_WINDOW;
+    }
     for (const k of this.weaponSystem.kills) {
       const v = k.variant;
       this.stats.killsByVariant[v] = (this.stats.killsByVariant[v] ?? 0) + 1;
@@ -815,6 +825,19 @@ export class World {
         ? Math.max(0, this.stationarySec - dt * STATIONARY_MOVE_DECAY)
         : Math.min(12, this.stationarySec + dt);
     }
+    // Mobility ramp (run-and-gun lane): grows while moving (sprint counts), bleeds
+    // when you stop — the mirror of stationarySec, rewarding kiting over turtling.
+    this.movingSec =
+      moving || this.player.sprint.active
+        ? Math.min(12, this.movingSec + dt)
+        : Math.max(0, this.movingSec - dt * STATIONARY_MOVE_DECAY);
+    // Kill-streak rage decay: stacks gained on kill (in the kill loop); the whole
+    // streak drops if RAGE_WINDOW elapses without a fresh kill (reward sustained
+    // aggression, not a permanent buff).
+    if (this.player.rage > 0) {
+      this.player.rageTimer -= dt;
+      if (this.player.rageTimer <= 0) this.player.rage = 0;
+    }
 
     let nearest = Infinity;
     let nearby = 0;
@@ -836,6 +859,9 @@ export class World {
       recentCrit: this.recentCritTimer > 0, // crit-chain cards (Batch 1)
       recoilActive: this.player.recoilTimer > 0, // recoil builds (T55)
       stationarySec: this.stationarySec,
+      moving,
+      movingSec: this.movingSec,
+      rageStacks: this.player.rage,
     });
   }
 
@@ -1132,6 +1158,7 @@ export class World {
     this.fx.clear();
     this.firingRampSec = 0;
     this.stationarySec = 0;
+    this.movingSec = 0;
     this.director.reset();
     this.drones.reset();
     this.orbitals.reset();

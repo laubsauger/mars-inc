@@ -109,9 +109,11 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     name: 'Hunter Protocol',
     description: 'Commission your FIRST standing drone — start each run with +1 companion.',
     branch: 'command',
-    rarity: 'rare',
-    cost: 420, // deep + expensive: a permanent extra body is a real investment
+    rarity: 'legendary', // a permanent extra body is a keystone, not a rare
+    cost: 480,
     maxLevel: 1,
+    // GATED: a free standing companion is real power — clear Act 1 first.
+    gate: { unlock: 'act:rust-crown', requirement: 'Defeat the Gatekeeper (Act 1)' },
     apply: (p) => {
       p.droneCount += 1;
     },
@@ -152,6 +154,8 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     rarity: 'legendary',
     cost: 640, // deep count node — a private army is earned, not bought cheap
     maxLevel: 1,
+    // GATED: the second standing body is an Act-2 reward (the Magma Notary).
+    gate: { unlock: 'tree:biology-magma', requirement: 'Defeat the Magma Notary (Act 2)' },
     apply: (p) => {
       p.droneCount += 1;
       p.droneDamageMult += 0.45;
@@ -165,6 +169,8 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     rarity: 'legendary',
     cost: 760, // the single most expensive Command node — the third (and last) body
     maxLevel: 1,
+    // GATED: the THIRD body is the deepest power spike — earned at Act 2 (Magma Notary).
+    gate: { unlock: 'tree:biology-magma', requirement: 'Defeat the Magma Notary (Act 2)' },
     apply: (p) => {
       p.droneCount += 1;
       p.droneDamageMult += 0.45;
@@ -213,6 +219,30 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     apply: (p) => {
       p.droneDamageMult += 0.4;
       p.bonusRerolls += 1; // a reroll, not an extra card on screen
+    },
+  },
+  // ── Creative addition: automated artillery (no drone body) ──────────────────
+  {
+    id: 'cluster-strike',
+    name: 'Cluster Strike',
+    description:
+      'KEYSTONE: every 6th kill calls an automatic airstrike — a 3.6m blast on the kill site. The crowd schedules its own bombing.',
+    branch: 'command',
+    rarity: 'legendary',
+    cost: 420,
+    maxLevel: 1,
+    // GATED: orbital firepower is earned — clear Act 1 (the Gatekeeper) first.
+    gate: { unlock: 'act:rust-crown', requirement: 'Defeat the Gatekeeper (Act 1)' },
+    apply: (_p, _level, _mods, effects) => {
+      // Per-run kill counter (closure resets with the build on run start → deterministic).
+      let kills = 0;
+      effects.on('kill', (c) => {
+        kills += 1;
+        if (kills % 6 === 0) {
+          c.dealArea(c.x, c.z, 3.6, 70); // pipeline-routed AoE (V3) + knockback
+          c.fx.push('impact', c.x, c.z);
+        }
+      });
     },
   },
 ];

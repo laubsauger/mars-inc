@@ -19,6 +19,9 @@ const CTX: ConditionalCtx = {
   recentCrit: false,
   recoilActive: false,
   stationarySec: 0,
+  moving: false,
+  movingSec: 0,
+  rageStacks: 0,
 };
 
 function apply(

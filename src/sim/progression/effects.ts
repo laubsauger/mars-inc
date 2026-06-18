@@ -42,6 +42,14 @@ export interface ConditionalCtx {
   /** Seconds the player has stood STILL (ramps while not moving, resets on move) —
    *  for "turret"/hold-position builds (Entrenchment). */
   stationarySec: number;
+  /** True while the player is actively moving (input intent, not velocity). */
+  moving: boolean;
+  /** Seconds the player has been MOVING continuously (ramps while moving, resets when
+   *  still) — the run-and-gun lane that REWARDS mobility (opposite of stationarySec). */
+  movingSec: number;
+  /** Kill-streak stacks (0..cap): +1 per kill, all lost if you go too long without one.
+   *  Fuels aggressive "rage/frenzy" build cards — reward chaining kills, not turtling. */
+  rageStacks: number;
 }
 
 /** Returns transient bonuses; combined multiplicatively/additively across all. */

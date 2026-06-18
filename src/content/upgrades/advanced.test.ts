@@ -20,6 +20,9 @@ const BASE: ConditionalCtx = {
   recentCrit: false,
   recoilActive: false,
   stationarySec: 0,
+  moving: false,
+  movingSec: 0,
+  rageStacks: 0,
 };
 
 describe('advanced upgrades drive the build engine (T38)', () => {

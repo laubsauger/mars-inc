@@ -427,7 +427,7 @@ export const DEBT_HOUND: EnemyType = {
 export const BOSS_GATEKEEPER: EnemyType = {
   id: 'gatekeeper-of-phobos',
   radius: 2.4,
-  maxHealth: 1500,
+  maxHealth: 2200, // Act 1 final set-piece — was 1500, too short for a finale
   speed: 2.4,
   separationWeight: 0.3,
   variant: 2,
@@ -448,12 +448,12 @@ export const BOSS_GATEKEEPER: EnemyType = {
 export const FOREMAN_KRILL: EnemyType = {
   id: 'foreman-krill',
   radius: 1.7,
-  maxHealth: 540,
+  maxHealth: 1150, // first miniboss — a real wall now (was 540/820, melted too fast)
   speed: 2.6,
   separationWeight: 0.35,
   variant: 14,
   threat: 160,
-  contactDamage: 16,
+  contactDamage: 22, // body-checks hurt — was 16, too soft for a boss
   boss: true,
   gore: 'blood',
 };
@@ -462,7 +462,7 @@ export const FOREMAN_KRILL: EnemyType = {
 export const REPO_SOVEREIGN: EnemyType = {
   id: 'repo-sovereign',
   radius: 1.9,
-  maxHealth: 880,
+  maxHealth: 1300,
   speed: 2.5,
   separationWeight: 0.32,
   variant: 15,
@@ -476,7 +476,7 @@ export const REPO_SOVEREIGN: EnemyType = {
 export const MAGMA_NOTARY: EnemyType = {
   id: 'magma-notary',
   radius: 1.9,
-  maxHealth: 1040,
+  maxHealth: 1500,
   speed: 2.5,
   separationWeight: 0.32,
   variant: 16,
@@ -490,7 +490,7 @@ export const MAGMA_NOTARY: EnemyType = {
 export const FROSTBITE_MAGNATE: EnemyType = {
   id: 'frostbite-magnate',
   radius: 2.0,
-  maxHealth: 1380,
+  maxHealth: 1950,
   speed: 2.4,
   separationWeight: 0.3,
   variant: 17,
@@ -504,7 +504,7 @@ export const FROSTBITE_MAGNATE: EnemyType = {
 export const DEVOURER_PRIME: EnemyType = {
   id: 'devourer-prime',
   radius: 2.7,
-  maxHealth: 2600,
+  maxHealth: 3400,
   speed: 2.3,
   separationWeight: 0.3,
   variant: 18,

@@ -76,8 +76,10 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: cheat death once per run — a lethal hit leaves you at 40% instead.',
     branch: 'biology',
     rarity: 'legendary',
-    cost: 380,
+    cost: 520, // cheating death is the strongest defensive node — a real Glory commitment
     maxLevel: 1,
+    // GATED: a revive can't be an early grab. Earned by reaching Act 2 (the Magma Notary).
+    gate: { unlock: 'tree:biology-magma', requirement: 'Defeat the Magma Notary (Act 2)' },
     apply: (p) => {
       p.reviveCharges += 1;
     },
@@ -204,6 +206,22 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
       const heal = 1.5 * level;
       effects.on('kill', (c) => {
         c.player.health = Math.min(c.player.maxHealth, c.player.health + heal);
+      });
+    },
+  },
+  // ── Creative addition ───────────────────────────────────────────────────────
+  {
+    id: 'apex-metabolism',
+    name: 'Apex Metabolism',
+    description:
+      'KEYSTONE: OVERKILL feeds you — a kill heals you for 10% of the damage spilled past 0 HP. Big hits = big sustain.',
+    branch: 'biology',
+    rarity: 'legendary',
+    cost: 360,
+    maxLevel: 1,
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('overkill', (c) => {
+        c.player.health = Math.min(c.player.maxHealth, c.player.health + c.magnitude * 0.1);
       });
     },
   },

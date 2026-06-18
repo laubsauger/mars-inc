@@ -210,4 +210,38 @@ export const MOBILITY_PERMANENTS: PermanentUpgrade[] = [
       effects.addConditional((c) => (c.recoilActive ? { damageMult: mult } : {}));
     },
   },
+  // ── Creative additions ──────────────────────────────────────────────────────
+  {
+    id: 'hit-and-run',
+    name: 'Hit & Run',
+    description:
+      'Kills while SPRINTING refund 0.7s of sprint cooldown per level — chain dashes through a crowd.',
+    branch: 'mobility',
+    rarity: 'rare',
+    cost: 170,
+    maxLevel: 2,
+    apply: (_p, level, _mods, effects) => {
+      effects.on('kill', (c) => {
+        if (c.player.sprint.active) {
+          c.player.sprint.cooldown = Math.max(0, c.player.sprint.cooldown - 0.7 * level);
+        }
+      });
+    },
+  },
+  {
+    id: 'kinetic-overflow',
+    name: 'Kinetic Overflow',
+    description:
+      'KEYSTONE: every sprint START blasts a repulsor shockwave — dash to carve a path through the swarm, no Kinetic Boots needed.',
+    branch: 'mobility',
+    rarity: 'legendary',
+    cost: 360,
+    maxLevel: 1,
+    apply: (p) => {
+      // Seeds a real dash shockwave so sprinting clears a lane even on its own — the
+      // mobility branch's offensive keystone (stacks with Kinetic Boots if also drafted).
+      p.dashShockForce += 18;
+      p.dashShockRadius += 1.6;
+    },
+  },
 ];

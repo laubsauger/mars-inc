@@ -115,6 +115,10 @@ export interface Player {
   /** Time Dilation (T-timewarp): seconds of enemy slow-mo remaining. While >0 the
    *  world steps every ENEMY system at TIME_WARP_MULT dt (you keep full speed). */
   timeWarp: number;
+  /** Kill-streak "rage" (T-rage): stacks gained per kill, dropped if the streak
+   *  lapses. Read by frenzy/bloodlust conditional cards. World owns the decay timer. */
+  rage: number;
+  rageTimer: number; // seconds left before the streak breaks (resets on each kill)
   /** Orbital blades (T-orbit): spinning bodies circling the player that slice
    *  enemies they sweep. 0 = off. Damage scales with the build's damage mult. */
   orbitCount: number;
@@ -195,6 +199,8 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     dashShockRadius: 5,
     recoilTimer: 0,
     timeWarp: 0,
+    rage: 0,
+    rageTimer: 0,
     orbitCount: 0,
     orbitDamage: 7,
     orbitRadius: 3.4,
@@ -273,6 +279,8 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.dashShockRadius = 5;
   p.recoilTimer = 0;
   p.timeWarp = 0;
+  p.rage = 0;
+  p.rageTimer = 0;
   p.orbitCount = 0;
   p.orbitDamage = 7;
   p.orbitRadius = 3.4;

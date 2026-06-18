@@ -154,8 +154,10 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: +1 projectile on every shot — double the lead downrange.',
     branch: 'arsenal',
     rarity: 'legendary',
-    cost: 360,
+    cost: 440, // a free permanent +projectile is a build-defining spike
     maxLevel: 1,
+    // GATED: free bullets are earned — beat the Foreman first (the Arsenal opener).
+    gate: { unlock: 'tree:arsenal-foreman', requirement: 'Defeat Foreman Krill' },
     apply: (_p, _level, mods) => {
       mods.projectileCount += 1;
     },
@@ -166,8 +168,15 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: +1 projectile AND +1 pierce — the swarm is just inventory now.',
     branch: 'arsenal',
     rarity: 'legendary',
-    cost: 440,
+    cost: 520,
     maxLevel: 1,
+    // GATED behind the deeper Arsenal boss (mastering the Repo Sovereign).
+    gate: {
+      unlock: 'tree:arsenal-sovereign',
+      masteryBoss: 'repo-sovereign',
+      masteryFeats: 2,
+      requirement: 'Master the Repo Sovereign (2 feats)',
+    },
     apply: (_p, _level, mods) => {
       mods.projectileCount += 1;
       mods.pierce += 1;
@@ -205,8 +214,10 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     description: 'KEYSTONE: +25% crit chance AND +70% crit damage — build a one-shot machine.',
     branch: 'arsenal',
     rarity: 'legendary',
-    cost: 440,
+    cost: 480,
     maxLevel: 1,
+    // GATED: a one-shot crit machine is earned behind the deeper Arsenal boss.
+    gate: { unlock: 'tree:arsenal-sovereign', requirement: 'Defeat the Repo Sovereign' },
     apply: (_p, _level, mods) => {
       mods.critChanceAdd += 0.25;
       mods.critDamageMult += 0.7;
@@ -307,6 +318,24 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     apply: (_p, _level, mods) => {
       mods.critChanceAdd += 0.08;
       mods.critDamageMult += 0.6;
+    },
+  },
+  // ── Creative addition: chain-clear on-kill explosion ────────────────────────
+  {
+    id: 'shrapnel-rounds',
+    name: 'Shrapnel Rounds',
+    description:
+      'KEYSTONE: every kill bursts into shrapnel — a 2.8m frag blast that can chain-clear a packed crowd.',
+    branch: 'arsenal',
+    rarity: 'legendary',
+    cost: 480,
+    maxLevel: 1,
+    // GATED behind the Foreman: a free corpse-explosion is build-defining clear.
+    gate: { unlock: 'tree:arsenal-foreman', requirement: 'Defeat Foreman Krill' },
+    apply: (_p, _level, _mods, effects) => {
+      effects.on('kill', (c) => {
+        c.dealArea(c.x, c.z, 2.8, 28); // modest dmg — value is the chain, not the number
+      });
     },
   },
 ];

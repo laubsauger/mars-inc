@@ -20,8 +20,8 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     tags: ['ramp', 'damage', 'conditional'],
     grantsTags: ['ramp'],
     rarity: 'uncommon',
-    maxLevel: 3,
-    baseWeight: 6,
+    maxLevel: 2,
+    baseWeight: 2, // was 6 — stand-still play fights the run-and-gun core, so keep it niche
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
