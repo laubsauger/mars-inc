@@ -119,6 +119,8 @@ export interface Player {
    *  lapses. Read by frenzy/bloodlust conditional cards. World owns the decay timer. */
   rage: number;
   rageTimer: number; // seconds left before the streak breaks (resets on each kill)
+  /** Panic (lowHp) trigger cooldown multiplier — <1 recharges the panic button faster (upgrades). */
+  panicCooldownMult: number;
   /** Orbital blades (T-orbit): spinning bodies circling the player that slice
    *  enemies they sweep. 0 = off. Damage scales with the build's damage mult. */
   orbitCount: number;
@@ -201,6 +203,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     timeWarp: 0,
     rage: 0,
     rageTimer: 0,
+    panicCooldownMult: 1,
     orbitCount: 0,
     orbitDamage: 7,
     orbitRadius: 6.6, // was 3.4 — pushed out to where the swarm actually closes in
@@ -281,6 +284,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.timeWarp = 0;
   p.rage = 0;
   p.rageTimer = 0;
+  p.panicCooldownMult = 1;
   p.orbitCount = 0;
   p.orbitDamage = 7;
   p.orbitRadius = 6.6;

@@ -88,7 +88,12 @@ const LOCAL_CROWD_RADIUS = 10; // m around the player counted as "nearby" for cr
 const STATIONARY_MOVE_DECAY = 2; // hold-ground ramp BLEEDS this× build-rate while moving
 const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky integer ticks,
 // not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.
-const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
+const LOW_HP_FRAC = 0.25; // health fraction below which the `lowHp` trigger fires (was 0.4 — too high; only fire when genuinely in danger)
+// Refractory cooldowns so heal/invuln triggers can't re-fire the instant they push you
+// back over the line → no accidental immortality. lowHp is a real panic button (long);
+// breather is a kite-reward (shorter, but still gated so in/out kiting can't spam it).
+const LOW_HP_REFRACTORY = 20; // s before lowHp can fire again (× player.panicCooldownMult; upgradeable)
+const BREATHER_REFRACTORY = 6; // s before breather can fire again
 const TIME_WARP_MULT = 0.4; // enemy dt scale while Time Dilation is active (you keep full speed)
 const RAGE_CAP = 12; // max kill-streak stacks (rage/frenzy cards)
 const RAGE_WINDOW = 3; // seconds since the last kill before the whole streak breaks
@@ -165,6 +170,10 @@ export class World {
   /** Edge state for the low-HP trigger (fires once each time you DROP below the
    *  threshold, not every step you're under it). */
   private wasLowHp = false;
+  /** Refractory timers (s) so heal/invuln triggers can't re-fire the instant they
+   *  push you back over the threshold (no accidental immortality). */
+  private lowHpCooldown = 0;
+  private breatherCooldown = 0;
   /** Were there enemies last step? → edge-detects a wave clear (all dead). */
   private hadEnemies = false;
   /** Enemies within LOCAL_CROWD_RADIUS last eval — edge-detects a local-clear (breather). */
@@ -722,7 +731,12 @@ export class World {
     // re-armed only after climbing back above it.
     const lowNow =
       this.player.maxHealth > 0 && this.player.health / this.player.maxHealth < LOW_HP_FRAC;
-    if (lowNow && !this.wasLowHp && this.effects.has('lowHp')) this.firePlayerTrigger('lowHp');
+    if (this.lowHpCooldown > 0) this.lowHpCooldown -= dt;
+    if (lowNow && !this.wasLowHp && this.lowHpCooldown <= 0 && this.effects.has('lowHp')) {
+      this.firePlayerTrigger('lowHp');
+      // Substantial — panic button, not immortality. Upgrades shorten it (panicCooldownMult).
+      this.lowHpCooldown = LOW_HP_REFRACTORY * this.player.panicCooldownMult;
+    }
     this.wasLowHp = lowNow;
     // waveClear: fire when the last enemy dies (clear-the-room payoffs). Checked
     // after splitters have spawned their children so a blob pop isn't a false clear.
@@ -734,8 +748,15 @@ export class World {
     // breather: fire when your LOCAL space clears (no enemy within 7m) — the
     // achievable "breathing room" payoff in a design where a full arena clear isn't.
     const nearbyNow = this.lastNearby > 0;
-    if (!nearbyNow && this.hadNearby && this.effects.has('breather')) {
+    if (this.breatherCooldown > 0) this.breatherCooldown -= dt;
+    if (
+      !nearbyNow &&
+      this.hadNearby &&
+      this.breatherCooldown <= 0 &&
+      this.effects.has('breather')
+    ) {
       this.firePlayerTrigger('breather');
+      this.breatherCooldown = BREATHER_REFRACTORY;
     }
     this.hadNearby = nearbyNow;
 
@@ -1136,6 +1157,8 @@ export class World {
     this.effects.reset();
     this.recentCritTimer = 0;
     this.wasLowHp = false;
+    this.lowHpCooldown = 0;
+    this.breatherCooldown = 0;
     this.hadEnemies = false;
     this.hadNearby = false;
     this.lastNearby = 0;

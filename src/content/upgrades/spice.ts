@@ -186,30 +186,8 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
         ctx.fx.push('chain', ctx.x, ctx.z);
       }),
   },
-  {
-    id: 'last-rites',
-    name: 'Phoenix Protocol',
-    description: 'Dropping to low HP ERUPTS — a 7m, 40-dmg nova + 1.5s of invulnerability.',
-    tags: ['aoe', 'defense'],
-    grantsTags: ['panic'],
-    rarity: 'rare',
-    maxLevel: 1,
-    baseWeight: 4,
-    synergyWeight: 2,
-    role: 'liability',
-    riskTier: 1,
-    previewStats: (lvl) => [
-      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
-      { label: 'Low-HP nova', from: lvl === 0 ? '—' : '40 dmg', to: '40 dmg' },
-      { label: 'Invuln', from: lvl === 0 ? '—' : '1.5s', to: '1.5s' },
-    ],
-    apply: ({ effects }) =>
-      effects.on('lowHp', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 7, 40);
-        ctx.player.invuln = Math.max(ctx.player.invuln, 1.5);
-        ctx.fx.push('impact', ctx.x, ctx.z, 7, 0, ImpactProfile.Blast);
-      }),
-  },
+  // (Removed 'last-rites' — it was a weaker duplicate of the legendary Phoenix Protocol
+  //  panic nova in directions.ts. Same concept = one card, not two.)
 
   // ── Legendary ───────────────────────────────────────────────────────────────
   {

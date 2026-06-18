@@ -44,6 +44,12 @@ export interface UpgradeDefinition {
   description: string;
   tags: readonly string[];
   rarity: Rarity;
+  /** Per-LEVEL rarity ladder (optional): the card's rarity CLIMBS as you re-pick it,
+   *  so one card is a rare on first pick and a legendary on the next — a "rarity
+   *  upgrade", not a separate duplicate card. Index = owned level being acquired;
+   *  capped at the last entry. Length should equal maxLevel. Falls back to `rarity`.
+   *  Drives draft weighting + the displayed tier; the effect stacks per pick as usual. */
+  rarityTiers?: readonly Rarity[];
   maxLevel: number;
   baseWeight: number;
   /** Extra weight per matching tag already taken (synergy bias, §9.4). */
@@ -261,6 +267,14 @@ export interface DraftParams {
 // you're building can still re-appear, just not dominate.
 const REPEAT_DAMP = 0.55;
 
+/** The rarity a card presents at a given owned level — climbs along `rarityTiers`
+ *  (a rarity upgrade), capped at the last tier; falls back to the flat `rarity`. */
+export function effectiveRarity(def: UpgradeDefinition, ownedLevel: number): Rarity {
+  const t = def.rarityTiers;
+  if (!t || t.length === 0) return def.rarity;
+  return t[Math.min(ownedLevel, t.length - 1)]!;
+}
+
 function weightOf(
   u: UpgradeDefinition,
   counts: Map<string, number>,
@@ -279,7 +293,8 @@ function weightOf(
   if (u.requiresAllTags) for (const t of u.requiresAllTags) synergy += counts.get(t) ?? 0;
   synergy = Math.min(synergy, 6); // cap the snowball — synergy biases, never dominates
   let w =
-    (u.baseWeight + synergy * u.synergyWeight) * rarityWeight(u.rarity, level, luck, rarityBias);
+    (u.baseWeight + synergy * u.synergyWeight) *
+    rarityWeight(effectiveRarity(u, ownedLevel), level, luck, rarityBias);
   // Damp the EXACT card by how many levels of it you already own → forces variety.
   if (ownedLevel > 0) w /= 1 + ownedLevel * REPEAT_DAMP;
   if (u.weightRules) {
@@ -324,7 +339,8 @@ export function rollDraft(
   const rarityBias = params.rarityBias;
   const counts = ownedTags(registry, levels);
   let pool = available(registry, levels, params.banished, params.gates, counts);
-  if (params.rarityFilter) pool = pool.filter((u) => params.rarityFilter!.has(u.rarity));
+  if (params.rarityFilter)
+    pool = pool.filter((u) => params.rarityFilter!.has(effectiveRarity(u, taken(levels, u.id))));
   const picks: UpgradeDefinition[] = [];
 
   while (picks.length < count && pool.length > 0) {

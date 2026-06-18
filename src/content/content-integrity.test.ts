@@ -20,6 +20,25 @@ describe('content integrity', () => {
     expect(dupes).toEqual([]);
   });
 
+  it('every draft upgrade NAME is unique (no duplicate cards under one name)', () => {
+    // A shared display name = two cards that read as the same upgrade but stack as
+    // separate effects (the Phoenix Protocol bug). Same concept → one card with a
+    // level / rarity-tier ladder, not a copy. Guards that going forward.
+    const names = DRAFT_POOL.map((u) => u.name);
+    const dupes = names.filter((n, i) => names.indexOf(n) !== i);
+    expect(dupes).toEqual([]);
+  });
+
+  it('rarityTiers (rarity-upgrade ladder) matches the card maxLevel', () => {
+    const bad: string[] = [];
+    for (const u of DRAFT_POOL) {
+      if (u.rarityTiers && u.rarityTiers.length !== u.maxLevel) {
+        bad.push(`${u.id}: ${u.rarityTiers.length} tiers vs maxLevel ${u.maxLevel}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('draft prerequisites / exclusions reference real cards', () => {
     const ids = new Set(DRAFT_POOL.map((u) => u.id));
     const missing: string[] = [];

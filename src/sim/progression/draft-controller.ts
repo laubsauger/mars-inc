@@ -21,6 +21,7 @@ import {
   rollDraft,
   available,
   applyUpgrade,
+  effectiveRarity,
   taken,
   isOffense,
   OFFENSE_TAGS,
@@ -285,7 +286,12 @@ export class DraftController {
   private ensureMilestone(hand: UpgradeDefinition[], exclude: Set<string>): UpgradeDefinition[] {
     const lvl = this.deps.player.level;
     if (lvl <= 0 || lvl % MILESTONE_EVERY !== 0) return hand;
-    if (hand.some((d) => INTERESTING_RARITIES.has(d.rarity))) return hand; // already spicy
+    if (
+      hand.some((d) =>
+        INTERESTING_RARITIES.has(effectiveRarity(d, taken(this.upgradeLevels, d.id))),
+      )
+    )
+      return hand; // already spicy (by the card's CURRENT tier)
     const shownIds = new Set(exclude);
     for (const d of hand) shownIds.add(d.id);
     const [pick] = rollDraft(DRAFT_POOL, this.upgradeLevels, this.deps.rng, {
@@ -298,7 +304,9 @@ export class DraftController {
     });
     if (!pick) return hand; // pool had nothing rare+ left → keep the common hand (V11)
     // Replace a common slot (prefer the last, leave Lock-held slot 0 alone).
-    const swapAt = hand.map((d) => d.rarity).lastIndexOf('common');
+    const swapAt = hand
+      .map((d) => effectiveRarity(d, taken(this.upgradeLevels, d.id)))
+      .lastIndexOf('common');
     if (swapAt >= 0) hand[swapAt] = pick;
     else hand.push(pick);
     return hand;

@@ -74,7 +74,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'adrenaline-dump',
     name: 'Adrenaline Dump',
     description:
-      'Dropping below 40% health blasts a 7m shockwave (12 damage + heavy knockback) to clear space.',
+      'Dropping below 25% health blasts a 7m shockwave (12 damage + heavy knockback) to clear space.',
     tags: ['control', 'risk', 'panic'],
     grantsTags: ['panic'],
     rarity: 'uncommon',
@@ -102,7 +102,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'last-ditch-protocol',
     name: 'Last-Ditch Protocol',
     description:
-      'Dropping below 40% health vents a 40-damage nova (7m) and heals you for 10% max HP.',
+      'Dropping below 25% health vents a 40-damage nova (7m) and heals you for 10% max HP.',
     tags: ['risk', 'panic', 'explosive'],
     grantsTags: ['panic'],
     rarity: 'rare',
@@ -162,8 +162,8 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'overtime-bonus',
     name: 'Overtime Bonus',
     description:
-      'Opening up space (no enemy within 10m) grants 0.6s of invulnerability — kite to reset.',
-    tags: ['sustain', 'tempo'],
+      'Opening up space (no enemy within 10m) patches a big 10% of max health — kite to recover hard.',
+    tags: ['sustain', 'defense'],
     grantsTags: ['sustain'],
     rarity: 'rare',
     maxLevel: 1,
@@ -172,10 +172,13 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['sustain'],
     role: 'converter',
     riskTier: 0,
-    previewStats: () => [{ label: 'Invuln on clearing space', from: '—', to: '0.6s' }],
+    previewStats: () => [{ label: 'Heal on clearing space', from: '—', to: '10% max HP' }],
     apply: ({ effects }) =>
       effects.on('breather', (ctx) => {
-        ctx.player.invuln = Math.max(ctx.player.invuln, 0.6); // brief breathing room
+        ctx.player.health = Math.min(
+          ctx.player.maxHealth,
+          ctx.player.health + ctx.player.maxHealth * 0.1,
+        );
       }),
   },
 
@@ -300,29 +303,65 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'phoenix-protocol',
     name: 'Phoenix Protocol',
     description:
-      'CAPSTONE: when you DROP below 40% health you ERUPT — huge nova, a 25% heal, and a second of invulnerability. Re-arms each time you fall back under 40%.',
+      'When you DROP below 25% health you ERUPT — a 7m nova + heal. Pick it again to UPGRADE it (Rare → Legendary: bigger blast, fatter heal). Re-arms on a cooldown (≈20s, shortened by recovery upgrades).',
     tags: ['risk', 'panic', 'explosive'],
-    rarity: 'legendary',
-    maxLevel: 1,
-    baseWeight: 2,
+    // RARITY-UPGRADE card: first pick is a Rare, the second elevates it to Legendary
+    // (the effect stacks). One identity, not two duplicate cards.
+    rarity: 'rare',
+    rarityTiers: ['rare', 'legendary'],
+    maxLevel: 2,
+    baseWeight: 4,
     synergyWeight: 4,
     requiresAnyTags: ['panic', 'risk', 'glass'],
     role: 'catastrophe',
     riskTier: 3,
     previewStats: (lvl) => [
-      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
-      { label: 'Low-HP nova', from: lvl === 0 ? '—' : '90 dmg', to: '90 dmg' },
-      { label: 'Heal', from: lvl === 0 ? '—' : '25% max HP', to: '25% max HP' },
+      {
+        label: 'Low-HP nova',
+        from: lvl === 0 ? '—' : `${50 * lvl} dmg`,
+        to: `${50 * (lvl + 1)} dmg`,
+      },
+      {
+        label: 'Heal',
+        from: lvl === 0 ? '—' : `${13 * lvl}% max HP`,
+        to: `${13 * (lvl + 1)}% max HP`,
+      },
     ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 7, 90);
+        ctx.dealArea(ctx.x, ctx.z, 7, 50);
         ctx.player.health = Math.min(
           ctx.player.maxHealth,
-          ctx.player.health + ctx.player.maxHealth * 0.25,
+          ctx.player.health + ctx.player.maxHealth * 0.13,
         );
-        ctx.player.invuln = Math.max(ctx.player.invuln, 1);
         ctx.fx.push('death', ctx.x, ctx.z, 2, 0, 0);
       }),
+  },
+  // PANIC SUPPORT — shorten the low-HP panic cooldown so the panic button recharges
+  // sooner. Gated behind owning a panic card (a dead pick without one).
+  {
+    id: 'combat-stims',
+    name: 'Combat Stims',
+    description:
+      'Your panic reflex recharges 30% faster per level — get your low-HP eruption back online sooner.',
+    tags: ['panic', 'sustain'],
+    requiresAnyTags: ['panic'],
+    grantsTags: ['panic'],
+    rarity: 'uncommon',
+    maxLevel: 2,
+    baseWeight: 6,
+    synergyWeight: 3,
+    role: 'engine',
+    riskTier: 0,
+    previewStats: (lvl) => [
+      {
+        label: 'Panic cooldown',
+        from: `×${Math.max(0.4, 1 - lvl * 0.3).toFixed(2)}`,
+        to: `×${Math.max(0.4, 1 - (lvl + 1) * 0.3).toFixed(2)}`,
+      },
+    ],
+    apply: ({ player }) => {
+      player.panicCooldownMult = Math.max(0.4, player.panicCooldownMult - 0.3);
+    },
   },
 ];

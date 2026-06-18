@@ -217,7 +217,7 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
     id: 'second-wind',
     name: 'Second Wind',
     description:
-      'On the brink, you EXPLODE into fury: dropping low heals 25, maxes your kill-streak, and grants 1.5s invuln.',
+      'On the brink, you EXPLODE into fury: dropping low heals 30 and instantly maxes your kill-streak.',
     tags: ['defense', 'rage'],
     grantsTags: ['rage', 'panic'],
     rarity: 'rare',
@@ -228,10 +228,9 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
     riskTier: 1,
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
-        heal(ctx.player, 25);
+        heal(ctx.player, 30); // was 25 + invuln; invuln removed (too strong), heal bumped slightly
         ctx.player.rage = 12;
         ctx.player.rageTimer = Math.max(ctx.player.rageTimer, 3);
-        ctx.player.invuln = Math.max(ctx.player.invuln, 1.5);
       }),
   },
 ];

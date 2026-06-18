@@ -33,7 +33,7 @@ describe('Batch 1 build-lever wiring', () => {
     const w = started();
     let fired = 0;
     w.effects.on('lowHp', () => fired++);
-    w.player.health = w.player.maxHealth * 0.3; // below LOW_HP_FRAC (0.4)
+    w.player.health = w.player.maxHealth * 0.2; // below LOW_HP_FRAC (0.25)
     w.step(STEP);
     expect(fired).toBe(1);
     // Still low next step → does NOT re-fire (edge, not per-step).

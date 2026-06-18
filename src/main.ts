@@ -99,6 +99,7 @@ import { detectTier, readDeviceHints, TIER_BUDGETS } from './render/quality';
 import { createLoop } from './core/loop';
 import { Input } from './core/input';
 import { World } from './sim/world';
+import { effectiveRarity } from './sim/progression/upgrades';
 import { createDevBridge } from './boot/dev-bridge';
 import { buildHudState } from './ui/hud-sync';
 import { buildProfileView, buildSettingsView } from './ui/profile-sync';
@@ -1215,7 +1216,7 @@ async function boot(parent: HTMLElement): Promise<void> {
               id: d.id,
               name: d.name,
               description: d.description,
-              rarity: d.rarity,
+              rarity: effectiveRarity(d, info.level), // climbs along rarityTiers per owned level
               tags: d.tags,
               level: info.level,
               maxLevel: info.maxLevel,
