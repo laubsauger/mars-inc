@@ -25,7 +25,7 @@ export class OrbitalBladeView {
   constructor(scene: Scene) {
     // Flattened octahedron → a thin diamond shard that reads as a spinning blade.
     this.blade = new InstancedMesh(
-      new OctahedronGeometry(0.55, 0),
+      new OctahedronGeometry(0.85, 0), // bigger shard to read the wider 2.4 slice footprint
       new MeshStandardMaterial({
         color: COL.sentinelSteel,
         emissive: COL.shieldCyan,

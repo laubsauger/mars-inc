@@ -59,6 +59,7 @@ export const RECOIL_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'converter',
     riskTier: 1,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
     apply: ({ effects }) =>
       effects.on('shot', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 3, 8);
@@ -100,6 +101,7 @@ export const RECOIL_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'catastrophe',
     riskTier: 3,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '6m', to: '6m' }],
     apply: ({ mods, effects }) => {
       mods.recoilMult += 0.7;
       let shots = 0;

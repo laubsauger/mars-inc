@@ -41,6 +41,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '2.4m', to: '2.4m' }],
     apply: ({ effects }) =>
       effects.on('crit', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 2.4, 7);
@@ -75,6 +76,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'converter',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
     apply: ({ effects }) =>
       effects.on('overkill', (ctx) => {
         const dmg = 8 + Math.min(50, ctx.magnitude * 0.6); // bigger overkill → bigger pop
@@ -85,7 +87,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'overpressure-vents',
     name: 'Overpressure Vents',
-    description: 'Every 6th shot vents a 5m concussive shockwave around you (16 dmg).',
+    description: 'Every 6th shot vents a 7m concussive shockwave around you (16 dmg).',
     tags: ['aoe', 'tempo'],
     rarity: 'uncommon',
     maxLevel: 3,
@@ -93,12 +95,17 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
+    // A vent per level → fires that many times more often (each level adds a counter).
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Vents / 6 shots', from: lvl === 0 ? '—' : `${lvl}`, to: `${lvl + 1}` },
+    ],
     apply: ({ effects }) => {
       let shots = 0;
       effects.on('shot', (ctx) => {
         if (++shots % 6 !== 0) return;
-        ctx.dealArea(ctx.x, ctx.z, 5, 16);
-        ctx.fx.push('impact', ctx.x, ctx.z, 5, 0, ImpactProfile.Blast);
+        ctx.dealArea(ctx.x, ctx.z, 7, 16);
+        ctx.fx.push('impact', ctx.x, ctx.z, 7, 0, ImpactProfile.Blast);
       });
     },
   },
@@ -170,6 +177,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3.5m', to: '3.5m' }],
     apply: ({ effects }) =>
       effects.on('crit', (ctx) => {
         if (ctx.targetIndex >= 0)
@@ -190,6 +198,11 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'liability',
     riskTier: 1,
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Low-HP nova', from: lvl === 0 ? '—' : '40 dmg', to: '40 dmg' },
+      { label: 'Invuln', from: lvl === 0 ? '—' : '1.5s', to: '1.5s' },
+    ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 7, 40);
@@ -212,6 +225,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 4,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
         heal(ctx.player, 6);
@@ -230,6 +244,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'catastrophe',
     riskTier: 1,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '8m', to: '8m' }],
     apply: ({ effects }) => {
       let kills = 0;
       effects.on('kill', (ctx) => {
@@ -365,6 +380,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
     apply: ({ effects }) => {
       let hits = 0;
       effects.on('hit', (ctx) => {
@@ -386,6 +402,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
         if ((ENEMY_BY_VARIANT[ctx.variant]?.threat ?? 0) < 8) return; // only real targets
@@ -405,6 +422,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '1.4m', to: '1.4m' }],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) => {
         const i = ctx.targetIndex;

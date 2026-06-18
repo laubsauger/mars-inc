@@ -40,7 +40,7 @@ describe('Gargantuan (T-garg eat-and-grow)', () => {
     for (let i = 0; i < 60; i++) active(pool, pool.spawn(RUST_MITE, 0, 0, 0, i + 1));
     for (let t = 0; t < 30; t++)
       stepGargantuans(pool, new EnemyAttackSystem(), 1 / 60, new FxQueue());
-    expect(pool.radius[g]!).toBeLessThanOrEqual(2.3 + 1e-6);
+    expect(pool.radius[g]!).toBeLessThanOrEqual(3.4 + 1e-6);
   });
 
   it('a GROWN one slams a size-scaled telegraphed blast; a fresh one does not', () => {

@@ -32,8 +32,8 @@ describe('orbital blades', () => {
     sys.setCount(1);
     const player = createPlayer();
     const pool = new EnemyPool();
-    // Blade orbits at radius 3.4; park the enemy right on the ring at +x.
-    const e = activeEnemyAt(pool, 3.4, 0);
+    // Park the enemy right on the orbit ring at +x (tracks player.orbitRadius).
+    const e = activeEnemyAt(pool, player.orbitRadius, 0);
     const before = pool.health[e]!;
 
     // Sweep ~one full revolution; the first tick lands when hitCd reaches 0.
@@ -79,8 +79,8 @@ describe('orbital blades', () => {
       sys.setCount(3);
       const player = createPlayer();
       const pool = new EnemyPool();
-      activeEnemyAt(pool, 3.0, 0.4);
-      activeEnemyAt(pool, -3.2, 0);
+      activeEnemyAt(pool, player.orbitRadius, 0.4); // on the orbit ring → blades actually bite
+      activeEnemyAt(pool, -player.orbitRadius, 0);
       let total = 0;
       const rng = new Rng(42);
       for (let t = 0; t < 60; t++) {

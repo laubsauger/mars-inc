@@ -37,6 +37,13 @@ describe('DraftController (T18/T41 lifecycle)', () => {
     expect(c.draft.length).toBeGreaterThan(0);
   });
 
+  it('a draft-economy card grants live rerolls mid-run (reconcile, T-economy)', () => {
+    const c = ctl();
+    const before = c.rerollsLeft; // STARTING_REROLLS = 2
+    expect(c.grant('second-opinion')).toBe(true); // +2 bonus rerolls
+    expect(c.rerollsLeft).toBe(before + 2);
+  });
+
   it('choose() applies the pick and closes the draft', () => {
     const c = ctl();
     openDraft(c);

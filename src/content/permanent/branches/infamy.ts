@@ -238,7 +238,7 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     id: 'spite-engine',
     name: 'Spite Engine',
     description:
-      'KEYSTONE: getting HIT detonates a retaliation blast — 1.5× the damage you took, dumped on everything within 5m. Make them pay for the bite.',
+      'KEYSTONE: getting HIT detonates a retaliation blast — 1.5× the damage you took, dumped on everything within 7m. Make them pay for the bite.',
     branch: 'infamy',
     rarity: 'legendary',
     cost: 460,
@@ -246,7 +246,7 @@ export const INFAMY_PERMANENTS: PermanentUpgrade[] = [
     apply: (_p, _level, _mods, effects) => {
       // `hurt` fires the step the player took damage; magnitude = damage taken (V3).
       effects.on('hurt', (c) => {
-        if (c.magnitude > 0) c.dealArea(c.x, c.z, 5, c.magnitude * 1.5);
+        if (c.magnitude > 0) c.dealArea(c.x, c.z, 7, c.magnitude * 1.5);
         c.fx.push('impact', c.x, c.z);
       });
     },

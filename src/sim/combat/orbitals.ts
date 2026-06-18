@@ -13,8 +13,11 @@ import { applyAreaDamage } from './aoe';
 
 const MAX_BLADES = 8;
 const ORBIT_SPEED = 3.2; // rad/s — visibly faster than drones (they're a weapon, not escorts)
-const BLADE_RADIUS = 1.3; // slice footprint per blade
-const HIT_PERIOD = 0.3; // s between damage ticks (the blade "bites" ~3.3×/s as it sweeps)
+const BLADE_RADIUS = 2.4; // slice footprint (was 1.3 — too thin to reliably catch a body)
+// Tick fast enough that consecutive sweep positions OVERLAP: at the wider orbit a blade
+// travels ~4.6m/tick, so a 2.4 footprint (4.8 diameter) leaves no gap to slip through —
+// the old 0.3s tick jumped ~6m between 2.6-wide bites, so enemies passed un-hit.
+const HIT_PERIOD = 0.22; // s between damage ticks
 
 export class OrbitalSystem {
   count = 0;

@@ -195,13 +195,7 @@ export class DraftController {
     if (!this.leveling) return;
     const def = this.draft[index];
     if (!def) return;
-    applyUpgrade(
-      def,
-      { player: this.deps.player, mods: this.deps.mods, effects: this.deps.effects },
-      this.upgradeLevels,
-    );
-    this.deps.stats.upgradesTaken += 1; // run stat (V20)
-    this.deps.afterApply(); // a pick may complete a weapon-evolution combo (T34, V18)
+    this.applyAndReconcile(def);
     this.pendingLevelUps -= 1;
     this.draft = [];
     this.leveling = false;
@@ -213,14 +207,30 @@ export class DraftController {
   grant(id: string): boolean {
     const def = DRAFT_POOL.find((u) => u.id === id);
     if (!def) return false;
+    this.applyAndReconcile(def);
+    return true;
+  }
+
+  /** Apply a pick + reconcile the LIVE draft-resource counters with any bonus the
+   *  card just granted (draft-economy cards bump player.bonus* mid-run; the live
+   *  counters were seeded once at reset, so we add the delta). */
+  private applyAndReconcile(def: UpgradeDefinition): void {
+    const p = this.deps.player;
+    const r0 = p.bonusRerolls;
+    const b0 = p.bonusBanishes;
+    const l0 = p.bonusLocks;
+    const t0 = p.bonusTagBanishes;
     applyUpgrade(
       def,
-      { player: this.deps.player, mods: this.deps.mods, effects: this.deps.effects },
+      { player: p, mods: this.deps.mods, effects: this.deps.effects },
       this.upgradeLevels,
     );
-    this.deps.stats.upgradesTaken += 1;
-    this.deps.afterApply();
-    return true;
+    this.rerollsLeft += p.bonusRerolls - r0;
+    this.banishesLeft += p.bonusBanishes - b0;
+    this.locksLeft += p.bonusLocks - l0;
+    this.tagBanishesLeft += p.bonusTagBanishes - t0;
+    this.deps.stats.upgradesTaken += 1; // run stat (V20)
+    this.deps.afterApply(); // a pick may complete a weapon-evolution combo (T34, V18)
   }
 
   // ── Rolling internals ───────────────────────────────────────────────────────

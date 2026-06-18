@@ -9,6 +9,22 @@
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 
+// Primers register one on-hit application PER LEVEL; the COUNT-CAPPED statuses
+// (shock/corrode/bleed) add a stack/hit per owned level. Show the real before→after
+// (owned `lvl` → lvl+1) so repeat picks read as an upgrade, not a flat "—".
+const stacksOf = (n: number) => `+${n} stack${n === 1 ? '' : 's'}/hit`;
+const stackRow = (label: string, lvl: number) => ({
+  label,
+  from: lvl === 0 ? '—' : stacksOf(lvl),
+  to: stacksOf(lvl + 1),
+});
+// A constant per-stack FACT (unchanged by level): show it on both sides once owned.
+const factRow = (label: string, val: string, lvl: number) => ({
+  label,
+  from: lvl === 0 ? '—' : val,
+  to: val,
+});
+
 export const REACTION_UPGRADES: UpgradeDefinition[] = [
   // ── New status primers ──────────────────────────────────────────────────
   {
@@ -24,9 +40,9 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
-    previewStats: () => [
-      { label: 'Shock on hit', from: '—', to: '+1 stack, 3s (max 6)' },
-      { label: 'Damage alone', from: '—', to: 'none — needs a converter' },
+    previewStats: (lvl) => [
+      stackRow('Shock stacks/hit', lvl),
+      factRow('Per stack', 'arms target — no dmg (3s, max 6)', lvl),
     ],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
@@ -46,9 +62,9 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
-    previewStats: () => [
-      { label: 'Corrode on hit', from: '—', to: '+1 stack, 4s (max 6)' },
-      { label: 'Damage taken', from: '—', to: '+6% per stack (up to +36%)' },
+    previewStats: (lvl) => [
+      stackRow('Corrode stacks/hit', lvl),
+      factRow('Per stack', '+6% dmg taken, 4s (max +36%)', lvl),
     ],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
@@ -68,9 +84,9 @@ export const REACTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
-    previewStats: () => [
-      { label: 'Bleed on hit', from: '—', to: '+1 stack, 4s' },
-      { label: 'DoT per stack', from: '—', to: '70% of the hit over 4s' },
+    previewStats: (lvl) => [
+      stackRow('Bleed stacks/hit', lvl),
+      factRow('DoT per stack', '70% of hit over 4s', lvl),
     ],
     // Bleed DoT scales with the hit (T70, V33): dps = 0.7 × hitDamage / 4s per stack.
     apply: ({ effects }) =>

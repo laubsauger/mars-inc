@@ -62,7 +62,7 @@ export const MECHANICS_UPGRADES: UpgradeDefinition[] = [
     riskTier: 0,
     apply: ({ player }) => {
       player.orbitCount += 2;
-      player.orbitRadius += 1.4;
+      player.orbitRadius += 2;
       player.orbitDamage += 14;
     },
   },
@@ -91,7 +91,7 @@ export const MECHANICS_UPGRADES: UpgradeDefinition[] = [
     id: 'reactive-plating',
     name: 'Reactive Plating',
     description:
-      'Getting hit BLASTS back: take damage → a 4m retaliation nova (scales with the hit).',
+      'Getting hit BLASTS back: take damage → a 7m retaliation nova (scales with the hit).',
     tags: ['defense', 'aoe'],
     grantsTags: ['thorns'],
     rarity: 'uncommon',
@@ -100,12 +100,17 @@ export const MECHANICS_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'converter',
     riskTier: 0,
+    // A handler per level → N retaliation novas per hit (damage scales with levels).
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Retaliation novas', from: lvl === 0 ? '—' : `${lvl}`, to: `${lvl + 1}` },
+    ],
     apply: ({ effects }) =>
       effects.on('hurt', (ctx) => {
         // The wave hits back harder the bigger the blow you took (magnitude = dmg).
         const dmg = 12 + ctx.magnitude * 1.5;
-        ctx.dealArea(ctx.x, ctx.z, 4, dmg);
-        ctx.fx.push('impact', ctx.x, ctx.z, 4, 0, ImpactProfile.Blast);
+        ctx.dealArea(ctx.x, ctx.z, 7, dmg);
+        ctx.fx.push('impact', ctx.x, ctx.z, 7, 0, ImpactProfile.Blast);
       }),
   },
   {
@@ -120,6 +125,10 @@ export const MECHANICS_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'converter',
     riskTier: 0,
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Retaliation', from: lvl === 0 ? '—' : '20+ dmg + shove', to: '20+ dmg + shove' },
+    ],
     apply: ({ effects }) =>
       effects.on('hurt', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 7, 20 + ctx.magnitude);

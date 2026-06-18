@@ -193,7 +193,7 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'powder-trail',
     name: 'Powder Trail',
-    description: 'Sprinting ignites a wake: each dash erupts a 5m blast where you launch (24 dmg).',
+    description: 'Sprinting ignites a wake: each dash erupts a 7m blast where you launch (24 dmg).',
     tags: ['aoe', 'mobility', 'explosive'],
     grantsTags: ['mobility'],
     rarity: 'uncommon',
@@ -202,10 +202,15 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'converter',
     riskTier: 0,
+    // Two owned levels = two blasts per dash (handler per level) → damage doubles.
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Sprint blast', from: `${24 * lvl} dmg`, to: `${24 * (lvl + 1)} dmg` },
+    ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 5, 24);
-        ctx.fx.push('impact', ctx.x, ctx.z, 5, 0, ImpactProfile.Blast);
+        ctx.dealArea(ctx.x, ctx.z, 7, 24);
+        ctx.fx.push('impact', ctx.x, ctx.z, 7, 0, ImpactProfile.Blast);
       }),
   },
   {

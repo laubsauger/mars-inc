@@ -93,6 +93,9 @@ const PLAYER_FIELDS: ReadonlyArray<[string, (p: Player) => number, (n: number) =
   ['Revives', (p) => p.reviveCharges, int0],
   ['Draft Size', (p) => p.draftSize, int0],
   ['Luck', (p) => p.luck, num1],
+  ['Rerolls', (p) => p.bonusRerolls, int0],
+  ['Banishes', (p) => p.bonusBanishes, int0],
+  ['Locks', (p) => p.bonusLocks, int0],
 ];
 
 const PLAYER_BOOL_FIELDS: ReadonlyArray<[string, (p: Player) => boolean]> = [

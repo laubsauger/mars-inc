@@ -30,6 +30,28 @@ describe('content integrity', () => {
     expect(missing).toEqual([]);
   });
 
+  it('no card is gated behind a tag nothing else provides (no dead gates)', () => {
+    // A tag gate (requiresAnyTags / requiresAllTags) only opens when SOME OTHER card
+    // the player owns provides that tag (in tags ∪ grantsTags). If no other card
+    // provides it, the gated card can never enter the pool — a dead gate. This is the
+    // dependency system's safety net: build-around payoffs stay out of the early pool,
+    // but every gate is guaranteed reachable from a primer/source.
+    const provide = (t: string): boolean =>
+      DRAFT_POOL.some((v) => v.tags.includes(t) || (v.grantsTags?.includes(t) ?? false));
+    const dead: string[] = [];
+    for (const u of DRAFT_POOL) {
+      const req = [...(u.requiresAnyTags ?? []), ...(u.requiresAllTags ?? [])];
+      for (const t of req) {
+        // Provided by some card OTHER than u (u can't open its own gate).
+        const byOther = DRAFT_POOL.some(
+          (v) => v.id !== u.id && (v.tags.includes(t) || (v.grantsTags?.includes(t) ?? false)),
+        );
+        if (!byOther) dead.push(`${u.id} needs '${t}' (provided elsewhere: ${provide(t)})`);
+      }
+    }
+    expect(dead).toEqual([]);
+  });
+
   it('every upgrade + node has a non-empty name and description', () => {
     for (const u of DRAFT_POOL) {
       expect(u.name.length, u.id).toBeGreaterThan(0);

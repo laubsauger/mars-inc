@@ -9,6 +9,15 @@ import type { UpgradeDefinition } from '../../sim/progression/upgrades';
  *  Shared by the conditional + the floor-ring visual so they never drift apart. */
 const POINT_BLANK_RANGE = 8; // was 5 — too tight to the body to ever matter at this camera
 
+// Burn/Chill are STRONGEST-APPLIES statuses (max dps/slow, not stacks), so extra
+// owned levels don't change a single hit — show the value on both sides once owned
+// instead of a bare "—" that reads like a missing "before".
+const factRow = (label: string, val: string, lvl: number) => ({
+  label,
+  from: lvl === 0 ? '—' : val,
+  to: val,
+});
+
 export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   // CONDITIONAL — risk build: huge damage while near death (corrupted curse vibe).
   {
@@ -67,6 +76,7 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     maxLevel: 3,
     baseWeight: 4,
     synergyWeight: 2,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '2.4m', to: '2.4m' }],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 2.4, 5);
@@ -79,11 +89,12 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     name: 'Incendiary Rounds',
     description: 'Hits set enemies on fire — Burn deals 90% of the hit as damage over 3s.',
     tags: ['burn', 'status'],
+    grantsTags: ['burn'], // SOURCE: explicitly opens the burn synergy lane (Pyromaniac, Plague Carrier…)
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 5,
     synergyWeight: 2,
-    previewStats: () => [{ label: 'Burn on hit', from: '—', to: '90% of hit over 3s' }],
+    previewStats: (lvl) => [factRow('Burn on hit', '90% of hit over 3s', lvl)],
     // DoT scales with the hit (T70, V33): dps = 0.9 × hitDamage / 3s.
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
@@ -96,11 +107,12 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     name: 'Cryo Rounds',
     description: 'Hits Chill enemies — 40% movement slow for 2s.',
     tags: ['chill', 'status', 'control'],
+    grantsTags: ['chill'], // SOURCE: opens the chill synergy lane (Permafrost…)
     rarity: 'uncommon',
     maxLevel: 2,
     baseWeight: 5,
     synergyWeight: 2,
-    previewStats: () => [{ label: 'Chill on hit', from: '—', to: '40% slow, 2s' }],
+    previewStats: (lvl) => [factRow('Chill on hit', '40% slow, 2s', lvl)],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) =>
         ctx.applyStatus(ctx.targetIndex, 'chill', { duration: 2, slowMult: 0.6 }),
@@ -112,6 +124,7 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     name: 'Focusing Optics',
     description: 'Critical hits mark enemies: +50% status damage for 4s.',
     tags: ['mark', 'crit', 'status'],
+    grantsTags: ['mark'], // SOURCE: opens the mark synergy lane
     rarity: 'rare',
     maxLevel: 1,
     baseWeight: 4,
@@ -131,6 +144,7 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     maxLevel: 1,
     baseWeight: 2,
     synergyWeight: 3,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '4.5m', to: '4.5m' }],
     apply: ({ effects }) =>
       effects.on('overkill', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 4.5, 8 + ctx.magnitude * 0.5);

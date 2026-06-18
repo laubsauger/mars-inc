@@ -60,6 +60,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'converter',
     riskTier: 1,
     previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '2.2m', to: '2.2m' },
       { label: 'Crit splash', from: `${40 * lvl}% of hit`, to: `${40 * (lvl + 1)}% of hit` },
     ],
     apply: ({ effects }) =>
@@ -73,7 +74,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'adrenaline-dump',
     name: 'Adrenaline Dump',
     description:
-      'Dropping below 40% health blasts a 4.5m shockwave (12 damage + heavy knockback) to clear space.',
+      'Dropping below 40% health blasts a 7m shockwave (12 damage + heavy knockback) to clear space.',
     tags: ['control', 'risk', 'panic'],
     grantsTags: ['panic'],
     rarity: 'uncommon',
@@ -82,10 +83,17 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'primer',
     riskTier: 1,
-    previewStats: () => [{ label: 'Panic shockwave', from: '—', to: '12 dmg + knockback, 4.5m' }],
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      {
+        label: 'Panic shockwave',
+        from: lvl === 0 ? '—' : '12 dmg + knockback',
+        to: '12 dmg + knockback',
+      },
+    ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
-        const r = 4.5;
+        const r = 7;
         ctx.dealArea(ctx.x, ctx.z, r, 12); // shove + light damage (knockback in the spec)
         ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
       }),
@@ -94,7 +102,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'last-ditch-protocol',
     name: 'Last-Ditch Protocol',
     description:
-      'Dropping below 40% health vents a 40-damage nova (5.5m) and heals you for 10% max HP.',
+      'Dropping below 40% health vents a 40-damage nova (7m) and heals you for 10% max HP.',
     tags: ['risk', 'panic', 'explosive'],
     grantsTags: ['panic'],
     rarity: 'rare',
@@ -104,13 +112,14 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['panic', 'risk'],
     role: 'converter',
     riskTier: 2,
-    previewStats: () => [
-      { label: 'Low-HP nova', from: '—', to: '40 dmg, 5.5m' },
-      { label: 'Heal', from: '—', to: '10% max HP' },
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Low-HP nova', from: lvl === 0 ? '—' : '40 dmg', to: '40 dmg' },
+      { label: 'Heal', from: lvl === 0 ? '—' : '10% max HP', to: '10% max HP' },
     ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 5.5, 40);
+        ctx.dealArea(ctx.x, ctx.z, 7, 40);
         ctx.player.health = Math.min(
           ctx.player.maxHealth,
           ctx.player.health + ctx.player.maxHealth * 0.1,
@@ -174,7 +183,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'slipstream-rounds',
     name: 'Slipstream Rounds',
-    description: 'Starting a sprint discharges a 14-damage burst in a 5m ring per level.',
+    description: 'Starting a sprint discharges a 14-damage burst in a 7m ring per level.',
     tags: ['movement', 'aoe', 'tempo'],
     grantsTags: ['sprint-build'],
     rarity: 'uncommon',
@@ -184,11 +193,12 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'primer',
     riskTier: 0,
     previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
       { label: 'Sprint burst', from: `${14 * lvl} dmg`, to: `${14 * (lvl + 1)} dmg` },
     ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
-        const r = 5;
+        const r = 7;
         ctx.dealArea(ctx.x, ctx.z, r, 14);
         // Scaled blast ring so the burst's reach is VISIBLE (dx = radius, Blast profile).
         ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
@@ -209,7 +219,10 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 1,
     // A single big burst per sprint (the player-trigger dealArea shoves via the
     // pipeline knockback) — distinct from Slipstream's light, stackable chip.
-    previewStats: () => [{ label: 'Sprint blast', from: '—', to: '36 dmg, 6.5m' }],
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '6.5m', to: '6.5m' },
+      { label: 'Sprint blast', from: lvl === 0 ? '—' : '36 dmg', to: '36 dmg' },
+    ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
         const r = 6.5;
@@ -273,6 +286,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['crit', 'tempo'],
     role: 'catastrophe',
     riskTier: 1,
+    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '2.6m', to: '2.6m' }],
     apply: ({ mods, effects }) => {
       mods.critChanceAdd += 0.05;
       effects.addConditional((c) => (c.recentCrit ? { fireRateMult: 1.25 } : {}));
@@ -295,6 +309,11 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     requiresAnyTags: ['panic', 'risk', 'glass'],
     role: 'catastrophe',
     riskTier: 3,
+    previewStats: (lvl) => [
+      { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
+      { label: 'Low-HP nova', from: lvl === 0 ? '—' : '90 dmg', to: '90 dmg' },
+      { label: 'Heal', from: lvl === 0 ? '—' : '25% max HP', to: '25% max HP' },
+    ],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 7, 90);

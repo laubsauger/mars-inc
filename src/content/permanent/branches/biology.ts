@@ -188,7 +188,7 @@ export const BIOLOGY_PERMANENTS: PermanentUpgrade[] = [
       // Pure SURVIVAL safety-net (a Hades Death-Defiance-style passive), NOT a damage
       // nova — the shove is knockback-only (0 damage) to buy space, no offense effect.
       effects.on('lowHp', (c) => {
-        c.dealArea(c.x, c.z, 5, 0); // 0 damage → just the pipeline knockback shove
+        c.dealArea(c.x, c.z, 7, 0); // 0 damage → just the pipeline knockback shove
         c.player.invuln = Math.max(c.player.invuln, 1.5);
         c.fx.push('impact', c.x, c.z);
       });

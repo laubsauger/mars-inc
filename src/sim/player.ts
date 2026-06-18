@@ -191,19 +191,19 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     droneInheritMods: false,
     novaInterval: 0,
     novaTimer: 0,
-    novaRadius: 4.2, // a usable footprint from level 1 (was 3.4 — felt weak/small)
+    novaRadius: 5.5, // reach PAST melee range (was 4.2 — too tight to the body)
     novaForce: 24, // punchier shove (was 16 — felt limp, esp. after weight-scaled KB)
     novaDamage: 10, // was 6
     novaPull: false,
     dashShockForce: 0,
-    dashShockRadius: 5,
+    dashShockRadius: 6.5, // was 5 — a dash blast that hugs the body barely clears space
     recoilTimer: 0,
     timeWarp: 0,
     rage: 0,
     rageTimer: 0,
     orbitCount: 0,
     orbitDamage: 7,
-    orbitRadius: 3.4,
+    orbitRadius: 6.6, // was 3.4 — pushed out to where the swarm actually closes in
     recoilSprintRecharge: false,
     corpseStore: false,
     corpseDetonate: false,
@@ -271,19 +271,19 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.droneInheritMods = false;
   p.novaInterval = 0;
   p.novaTimer = 0;
-  p.novaRadius = 4.2;
+  p.novaRadius = 5.5;
   p.novaForce = 24;
   p.novaDamage = 10;
   p.novaPull = false;
   p.dashShockForce = 0;
-  p.dashShockRadius = 5;
+  p.dashShockRadius = 6.5;
   p.recoilTimer = 0;
   p.timeWarp = 0;
   p.rage = 0;
   p.rageTimer = 0;
   p.orbitCount = 0;
   p.orbitDamage = 7;
-  p.orbitRadius = 3.4;
+  p.orbitRadius = 6.6;
   p.recoilSprintRecharge = false;
   p.corpseStore = false;
   p.corpseDetonate = false;
