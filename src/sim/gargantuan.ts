@@ -22,21 +22,23 @@ const MAX_EATS_PER_STEP = 12; // bound the work (Gargantuans are rare; few overl
 
 // Passive GROWTH-OVER-TIME (T-garg v2): a Gargantuan swells just by existing — it does
 // NOT need to eat to become a threat, and it does NOT slow as it grows (its danger is
-// the slam zone, not a chase). Ignore it and within seconds it's huge, hard-hitting,
-// and slamming a lethal ring — so you're pushed to deal with it early. Per-SECOND rates.
-const PASSIVE_GROW_RADIUS = 0.05; // body swells ~half a metre every 10s on its own
-const PASSIVE_GROW_HP = 4.5; // max-HP creeps up (also heals this much) → a tank if left
-const PASSIVE_GROW_CONTACT = 0.35; // its touch gets meaner as it bloats
+// the slam zone, not a chase). It DEVELOPS gradually: a slow per-step creep, so an
+// ignored one becomes a problem over ~half a minute, not in a couple seconds. Per-SECOND
+// rates (applied × dt each step → smooth growth across many steps).
+const PASSIVE_GROW_RADIUS = 0.018; // ~+0.5m every ~28s on its own → cap in ~2min
+const PASSIVE_GROW_HP = 2.2; // max-HP creeps up (also heals this much) → a tank if left
+const PASSIVE_GROW_CONTACT = 0.16; // its touch gets meaner as it bloats
 
-// Growing SLAM (T-garg): once past a small growth threshold a Gargantuan periodically
-// stomps a telegraphed blast whose RADIUS and DAMAGE scale with how big it's grown.
-// With passive growth it crosses the threshold in ~2s, so even a starved one quickly
-// carves a huge lethal zone every couple seconds. Kill it before it snowballs.
-const STOMP_CD = 2.6; // seconds between slams (was 3.2 — more relentless)
+// Growing SLAM (T-garg): once past a growth threshold a Gargantuan periodically stomps
+// a telegraphed blast whose RADIUS and DAMAGE scale with how big it's grown. The
+// threshold is reached only after it's visibly developed (~14s of passive bloat, sooner
+// if it's been eating), so a fresh one is harmless — but a long-ignored one carves a
+// huge lethal zone every couple seconds. Deal with it before it gets there.
+const STOMP_CD = 2.8; // seconds between slams
 const STOMP_FUSE = 0.85; // telegraph (ground ring) before it lands — dodgeable
-const STOMP_MIN_GROWTH = 0.12; // grows past this in ~2s of passive bloat → slams early
+const STOMP_MIN_GROWTH = 0.25; // ~14s of passive growth before its first slam (was instant-ish)
 const STOMP_RADIUS_MULT = 2.6; // slam radius = body radius × this (grows with the body)
-const STOMP_DMG_BASE = 22; // was 14 — a real bite even at the first slam
+const STOMP_DMG_BASE = 20; // a real bite by the time it earns its first slam
 const STOMP_DMG_PER_GROWTH = 34; // + this × (radius − base) → a maxed one is devastating
 
 /** True if this variant is small fodder a Gargantuan can swallow (not a boss, a
