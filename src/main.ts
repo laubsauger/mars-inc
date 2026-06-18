@@ -487,7 +487,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       const effMax = u.maxLevel + capLift;
       const next = levelCost(u, lvl, total, free); // next level (escalates + inflates)
       let spent = 0;
-      for (let k = 0; k < lvl; k++) spent += levelCost(u, k); // base for the refund/display
+      for (let k = 0; k < lvl; k++) spent += levelCost(u, k, total, free); // inflated → matches the full refund
       // Boss gate (T47/V25): trophies/mastery GATE, Glory PAYS.
       const locked = !permanentGateMet(u, save.current.unlocks, save.current.bossMastery);
       return {
@@ -586,12 +586,16 @@ async function boot(parent: HTMLElement): Promise<void> {
   // redistribute into a new build. Refund = Σ (node cost × owned level).
   uiActions.setResetPermanents(() => {
     const owned = save.current.permanentUpgrades;
+    // Refund the FULL Glory spent. Purchases pay the Labor-Costs–inflated price, so the
+    // refund must apply the same inflation (current total + free tier) — refunding the
+    // base cost only returned ~half. Using the current total refunds the whole stack.
+    const total = totalOwnedLevels();
+    const free = prestigeInflationFree(INFLATION_FREE, save.current.prestige.nodes);
     let refund = 0;
     for (const id of Object.keys(owned)) {
       const def = permanentById(id);
       if (!def) continue;
-      // Refund the exact Glory spent: the sum of each purchased level's escalating cost.
-      for (let k = 0; k < (owned[id] ?? 0); k++) refund += levelCost(def, k);
+      for (let k = 0; k < (owned[id] ?? 0); k++) refund += levelCost(def, k, total, free);
     }
     if (refund <= 0) return;
     save.mutate((p) => {
