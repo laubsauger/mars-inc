@@ -624,9 +624,10 @@ export function GloryTree() {
             // Boss-gated node not yet unlocked (T47/V25): tree-reachable but locked
             // behind a boss kill / mastery — reads LOCKED, not just unaffordable.
             const bossLocked = p.locked === true;
+            // Can BUY the next level right now (new node OR an owned one with room).
             const buyable = reachable && p.affordable && !maxed && !bossLocked;
-            // Unlocked + available to buy, but you can't afford it right now.
-            const pricedOut = reachable && !maxed && !owned && !p.affordable && !bossLocked;
+            // Reachable + has a next level but you CAN'T afford it (new OR partly-owned).
+            const needGlory = reachable && !maxed && !bossLocked && !p.affordable;
             const rarity = p.rarity;
             // Show the icon one step past the frontier (and always for keystones)
             // so the player can plan a route; deeper locked nodes stay a ⊘ mystery.
@@ -656,15 +657,17 @@ export function GloryTree() {
                 : rarity === 'rare'
                   ? 'ring-1 ring-bone/25'
                   : '';
-            // Five clearly distinct states:
-            //  • maxed (completed)        → gold ring + filled, gold ★ badge
-            //  • allocated (owned, < max) → solid branch colour + glow ring
-            //  • buyable (afford next)    → branch outline, pulsing
-            //  • PRICED OUT (afford fail) → branch colour, GOLD "needs glory" rim + ◈cost
-            //  • locked (prereq missing)  → grey, dashed, faint, ⊘
-            // Locked reads GREY+DASHED (unreachable); priced-out reads full branch
-            // colour with a GOLD cost glow (reachable, just save up) — never confuse
-            // "can't path here yet" with "can't afford yet".
+            // Distinct node states (readability pass). "Can't afford" always reads as
+            // an AMBER rim so the player learns one cue for "need more Glory":
+            //  • locked (prereq missing)   → grey, dashed, faint, ⊘
+            //  • boss-gated                → gold dashed 🔒
+            //  • maxed (completed)         → gold filled, ★ badge
+            //  • owned + can upgrade now   → solid branch + ring, PULSING (buy ready)
+            //  • owned + can't afford more → solid branch, DIMMED + amber rim (save up)
+            //  • new + affordable          → branch outline, PULSING
+            //  • new + can't afford        → faint branch, AMBER rim + ◈cost (save up)
+            const AMBER_RIM =
+              'shadow-[0_0_0_1.5px_rgba(255,176,52,0.75),0_0_14px_rgba(255,176,52,0.3)]';
             const stateClass = !reachable
               ? 'border-dashed border-bone/12 bg-pit/85 text-bone/15 opacity-45 saturate-0'
               : bossLocked
@@ -672,10 +675,12 @@ export function GloryTree() {
                 : maxed
                   ? 'border-gold bg-[radial-gradient(circle_at_35%_30%,rgba(255,210,63,0.28),rgba(7,5,4,0.92)_62%)] text-gold shadow-[0_0_26px_rgba(255,210,63,0.4)]'
                   : owned
-                    ? `${style.border} ${style.text} ${style.ring} bg-pit`
+                    ? buyable
+                      ? `${style.border} ${style.text} ${style.ring} bg-pit ring-2 animate-pulse`
+                      : `${style.border} ${style.text} bg-pit opacity-75 saturate-50 ${AMBER_RIM}`
                     : buyable
                       ? `${style.border} ${style.text} ring-2 ring-offset-0 animate-pulse`
-                      : `${style.border} ${style.text} bg-pit shadow-[0_0_0_1px_rgba(255,210,63,0.4),0_0_16px_rgba(255,210,63,0.2)]`;
+                      : `border-ember/40 bg-pit text-ember/80 ${AMBER_RIM}`;
             return (
               <button
                 key={p.id}
@@ -701,12 +706,12 @@ export function GloryTree() {
                     className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
                       maxed
                         ? 'border-gold bg-gold text-pit'
-                        : pricedOut
-                          ? 'border-gold/70 bg-pit text-gold'
+                        : needGlory
+                          ? 'border-ember/70 bg-pit text-ember'
                           : 'border-rust bg-umber text-bone'
                     }`}
                   >
-                    {maxed ? 'MAX' : pricedOut ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
+                    {maxed ? 'MAX' : needGlory ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
                   </span>
                 ) : null}
               </button>

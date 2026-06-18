@@ -148,7 +148,7 @@ export function defaultSettings(): SettingsData {
     cameraControls: false,
     showGrenadeRange: true,
     projectileLighting: true,
-    musicInCombat: false,
+    musicInCombat: true, // default ON — keep the music going; players can opt out in settings
   };
 }
 

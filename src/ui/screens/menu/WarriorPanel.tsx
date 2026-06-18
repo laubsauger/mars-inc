@@ -9,8 +9,6 @@ export function WarriorPanel() {
         <ul className="space-y-1 text-sm text-bone/80">
           <li>• Balanced movement &amp; durability</li>
           <li>• Starts with the Contractual Sidearm</li>
-          <li>• Sprint reloads weapon cooldowns (planned)</li>
-          <li>• Nearby scrap grants firing speed (planned)</li>
         </ul>
         <div className="mt-4 text-xs text-cyan">Selected — more warriors unlock later.</div>
       </div>

@@ -101,9 +101,6 @@ export function SettingsTabs({ footer }: { footer?: React.ReactNode }) {
       ) : (
         <>
           <SettingsControls />
-          <div className="mt-3 text-xs text-bone/40">
-            Key rebinding, controller, and colorblind palettes land in a later pass.
-          </div>
           {footer}
         </>
       )}

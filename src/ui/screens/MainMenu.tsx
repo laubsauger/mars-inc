@@ -54,7 +54,7 @@ function ActSelector() {
             return (
               <div
                 key={a.id}
-                className="rounded-sm border-2 border-dashed border-rust/45 bg-pit/55 px-3 py-2.5 text-left opacity-80"
+                className="rounded-sm border-2 border-dashed border-cyan/20 bg-cyan/5 px-3 py-2.5 text-left opacity-80"
                 title="Defeat the Gatekeeper in Act 1 to unlock"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -75,7 +75,9 @@ function ActSelector() {
               key={a.id}
               onClick={() => set({ arenaId: a.id as ArenaId })}
               className={`rounded-sm border-2 px-3 py-2.5 text-left shadow-[inset_0_0_0_1px_rgba(7,5,4,0.7)] transition focus:outline-none ${
-                selected ? 'bg-umber/85' : 'border-rust/55 bg-pit/45 hover:border-bone/40'
+                selected
+                  ? 'bg-cyan/15'
+                  : 'border-cyan/30 bg-cyan/8 hover:border-cyan/55 hover:bg-cyan/12'
               }`}
               style={selected ? { borderColor: a.accent } : undefined}
             >
@@ -300,7 +302,7 @@ export function MainMenu() {
     <>
       <MuteButton />
       <ActiveMenu />
-      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
+      <SocialFooter className="fixed bottom-3 left-6 z-20 short:bottom-1" />
     </>
   );
 }

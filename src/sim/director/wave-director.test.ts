@@ -86,11 +86,15 @@ describe('power-tiered escalation (T44 rework — HP steps, count sawtooth)', ()
     expect(powerProgress(1, 1)).toBe(5); // a boss = a full tier of progress
   });
 
-  it('applies the HP scale to spawned fodder (per-instance maxHp)', () => {
+  it('DAMPENS the HP scale for cheap fodder, applies it near-full to tanky units', () => {
     const pool = new EnemyPool();
-    pool.spawn(RUST_MITE, 0, 0, 0, 0, 2); // 2× scale
-    expect(pool.health[0]).toBe(RUST_MITE.maxHealth * 2);
-    expect(pool.maxHp[0]).toBe(RUST_MITE.maxHealth * 2);
+    pool.spawn(RUST_MITE, 0, 0, 0, 0, 3); // 3× nominal scale
+    // A mite (6 HP) barely scales — it stays meltable (upgrades shouldn't feel fake).
+    expect(pool.maxHp[0]!).toBeGreaterThan(RUST_MITE.maxHealth); // still scales SOME
+    expect(pool.maxHp[0]!).toBeLessThan(RUST_MITE.maxHealth * 3 * 0.6); // well under full 3×
+    // A tanky unit (FOREMAN_KRILL, 80+ HP) takes nearly the full curve.
+    pool.spawn(FOREMAN_KRILL, 0, 0, 0, 0, 3);
+    expect(pool.maxHp[1]!).toBeGreaterThan(FOREMAN_KRILL.maxHealth * 3 * 0.9);
   });
 });
 

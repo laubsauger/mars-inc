@@ -85,7 +85,7 @@ export function PauseScreen() {
           </div>
         </>
       )}
-      <SocialFooter className="fixed inset-x-0 bottom-3 z-20 short:bottom-1" />
+      <SocialFooter className="fixed bottom-3 left-6 z-20 short:bottom-1" />
     </div>
   );
 }

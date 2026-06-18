@@ -8,6 +8,17 @@ import type { SpatialHash } from '../spatial-hash';
 
 const _ids: number[] = [];
 
+const BASE_KB_RADIUS = 0.8; // a Rust Mite — the reference "full knockback" body weight
+/** Per-enemy knockback resistance from body weight (≈ size). Mite-sized fodder takes
+ *  the FULL kick (1.0); chunky units — brutes, sentinels, bosses, a fed Gargantuan —
+ *  shrug most of it off (a boss ≈ 0.19). Falls off as (base/radius)^1.5 so it tracks
+ *  the unit's live size (the Gargantuan gets heavier as it grows). Pure (V16). */
+export function kbScale(pool: EnemyPool, i: number): number {
+  const r = pool.radius[i]!;
+  if (r <= BASE_KB_RADIUS) return 1; // mite-sized or smaller → full kick
+  return Math.pow(BASE_KB_RADIUS / r, 1.5);
+}
+
 /** Push every enemy within `radius` of (cx,cz) radially outward. Returns count. */
 export function radialPush(
   pool: EnemyPool,
@@ -28,8 +39,9 @@ export function radialPush(
     if (d2 > r2) continue;
     const d = Math.sqrt(d2);
     const inv = d > 1e-3 ? 1 / d : 0;
-    pool.kbX[i]! += dx * inv * force;
-    pool.kbZ[i]! += dz * inv * force;
+    const f = force * kbScale(pool, i); // heavier bodies resist the shove
+    pool.kbX[i]! += dx * inv * f;
+    pool.kbZ[i]! += dz * inv * f;
     pushed++;
   }
   return pushed;
@@ -76,8 +88,9 @@ export function directionalPush(
       bx = fwdX;
       bz = fwdZ;
     }
-    pool.kbX[i]! += bx * force;
-    pool.kbZ[i]! += bz * force;
+    const f = force * kbScale(pool, i); // heavier bodies resist the shove
+    pool.kbX[i]! += bx * f;
+    pool.kbZ[i]! += bz * f;
     pushed++;
   }
   return pushed;
@@ -95,6 +108,7 @@ export function knockbackFrom(
   const dz = pool.posZ[i]! - sz;
   const d = Math.hypot(dx, dz);
   const inv = d > 1e-3 ? 1 / d : 0;
-  pool.kbX[i]! += dx * inv * force;
-  pool.kbZ[i]! += dz * inv * force;
+  const f = force * kbScale(pool, i); // heavier bodies resist the shove
+  pool.kbX[i]! += dx * inv * f;
+  pool.kbZ[i]! += dz * inv * f;
 }

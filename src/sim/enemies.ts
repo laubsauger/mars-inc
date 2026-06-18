@@ -225,7 +225,14 @@ export class EnemyPool {
     this.prevZ[i] = z;
     this.velX[i] = 0;
     this.velZ[i] = 0;
-    this.health[i] = type.maxHealth * hpScale; // difficulty scaling (T44)
+    // Spawn-HP scaling (T44) keeps the late crowd a threat — BUT cheap FODDER must not
+    // turn into HP sponges that eat upgraded shots: that makes upgrades feel fake (V12
+    // spirit) and kills the mow-down power fantasy ("a Rust Mite takes 3 hits of a
+    // maxed build"). Dampen the scale by how tanky the unit is at BASE: a mite (6 HP)
+    // barely scales (stays ~1-shot), a brute/boss (80+ HP) takes nearly the full curve.
+    const tank = Math.min(1, type.maxHealth / 80); // 0 (mite) … 1 (80+ HP)
+    const effScale = 1 + (hpScale - 1) * (0.2 + 0.8 * tank);
+    this.health[i] = type.maxHealth * effScale;
     this.maxHp[i] = this.health[i]!;
     this.radius[i] = type.radius;
     this.speed[i] = type.speed;

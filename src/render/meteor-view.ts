@@ -5,8 +5,14 @@
 // explosion / knockback / gibs all come from the sim detonation FX (Blast impact +
 // corpseblast + death). Pure view (V2): FX-driven, never feeds back. Pooled, capped.
 //
-// WebGPU note (§B1): solid geometry + pre-created instanceColor, like the other
-// instanced views — flat additive ring for the telegraph, lit rock for the body.
+// PLAYER (Moonshot) vs HOSTILE (boss barrage, variant 1) read as DIFFERENT strikes:
+// the player's is molten orange, the hostile is a cold violet — BOTH the falling rock
+// AND the ground ring shift hue, so an incoming boss orbital never looks like your own.
+// The rock GLOW is a material emissive (not per-instance), so the two hues need two
+// rock meshes (a shared emissive can't be tinted per instance under WebGPU, §B1).
+//
+// WebGPU note (§B1): solid geometry + pre-created instanceColor on the ring (flat
+// additive), fixed-emissive meshes for the rocks.
 
 import {
   InstancedMesh,
@@ -26,16 +32,16 @@ const MAX = 16; // concurrent orbital strikes (rare — generous headroom)
 const START_Y = 36; // how high the rock spawns before it drops
 const RING_FLASH = 0.22; // s the ground ring flares after impact, then clears
 
-const ROCK = new Color(0x1a0d08); // charred body
-const ROCK_HOT = new Color(0xff7a2a); // molten leading face / glow
+const ROCK = new Color(0x1a0d08); // PLAYER charred body
+const ROCK_HOT = new Color(0xff7a2a); // PLAYER molten leading face / glow
+const ROCK_HOSTILE_BODY = new Color(0x140a20); // HOSTILE dark violet body
+const ROCK_HOSTILE_HOT = new Color(0.55, 0.2, 1.25); // HOSTILE cold-violet glow
 const RING = new Color(1.0, 0.32, 0.1); // PLAYER Moonshot: danger orange-red
-// HOSTILE boss meteor (T44): a cold VIOLET strike so the player never mistakes an
-// incoming boss orbital for their own. Ring + rock body both shift to this hue.
-const RING_HOSTILE = new Color(0.62, 0.16, 1.0);
-const ROCK_HOSTILE = new Color(0.5, 0.18, 1.1); // multiplies the rock body toward violet
+const RING_HOSTILE = new Color(0.62, 0.16, 1.0); // HOSTILE boss meteor: cold violet
 
 export class MeteorView {
-  private rock: InstancedMesh;
+  private rockPlayer: InstancedMesh; // orange-glow rocks
+  private rockHostile: InstancedMesh; // violet-glow rocks
   private ring: InstancedMesh;
   private dummy = new Object3D();
   private tmp = new Color();
@@ -51,26 +57,29 @@ export class MeteorView {
 
   constructor(scene: Scene) {
     // Faceted rock, lit + hot emissive so it reads as molten debris screaming in.
+    // One mesh per faction so each carries its own glow hue.
     const rockGeo = new IcosahedronGeometry(1, 0);
-    const rockMat = new MeshStandardMaterial({
-      color: ROCK.clone(),
-      roughness: 0.85,
-      metalness: 0.1,
-      emissive: ROCK_HOT.clone(),
-      emissiveIntensity: 1.1,
-      toneMapped: false,
-      vertexColors: true, // per-instance body tint → violet for hostile meteors (T44)
-    });
-    this.rock = new InstancedMesh(rockGeo, rockMat, MAX);
-    this.rock.instanceMatrix.setUsage(DynamicDrawUsage);
-    const rockBuf = new Float32Array(MAX * 3).fill(1);
-    this.rock.instanceColor = new InstancedBufferAttribute(rockBuf, 3);
-    this.rock.instanceColor.setUsage(DynamicDrawUsage);
-    this.rock.frustumCulled = false;
-    this.rock.count = 0;
-    scene.add(this.rock);
+    const mkRock = (body: Color, hot: Color): InstancedMesh => {
+      const mat = new MeshStandardMaterial({
+        color: body.clone(),
+        roughness: 0.85,
+        metalness: 0.1,
+        emissive: hot.clone(),
+        emissiveIntensity: 1.1,
+        toneMapped: false,
+      });
+      const m = new InstancedMesh(rockGeo, mat, MAX);
+      m.instanceMatrix.setUsage(DynamicDrawUsage);
+      m.frustumCulled = false;
+      m.count = 0;
+      scene.add(m);
+      return m;
+    };
+    this.rockPlayer = mkRock(ROCK, ROCK_HOT);
+    this.rockHostile = mkRock(ROCK_HOSTILE_BODY, ROCK_HOSTILE_HOT);
 
-    // Flat additive danger ring on the floor — the blast-zone telegraph.
+    // Flat additive danger ring on the floor — the blast-zone telegraph (per-instance
+    // colour, so player orange vs hostile violet share one mesh).
     const ringGeo = new RingGeometry(0.82, 1.0, 48);
     const ringMat = new MeshBasicMaterial({
       transparent: true,
@@ -111,7 +120,8 @@ export class MeteorView {
   }
 
   update(dt: number): void {
-    let rockN = 0;
+    let rockP = 0;
+    let rockH = 0;
     let ringN = 0;
     for (let i = this.count - 1; i >= 0; i--) {
       this.age[i]! += dt;
@@ -125,6 +135,7 @@ export class MeteorView {
       const r = this.radius[i]!;
       const cx = this.tx[i]!;
       const cz = this.tz[i]!;
+      const hostile = this.hostile[i]! === 1;
 
       // ── Falling rock (only until it lands) ──────────────────────────────────
       if (t < 1) {
@@ -135,9 +146,8 @@ export class MeteorView {
         this.dummy.rotation.set(this.age[i]! * 6.0, this.age[i]! * 4.3, this.age[i]! * 5.1);
         this.dummy.scale.setScalar(s);
         this.dummy.updateMatrix();
-        this.rock.setMatrixAt(rockN, this.dummy.matrix);
-        this.rock.setColorAt(rockN, this.hostile[i] ? ROCK_HOSTILE : this.tmp.setRGB(1, 1, 1));
-        rockN++;
+        if (hostile) this.rockHostile.setMatrixAt(rockH++, this.dummy.matrix);
+        else this.rockPlayer.setMatrixAt(rockP++, this.dummy.matrix);
       }
 
       // ── Ground danger ring (telegraph → impact flash) ───────────────────────
@@ -161,15 +171,16 @@ export class MeteorView {
       this.ring.setMatrixAt(ringN, this.dummy.matrix);
       this.ring.setColorAt(
         ringN,
-        this.tmp.copy(this.hostile[i] ? RING_HOSTILE : RING).multiplyScalar(bright),
+        this.tmp.copy(hostile ? RING_HOSTILE : RING).multiplyScalar(bright),
       );
       ringN++;
     }
-    this.rock.count = rockN;
+    this.rockPlayer.count = rockP;
+    this.rockHostile.count = rockH;
     this.ring.count = ringN;
-    this.rock.instanceMatrix.needsUpdate = true;
+    this.rockPlayer.instanceMatrix.needsUpdate = true;
+    this.rockHostile.instanceMatrix.needsUpdate = true;
     this.ring.instanceMatrix.needsUpdate = true;
-    if (this.rock.instanceColor) this.rock.instanceColor.needsUpdate = true;
     if (this.ring.instanceColor) this.ring.instanceColor.needsUpdate = true;
   }
 

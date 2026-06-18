@@ -288,7 +288,7 @@ export class PlayerView {
     // buff visibly "breathes". platePhase is advanced in syncHealthPlate above.
     if (this.buffGlow > 0.02) {
       this.buffAura.visible = true;
-      const pulse = 0.32 + 0.18 * Math.sin(this.platePhase * 4);
+      const pulse = 0.32 + 0.18 * Math.sin(this.platePhase * 1.1); // slow breathe, not a strobe
       this.buffAuraMat.opacity = Math.min(0.6, this.buffGlow * pulse * 2);
       const s = 1 + this.buffGlow * 0.18;
       this.buffAura.scale.set(s, s, s);
@@ -334,7 +334,7 @@ export class PlayerView {
     }
     this.shield.visible = true;
     const frac = charges / max;
-    const pulse = 0.5 + 0.5 * Math.sin(this.platePhase * 6);
+    const pulse = 0.5 + 0.5 * Math.sin(this.platePhase * 1.6); // slow shield breathe
     this.shieldMat.opacity = 0.12 + 0.16 * frac + 0.05 * pulse;
     this.shield.rotation.y = this.platePhase * 0.4;
   }

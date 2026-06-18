@@ -92,8 +92,11 @@ export class BossMarkerView {
       const r = pool.radius[i]!;
       const tier = this.tmp.copy(def.tier === 'final' ? GOLD : EMBER);
 
-      // ── Ground ring: pulsing radius marker under the boss ──
-      const pulse = 0.7 + 0.3 * Math.sin(this.phase * 3);
+      // ── Ground ring: radius marker under the boss. The ring ALONE reads as "this is
+      // the boss"; the pulse is just a slow breathe, not a strobe. A miniboss barely
+      // pulses (super-slow, shallow); the final boss gets a slightly stronger one.
+      const isFinal = def.tier === 'final';
+      const pulse = 0.7 + (isFinal ? 0.22 : 0.08) * Math.sin(this.phase * (isFinal ? 1.2 : 0.5));
       const ringScale = r * 2.4;
       this.dummy.position.set(x, 0.07, z);
       this.dummy.rotation.set(-Math.PI / 2, 0, 0); // flat on the floor
