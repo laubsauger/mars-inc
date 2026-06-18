@@ -696,22 +696,22 @@ export function GloryTree() {
                 {/* Always keep the node icon visible — the maxed ★ rides a corner
                     badge, it never covers the glyph (only locked hides it). */}
                 {bossLocked ? '🔒' : revealed ? node.icon : '⊘'}
+                {/* TOP-LEFT: maxed ★, else a small n/max level pip for any owned node
+                    (so a partly-levelled node ALWAYS shows its progress, even when the
+                    next level is unaffordable). */}
                 {maxed ? (
                   <span className="absolute -left-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-gold bg-pit text-[11px] leading-none text-gold shadow-[0_0_10px_rgba(255,210,63,0.5)]">
                     ★
                   </span>
+                ) : owned && revealed ? (
+                  <span className="absolute -left-1.5 -top-1.5 rounded-full border border-rust bg-umber px-1 text-[8px] font-bold leading-tight text-bone">
+                    {p.owned}/{p.maxLevel}
+                  </span>
                 ) : null}
-                {revealed ? (
-                  <span
-                    className={`absolute -bottom-2 -right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
-                      maxed
-                        ? 'border-gold bg-gold text-pit'
-                        : needGlory
-                          ? 'border-ember/70 bg-pit text-ember'
-                          : 'border-rust bg-umber text-bone'
-                    }`}
-                  >
-                    {maxed ? 'MAX' : needGlory ? `◈${p.cost}` : `${p.owned}/${p.maxLevel}`}
+                {/* BOTTOM-RIGHT: the next-level price when you can't afford it. */}
+                {revealed && needGlory ? (
+                  <span className="absolute -bottom-2 -right-2 rounded-full border border-ember/70 bg-pit px-1.5 py-0.5 text-[10px] font-bold text-ember">
+                    ◈{p.cost}
                   </span>
                 ) : null}
               </button>

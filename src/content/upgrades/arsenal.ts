@@ -449,7 +449,7 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
     name: 'Molotov Cocktail',
     description: 'GRENADE: your grenades set the blast zone on FIRE (burn).',
     tags: ['grenade', 'burn', 'status', 'aoe'],
-    grantsTags: ['grenade', 'burn'],
+    grantsTags: ['grenade', 'burn', 'molotov'],
     rarity: 'rare',
     maxLevel: 1,
     baseWeight: 4,
@@ -463,10 +463,11 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'napalm-doctrine',
     name: 'Napalm Doctrine',
-    description: 'CAPSTONE: grenades become a wide WALL OF FIRE — +radius, +damage, molotov burn.',
+    description:
+      'CAPSTONE: your Molotov fire erupts into a wide WALL OF FIRE — +radius, +damage, faster cooldown.',
     tags: ['grenade', 'burn', 'aoe', 'explosive'],
     grantsTags: ['grenade', 'burn'],
-    requiresAnyTags: ['grenade'],
+    requiresAllTags: ['molotov'], // a true UPGRADE of Molotov, not a parallel duplicate
     rarity: 'legendary',
     maxLevel: 1,
     baseWeight: 2,
