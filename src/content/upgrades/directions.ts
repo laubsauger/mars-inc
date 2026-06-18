@@ -134,10 +134,13 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'breather',
     name: 'Breather',
     description:
-      'Open up space (no enemy within 10m) to patch 4% max health per level — reward for kiting.',
+      'Open up space (no enemy within 10m) to patch 5% max health. Pick again to UPGRADE it (Uncommon → Rare: 10% total) — reward for kiting.',
     tags: ['sustain', 'defense'],
     grantsTags: ['sustain'],
+    // RARITY-UPGRADE: merges the old Breather + Overtime Bonus into one card that
+    // climbs Uncommon → Rare as you re-pick it (heal stacks 5% → 10%).
     rarity: 'uncommon',
+    rarityTiers: ['uncommon', 'rare'],
     maxLevel: 2,
     baseWeight: 5,
     synergyWeight: 2,
@@ -146,38 +149,15 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     previewStats: (lvl) => [
       {
         label: 'Heal on clearing space',
-        from: `${4 * lvl}% max HP`,
-        to: `${4 * (lvl + 1)}% max HP`,
+        from: `${5 * lvl}% max HP`,
+        to: `${5 * (lvl + 1)}% max HP`,
       },
     ],
     apply: ({ effects }) =>
       effects.on('breather', (ctx) => {
         ctx.player.health = Math.min(
           ctx.player.maxHealth,
-          ctx.player.health + ctx.player.maxHealth * 0.04,
-        );
-      }),
-  },
-  {
-    id: 'overtime-bonus',
-    name: 'Overtime Bonus',
-    description:
-      'Opening up space (no enemy within 10m) patches a big 10% of max health — kite to recover hard.',
-    tags: ['sustain', 'defense'],
-    grantsTags: ['sustain'],
-    rarity: 'rare',
-    maxLevel: 1,
-    baseWeight: 4,
-    synergyWeight: 2,
-    requiresAnyTags: ['sustain'],
-    role: 'converter',
-    riskTier: 0,
-    previewStats: () => [{ label: 'Heal on clearing space', from: '—', to: '10% max HP' }],
-    apply: ({ effects }) =>
-      effects.on('breather', (ctx) => {
-        ctx.player.health = Math.min(
-          ctx.player.maxHealth,
-          ctx.player.health + ctx.player.maxHealth * 0.1,
+          ctx.player.health + ctx.player.maxHealth * 0.05,
         );
       }),
   },
@@ -186,10 +166,14 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'slipstream-rounds',
     name: 'Slipstream Rounds',
-    description: 'Starting a sprint discharges a 14-damage burst in a 7m ring per level.',
-    tags: ['movement', 'aoe', 'tempo'],
+    description:
+      'Starting a sprint discharges a 16-damage burst in a 7m ring. Re-pick to UPGRADE (Uncommon → Uncommon → Rare detonation; +16 dmg each, up to 48).',
+    tags: ['movement', 'aoe', 'explosive'],
     grantsTags: ['sprint-build'],
+    // RARITY-UPGRADE: merges Slipstream Rounds + Detonation Dash into one sprint-burst
+    // ladder — the 3rd pick is the Rare "detonation" tier (burst stacks 16 → 32 → 48).
     rarity: 'uncommon',
+    rarityTiers: ['uncommon', 'uncommon', 'rare'],
     maxLevel: 3,
     baseWeight: 5,
     synergyWeight: 3,
@@ -197,39 +181,13 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 0,
     previewStats: (lvl) => [
       { label: 'Radius', from: lvl === 0 ? '—' : '7m', to: '7m' },
-      { label: 'Sprint burst', from: `${14 * lvl} dmg`, to: `${14 * (lvl + 1)} dmg` },
+      { label: 'Sprint burst', from: `${16 * lvl} dmg`, to: `${16 * (lvl + 1)} dmg` },
     ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
         const r = 7;
-        ctx.dealArea(ctx.x, ctx.z, r, 14);
+        ctx.dealArea(ctx.x, ctx.z, r, 16);
         // Scaled blast ring so the burst's reach is VISIBLE (dx = radius, Blast profile).
-        ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
-      }),
-  },
-  {
-    id: 'detonation-dash',
-    name: 'Detonation Dash',
-    description: 'Each sprint detonates a heavy 36-damage concussive blast in a 6.5m radius.',
-    tags: ['movement', 'aoe', 'explosive'],
-    grantsTags: ['sprint-build'],
-    rarity: 'rare',
-    maxLevel: 1,
-    baseWeight: 4,
-    synergyWeight: 3,
-    requiresAnyTags: ['sprint-build', 'movement'],
-    role: 'converter',
-    riskTier: 1,
-    // A single big burst per sprint (the player-trigger dealArea shoves via the
-    // pipeline knockback) — distinct from Slipstream's light, stackable chip.
-    previewStats: (lvl) => [
-      { label: 'Radius', from: lvl === 0 ? '—' : '6.5m', to: '6.5m' },
-      { label: 'Sprint blast', from: lvl === 0 ? '—' : '36 dmg', to: '36 dmg' },
-    ],
-    apply: ({ effects }) =>
-      effects.on('sprint', (ctx) => {
-        const r = 6.5;
-        ctx.dealArea(ctx.x, ctx.z, r, 36);
         ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
       }),
   },

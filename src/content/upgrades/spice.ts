@@ -19,16 +19,23 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'field-medic',
     name: 'Field Medic',
-    description: 'Patch up as you work: heal 1 HP per enemy slain (per level).',
+    description:
+      'Patch up as you work: heal 2 HP per kill. Re-pick to UPGRADE (Common → Uncommon → Rare; +2 HP/kill each, up to 6).',
     tags: ['defense'],
     grantsTags: ['lifesteal'],
+    // RARITY-UPGRADE: merges Field Medic + Vampiric Rounds into one lifesteal ladder
+    // that climbs Common → Uncommon → Rare (heal stacks 2 → 4 → 6 per kill).
     rarity: 'common',
+    rarityTiers: ['common', 'uncommon', 'rare'],
     maxLevel: 3,
     baseWeight: 9,
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
-    apply: ({ effects }) => effects.on('kill', (ctx) => heal(ctx.player, 1)),
+    previewStats: (lvl) => [
+      { label: 'Heal per kill', from: `${2 * lvl} HP`, to: `${2 * (lvl + 1)} HP` },
+    ],
+    apply: ({ effects }) => effects.on('kill', (ctx) => heal(ctx.player, 2)),
   },
   {
     id: 'hot-brass',
@@ -50,20 +57,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
   },
 
   // ── Uncommon ────────────────────────────────────────────────────────────────
-  {
-    id: 'vampiric-rounds',
-    name: 'Vampiric Rounds',
-    description: 'Drink the kill: heal 4 HP every time an enemy dies (per level).',
-    tags: ['defense'],
-    grantsTags: ['lifesteal'],
-    rarity: 'uncommon',
-    maxLevel: 3,
-    baseWeight: 7,
-    synergyWeight: 3,
-    role: 'engine',
-    riskTier: 0,
-    apply: ({ effects }) => effects.on('kill', (ctx) => heal(ctx.player, 4)),
-  },
+  // (Removed 'vampiric-rounds' — merged into Field Medic's Common→Uncommon→Rare ladder.)
   {
     id: 'corpse-bomb',
     name: 'Corpse Bomb',
