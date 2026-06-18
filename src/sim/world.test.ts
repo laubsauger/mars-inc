@@ -67,9 +67,17 @@ describe('boss reward (T43)', () => {
     w.step(DT);
     expect(w.boss.active).toBe(true);
 
-    // Kill it; within a couple steps the boss compacts out and the reward opens.
+    // Kill it; the boss compacts out, then after the savor-the-explosion delay
+    // (T43, ~1.4s) the reward overlay opens. Step well past it.
     w.enemies.health[bi] = 0;
-    for (let t = 0; t < 4 && !w.bossReward; t++) w.step(DT);
+    for (let t = 0; t < 400 && !w.bossReward; t++) {
+      if (w.leveling) {
+        w.choose(0); // boss XP can pop a level-up — dismiss it so the delay ticks
+        continue;
+      }
+      w.player.health = w.player.maxHealth; // don't let resumed waves kill us mid-test
+      w.step(DT);
+    }
 
     expect(w.ended).toBe(false); // a boss kill is a hinge, not the end of the run
     expect(w.bossReward).toBe(true); // 3-choice overlay is open
@@ -98,7 +106,17 @@ describe('act conclusion + victory (T75, V36)', () => {
     for (let i = 0; i < w.enemies.count; i++) {
       if (w.enemies.variant[i] === type.variant) w.enemies.health[i] = 0;
     }
-    for (let t = 0; t < 6 && !w.bossReward && !w.conclusion; t++) w.step(DT);
+    // The reward overlay now opens after a savor-the-explosion delay (T43, ~1.4s), so
+    // step through it. Keep the player topped up — resumed waves shouldn't kill us
+    // mid-helper (this tests the boss flow, not survival).
+    for (let t = 0; t < 400 && !w.bossReward && !w.conclusion; t++) {
+      if (w.leveling) {
+        w.choose(0); // boss XP can pop a level-up that freezes the sim — dismiss it
+        continue;
+      }
+      w.player.health = w.player.maxHealth;
+      w.step(DT);
+    }
     if (w.bossReward) w.chooseBossReward(0);
   }
 

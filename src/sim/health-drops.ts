@@ -10,7 +10,7 @@ import type { KillEvent } from './combat/weapon-system';
 
 export const MAX_HEALTH_DROPS = 24;
 
-const DROP_CHANCE = 0.02; // per ordinary kill
+const DROP_CHANCE = 0.03; // per ordinary kill (nudged up from 0.02 — a touch more sustain)
 const HEAL = 25; // flat heal per pickup (clamped to maxHealth)
 const PICKUP_RADIUS = 2.8; // generous walk-over collect (was 1.8 — felt too tight to grab)
 /** Seconds a medkit lingers before it decays. */

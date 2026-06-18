@@ -79,6 +79,9 @@ const ATTACK_LABEL: Record<string, string> = {
 };
 
 const COUNTDOWN_SECONDS = 3;
+/** Beat between a boss dying and its reward overlay rising — lets the player watch the
+ *  blood catastrophe play out in the (otherwise quiet) scene before the freeze (T43). */
+const BOSS_REWARD_DELAY = 1.4;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
 const LOCAL_CROWD_RADIUS = 7; // m around the player counted as "nearby" for crowd cards
 const STATIONARY_MOVE_DECAY = 2; // hold-ground ramp BLEEDS this× build-rate while moving
@@ -97,7 +100,8 @@ const ZERO_INPUT: InputSnapshot = {
   toggleAuto: false,
   mouseX: -1,
   mouseY: -1,
-  mouseInside: false,
+  mouseInside: true, // headless/default = cursor PRESENT; real input sends false only on
+  // an actual mouse-leave (so auto-fire works in tests + before the first real input).
   aimX: 0,
   aimZ: 0,
   hasAim: false,
@@ -201,6 +205,9 @@ export class World {
   bossReward = false;
   bossRewardChoices: BossReward[] = [];
   bossRewardId = 0; // bumps when the overlay opens (UI refresh key)
+  /** Countdown (s) after a boss dies before its reward overlay rises — the "savor the
+   *  explosion" beat (T43). 0 = idle. The sim runs during it so the scene plays the FX. */
+  private bossRewardDelay = 0;
 
   // Act conclusion (T75/T50, V36). After the FINAL boss of the act falls (and its
   // reward is claimed) the run freezes on a two-choice prompt: Extract (bank the
@@ -475,7 +482,11 @@ export class World {
     // Fire control (T-input): hold left-mouse to fire; Space toggles persistent
     // auto-fire. Default is manual so the player paces their own shots.
     if (this.input.toggleAuto) this.autoShoot = !this.autoShoot;
-    const firing = this.input.fire || this.autoShoot;
+    // Auto-fire only holds while the cursor is in the window. Otherwise leaving the
+    // window with auto-fire on would keep auto-TARGETING + firing forever, letting a
+    // player idle-farm. Held left-mouse always fires (you're clicking = mouse inside).
+    // (Dev builds force `mouseInside` true in the boot glue so idle-testing still works.)
+    const firing = this.input.fire || (this.autoShoot && this.input.mouseInside);
     // On-hit hook (T38 hit/crit triggers + T39 on-hit status) only when needed.
     this.hitTriggerDamage = 0;
     const onHit =
@@ -670,22 +681,42 @@ export class World {
 
     this.draftCtl.update(dt); // tick the flourish delay → open the draft when due
 
-    // Death ends the run (loss). EACH boss kill is a progression hinge: it opens a
-    // major in-run reward (freezes the sim) and the run continues — until the act's
-    // FINAL boss falls, which (after the reward) offers extract-or-Overrun (T75).
+    // Boss-reward delay (savor the kill): after a boss dies the sim keeps running for
+    // a beat so the player SEES the blood catastrophe explode in the otherwise-quiet
+    // scene, THEN the reward overlay rises + freezes (T43 polish). Ticks while active.
+    if (this.bossRewardDelay > 0) {
+      this.bossRewardDelay -= dt;
+      if (this.bossRewardDelay <= 0) this.openBossRewardOverlay();
+    }
+
+    // Death ends the run (loss). EACH boss kill is a progression hinge: it queues a
+    // major in-run reward (after the savor beat) and the run continues — until the
+    // act's FINAL boss falls, which then offers extract-or-Overrun (T75).
     if (!this.alive) this.end(false);
     else if (this.boss.justDefeated) this.onBossKilled();
   }
 
-  /** A boss fell this step. Advance the act sequence, grant the major reward, and —
-   *  if that was the act's final boss — queue the conclusion prompt (T75, V36). */
+  /** A boss fell this step. Count it + advance the act sequence NOW (so kill-time
+   *  banking/escalation fire immediately), but DELAY the reward overlay a beat so the
+   *  death FX gets to play in the running scene (T43 polish). */
   private onBossKilled(): void {
+    this.stats.bossKills += 1;
     this.director.advanceBossStage();
     this.pendingConclusion = this.director.actComplete();
-    this.openBossReward();
-    // If the boss offered no reward (empty pool) the reward overlay never opened, so
-    // jump straight to the conclusion when the act is complete.
-    if (!this.bossReward && this.pendingConclusion) this.openConclusion();
+    this.bossRewardDelay = BOSS_REWARD_DELAY;
+  }
+
+  /** Roll + raise the boss-reward overlay (freezes the sim). If the pool is empty,
+   *  skip straight to the conclusion when the act is complete. */
+  private openBossRewardOverlay(): void {
+    this.bossRewardDelay = 0;
+    this.bossRewardChoices = rollBossRewards(this.rewardCtx(), this.rng);
+    if (this.bossRewardChoices.length === 0) {
+      if (this.pendingConclusion) this.openConclusion();
+      return;
+    }
+    this.bossRewardId += 1;
+    this.bossReward = true;
   }
 
   /** Open the end-of-act conclusion prompt (freezes the sim like the boss reward). */
@@ -1012,6 +1043,7 @@ export class World {
     this.result = null;
     this.bossReward = false;
     this.bossRewardChoices = [];
+    this.bossRewardDelay = 0;
     this.conclusion = false;
     this.pendingConclusion = false;
     this.infinite = false;
@@ -1168,19 +1200,12 @@ export class World {
     this.cheated = true;
   }
 
-  /** Force-open the boss-reward draft (test the major-reward flow without a kill). */
+  /** Force-open the boss-reward draft (test the major-reward flow without a kill).
+   *  Dev counts the kill itself, then opens immediately (no savor delay). */
   devOpenBossReward(): void {
     this.cheated = true;
-    this.openBossReward();
-  }
-
-  /** Boss kill → open the 3-choice major reward and freeze the sim (T43, V22). */
-  private openBossReward(): void {
     this.stats.bossKills += 1;
-    this.bossRewardChoices = rollBossRewards(this.rewardCtx(), this.rng);
-    if (this.bossRewardChoices.length === 0) return; // nothing to offer → run continues
-    this.bossRewardId += 1;
-    this.bossReward = true;
+    this.openBossRewardOverlay();
   }
 
   /** Rich post-game summary for the end screen (T23): final weapon, the build

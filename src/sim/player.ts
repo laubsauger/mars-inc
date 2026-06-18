@@ -31,7 +31,7 @@ export const LILU_STATS: MovementStats = {
   turnResponsiveness: 1,
   collisionRadius: 0.7,
   sprintMultiplier: 1.8,
-  sprintDuration: 0.8,
+  sprintDuration: 0.95, // baseline dash a touch longer (was 0.8) — covers more ground
   sprintCooldown: 5,
   sprintCharges: 1,
   knockbackResistance: 0,

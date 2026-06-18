@@ -759,6 +759,11 @@ async function boot(parent: HTMLElement): Promise<void> {
           snap.hasAim = true;
         }
       }
+      // DEV only: keep auto-fire alive even with the cursor off-window (idle-testing).
+      // Set AFTER aim resolution above, so aim still drops to auto-target off-window —
+      // only the firing gate (world reads `mouseInside`) is overridden. In production
+      // the real value stands, so leaving the window stops auto-fire (no idle farming).
+      if (import.meta.env.DEV) snap.mouseInside = true;
       world.input = snap;
       const t0 = performance.now();
       world.step(dt);

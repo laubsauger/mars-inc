@@ -322,6 +322,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     prerequisites: [{ id: 'arc-garnishment', minLevel: 2 }],
     apply: ({ mods }) => {
+      mods.chainChance = Math.min(1, mods.chainChance + 0.2); // legendary → big proc bump
       mods.chainCount += 2;
       mods.chainRange += 4;
       mods.chainFalloff = Math.min(0.85, mods.chainFalloff + 0.15);

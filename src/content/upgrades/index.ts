@@ -148,14 +148,16 @@ const BASE_UPGRADES: UpgradeDefinition[] = [
     id: 'arc-garnishment',
     name: 'Arc Garnishment',
     description:
-      'Hits chain INSTANT lightning between enemies within 5m (starts 2 jumps, +1/level).',
+      'Hits have a 40% chance to arc INSTANT lightning to enemies within 5m (2 jumps). Per level: +15% chance, +1 jump, +reach.',
     tags: ['chain', 'energy'],
     rarity: 'rare',
     maxLevel: 4,
     baseWeight: 4,
     synergyWeight: 3,
     apply: ({ mods }) => {
-      // First pick lands a real chain (2 jumps); later levels grow the reach.
+      // First pick: a 40% proc, 2 jumps; later levels grow the proc chance + reach.
+      // Chain is NEVER a free 100% trigger from the get-go.
+      mods.chainChance = mods.chainChance === 0 ? 0.4 : Math.min(1, mods.chainChance + 0.15);
       mods.chainCount = mods.chainCount === 0 ? 2 : mods.chainCount + 1;
       mods.chainRange += 0.6;
     },

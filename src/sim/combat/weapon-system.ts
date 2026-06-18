@@ -466,7 +466,9 @@ export class WeaponSystem {
           if (onHit && inheritMods) onHit(e, out.crit, pr.procCoef[i]!, mit.toHealth);
 
           // Chain lightning: arc reduced damage to nearby enemies (Arc Garnishment).
-          if (inheritMods && mods.chainCount > 0) {
+          // PROBABILISTIC — a hit only arcs `chainChance` of the time (cards raise it
+          // from a sub-100% start), so chain is an upgradeable proc, not a free 100%.
+          if (inheritMods && mods.chainCount > 0 && rng.next() < mods.chainChance) {
             this.chainLightning(enemies, hash, e, pr, i, mods, rng, fx);
           }
 

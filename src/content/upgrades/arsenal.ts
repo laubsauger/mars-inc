@@ -351,6 +351,9 @@ export const ARSENAL_UPGRADES: UpgradeDefinition[] = [
       // The capstone leap over Ricochet Rounds: +3 hops, bounces hit at FULL damage
       // (retain → 1, vs the uncommon's 0.6 cap), an extra reach, and a lightning arc.
       mods.ricochet += 3;
+      // Grants a chain arc — seed its proc chance if this is the first chain source
+      // (taken via the ricochet branch), else raise the existing one.
+      mods.chainChance = mods.chainChance === 0 ? 0.45 : Math.min(1, mods.chainChance + 0.2);
       mods.chainCount = mods.chainCount === 0 ? 1 : mods.chainCount + 1;
       mods.ricochetRange += 3;
       mods.ricochetRetain = 1; // bounces deal full damage — the power tier of ricochet

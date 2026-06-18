@@ -52,6 +52,7 @@ export const SYNERGY_UPGRADES: UpgradeDefinition[] = [
     grantsTags: ['chain'],
     requiresAnyTags: ['chain'], // only after you own chain lightning
     apply: ({ mods }) => {
+      mods.chainChance = Math.min(1, mods.chainChance + 0.1); // also raises the arc proc
       mods.chainCount += 1;
       mods.chainRange += 1.5;
     },

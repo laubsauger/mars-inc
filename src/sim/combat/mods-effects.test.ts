@@ -108,7 +108,7 @@ describe('chain lightning', () => {
     const ws = new WeaponSystem(); // no weapons → fire() is a no-op
     ws.projectiles.spawn(5, 0, 0, 0, 0.2, 1, 0, NO_CRIT); // stationary, sits on A
 
-    const mods = { ...defaultMods(), chainCount: 1, chainRange: 6 };
+    const mods = { ...defaultMods(), chainCount: 1, chainChance: 1, chainRange: 6 }; // 100% arc for the test
     ws.step(createPlayer(), pool, hash, mods, new Rng(1), 1 / 60, new FxQueue());
 
     expect(pool.health[a]!).toBeLessThan(100); // direct hit

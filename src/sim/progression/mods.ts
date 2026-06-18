@@ -12,6 +12,7 @@ export interface RunMods {
   // CHAIN (lightning): instant, hits SEVERAL clustered enemies at once but only
   // hops a SHORT distance — a crowd-burst that wants packed enemies.
   chainCount: number; // lightning arcs to N nearby enemies on hit (0 = off)
+  chainChance: number; // 0..1 chance a hit ARCS at all (cards raise it; <1 from the start)
   chainRange: number; // SHORT max hop distance (world units)
   chainFalloff: number; // damage retained per arc hop (0..1)
   // RICOCHET: a single projectile that BOUNCES target→target sequentially with
@@ -46,6 +47,7 @@ export function defaultMods(): RunMods {
     critChanceAdd: 0,
     pierce: 0,
     chainCount: 0,
+    chainChance: 0, // raised by chain cards; never a free 100% trigger
     chainRange: 5, // short hops — chain is a packed-crowd tool
     chainFalloff: 0.7, // stays useful across several hops (it has no travel time)
     ricochet: 0,
