@@ -301,7 +301,37 @@ export class World {
     return this.draftCtl.heldLock;
   }
   upgradeInfo(def: UpgradeDefinition): ReturnType<DraftController['upgradeInfo']> {
-    return this.draftCtl.upgradeInfo(def);
+    return this.draftCtl.upgradeInfo(def, this.currentConditional());
+  }
+
+  /** Live conditional contribution active right now (read-only — no firingRamp/buffGlow
+   *  mutation, unlike evalConditionals). Lets the draft preview show the SAME current
+   *  damage/crit/fire-rate the pause sheet shows, so a card's baseline matches. */
+  private currentConditional(): ConditionalResult {
+    const e = this.enemies;
+    let nearest = Infinity;
+    let nearby = 0;
+    const nearR2 = LOCAL_CROWD_RADIUS * LOCAL_CROWD_RADIUS;
+    for (let i = 0; i < e.count; i++) {
+      const dx = e.posX[i]! - this.player.pos.x;
+      const dz = e.posZ[i]! - this.player.pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < nearest) nearest = d2;
+      if (d2 <= nearR2) nearby++;
+    }
+    return this.effects.evalConditionals({
+      enemiesOnScreen: e.count,
+      enemiesNearby: nearby,
+      nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
+      firingRampSec: this.firingRampSec,
+      hpFrac: this.player.maxHealth > 0 ? this.player.health / this.player.maxHealth : 0,
+      recentCrit: this.recentCritTimer > 0,
+      recoilActive: this.player.recoilTimer > 0,
+      stationarySec: this.stationarySec,
+      moving: this.movingSec > 0,
+      movingSec: this.movingSec,
+      rageStacks: this.player.rage,
+    });
   }
   choose(index: number): void {
     this.draftCtl.choose(index);
@@ -1348,6 +1378,8 @@ export class World {
       effects: this.effects,
       firingRampSec: this.firingRampSec,
       stationarySec: this.stationarySec,
+      movingSec: this.movingSec,
+      recentCrit: this.recentCritTimer > 0,
       upgradeLevels: this.draftCtl.upgradeLevels,
       weaponSystem: this.weaponSystem,
     });

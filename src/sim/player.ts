@@ -193,7 +193,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     droneInheritMods: false,
     novaInterval: 0,
     novaTimer: 0,
-    novaRadius: 5.5, // reach PAST melee range (was 4.2 — too tight to the body)
+    novaRadius: 7, // reach PAST melee range — 7m floor (was 4.2/5.5, too tight)
     novaForce: 24, // punchier shove (was 16 — felt limp, esp. after weight-scaled KB)
     novaDamage: 10, // was 6
     novaPull: false,
@@ -274,7 +274,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.droneInheritMods = false;
   p.novaInterval = 0;
   p.novaTimer = 0;
-  p.novaRadius = 5.5;
+  p.novaRadius = 7;
   p.novaForce = 24;
   p.novaDamage = 10;
   p.novaPull = false;

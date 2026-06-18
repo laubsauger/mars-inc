@@ -48,7 +48,13 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '2.4m', to: '2.4m' }],
+    previewStats: (lvl) => [
+      {
+        label: 'Spark burst',
+        from: lvl === 0 ? '—' : `${7 * lvl} dmg`,
+        to: `${7 * (lvl + 1)} dmg`,
+      },
+    ],
     apply: ({ effects }) =>
       effects.on('crit', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 2.4, 7);
@@ -70,7 +76,13 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'converter',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
+    previewStats: (lvl) => [
+      {
+        label: 'Corpse blast',
+        from: lvl === 0 ? '—' : `${8 * lvl}+ dmg`,
+        to: `${8 * (lvl + 1)}+ dmg`,
+      },
+    ],
     apply: ({ effects }) =>
       effects.on('overkill', (ctx) => {
         const dmg = 8 + Math.min(50, ctx.magnitude * 0.6); // bigger overkill → bigger pop
@@ -171,7 +183,13 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3.5m', to: '3.5m' }],
+    previewStats: (lvl) => [
+      {
+        label: 'Arc burst',
+        from: lvl === 0 ? '—' : `${10 * lvl} dmg`,
+        to: `${10 * (lvl + 1)} dmg`,
+      },
+    ],
     apply: ({ effects }) =>
       effects.on('crit', (ctx) => {
         if (ctx.targetIndex >= 0)
@@ -344,7 +362,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'pressure-cooker',
     name: 'Pressure Cooker',
-    description: 'Every 8th hit OVERLOADS the target — a 3m, 18-dmg detonation.',
+    description: 'Every 8th hit OVERLOADS the target — a 3m detonation (18 dmg per level).',
     tags: ['aoe', 'explosive'],
     rarity: 'uncommon',
     maxLevel: 2,
@@ -352,7 +370,13 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
+    previewStats: (lvl) => [
+      {
+        label: 'Detonation',
+        from: lvl === 0 ? '—' : `${18 * lvl} dmg`,
+        to: `${18 * (lvl + 1)} dmg`,
+      },
+    ],
     apply: ({ effects }) => {
       let hits = 0;
       effects.on('hit', (ctx) => {
@@ -394,7 +418,9 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '1.4m', to: '1.4m' }],
+    previewStats: (lvl) => [
+      { label: 'Bonus vs bosses', from: `+${50 * lvl}%`, to: `+${50 * (lvl + 1)}%` },
+    ],
     apply: ({ effects }) =>
       effects.on('hit', (ctx) => {
         const i = ctx.targetIndex;

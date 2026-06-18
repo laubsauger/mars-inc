@@ -158,6 +158,15 @@ export function previewUpgrade(
   mods: RunMods,
   player: Player,
   liveEffects?: BuildEffects,
+  // Live conditional contribution active RIGHT NOW (Momentum, rage, point-blank…). The
+  // static damage/fire-rate/crit rows fold this in so the card's NOW matches the pause
+  // sheet's CURRENT value (else the card showed only the run-mod layer, e.g. ×1.04 while
+  // the sheet read ×1.56). Neutral default = static-only.
+  liveCond: { damageMult: number; critAdd: number; fireRateMult: number } = {
+    damageMult: 1,
+    critAdd: 0,
+    fireRateMult: 1,
+  },
 ): UpgradeChange[] {
   let sandboxMods: RunMods;
   let sandboxPlayer: Player;
@@ -212,11 +221,20 @@ export function previewUpgrade(
     } else {
       const spec = MOD_LABELS[key];
       const fmt = spec?.[1] ?? num1;
-      changes.push({
-        label: spec?.[0] ?? humanize(key),
-        from: fmt(a as number),
-        to: fmt(b as number),
-      });
+      // Fold the live conditional into the offense rows so NOW matches the pause sheet.
+      let an = a as number;
+      let bn = b as number;
+      if (key === 'damageMult') {
+        an *= liveCond.damageMult;
+        bn *= liveCond.damageMult;
+      } else if (key === 'fireRateMult') {
+        an *= liveCond.fireRateMult;
+        bn *= liveCond.fireRateMult;
+      } else if (key === 'critChanceAdd') {
+        an += liveCond.critAdd;
+        bn += liveCond.critAdd;
+      }
+      changes.push({ label: spec?.[0] ?? humanize(key), from: fmt(an), to: fmt(bn) });
     }
   }
   for (const [label, read, fmt] of PLAYER_FIELDS) {

@@ -106,7 +106,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     id: 'repulsor-pulse',
     name: 'Repulsor Pulse',
     description:
-      'A repulsor shockwave knocks back + damages within ~4m . Each level: bigger radius, harder shove, faster pulse.',
+      'A repulsor shockwave knocks back + damages within 7m. Each level: bigger radius, harder shove, faster pulse.',
     tags: ['defense', 'control', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 5,
@@ -116,6 +116,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       if (player.novaInterval === 0) {
         player.novaInterval = 4.5; // first level enables it
         player.novaTimer = 1.5; // fire soon after taking it
+        player.novaRadius = Math.max(7, player.novaRadius); // 7m floor — a real space-clearer (was ~5.5)
       } else {
         // Each level: noticeably MORE reach (you can see the ring grow), a harder
         // shove, more damage, and a faster pulse.

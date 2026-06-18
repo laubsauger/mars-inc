@@ -35,6 +35,21 @@ export function RunSheet({ sheet, compact = false }: { sheet: SheetView; compact
             </div>
           ))}
         </div>
+        {/* Conditional buffs FIRING right now (Momentum, rage, point-blank, …) so the
+            "current" attribute values above are explained at a glance. */}
+        {sheet.activeBuffs.length > 0 && (
+          <div className="mt-3 border-t border-rust/30 pt-2">
+            <div className="mb-1 text-[11px] tracking-[0.3em] text-toxic">ACTIVE NOW</div>
+            <div className="flex flex-col gap-1">
+              {sheet.activeBuffs.map((b) => (
+                <div key={b.label} className="flex items-baseline justify-between gap-4 text-sm">
+                  <span className="text-toxic/80">{b.label}</span>
+                  <span className="font-bold text-toxic tabular-nums">{b.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Abilities / upgrades */}

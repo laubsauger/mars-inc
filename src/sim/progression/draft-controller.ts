@@ -112,13 +112,16 @@ export class DraftController {
 
   /** Per-option draft detail for the UI (T51): owned level, max level, and the
    *  numeric changes this pick would make to the live build. */
-  upgradeInfo(def: UpgradeDefinition): {
+  upgradeInfo(
+    def: UpgradeDefinition,
+    liveCond?: { damageMult: number; critAdd: number; fireRateMult: number },
+  ): {
     level: number;
     maxLevel: number;
     changes: UpgradeChange[];
   } {
     const owned = taken(this.upgradeLevels, def.id);
-    const auto = previewUpgrade(def, this.deps.mods, this.deps.player, this.deps.effects);
+    const auto = previewUpgrade(def, this.deps.mods, this.deps.player, this.deps.effects, liveCond);
     // Merge any DECLARED effect magnitudes (trigger cards the auto-preview can't read).
     const declared = def.previewStats?.(owned) ?? [];
     return { level: owned, maxLevel: def.maxLevel, changes: [...auto, ...declared] };

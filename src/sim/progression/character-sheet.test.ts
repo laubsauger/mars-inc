@@ -15,6 +15,8 @@ function ctx(over: Partial<SheetContext> = {}): SheetContext {
     effects: new BuildEffects(),
     firingRampSec: 0,
     stationarySec: 0,
+    movingSec: 0,
+    recentCrit: false,
     upgradeLevels: {},
     weaponSystem: { weapons: [] } as unknown as WeaponSystem,
     ...over,

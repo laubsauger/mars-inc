@@ -267,6 +267,18 @@ export interface DraftParams {
 // you're building can still re-appear, just not dominate.
 const REPEAT_DAMP = 0.55;
 
+// Tags that are pure UTILITY/META, not a combat archetype — they do NOT contribute to
+// synergy weighting, so picking a draft-economy / rarity-odds / luck card doesn't make
+// the draft over-serve more of the same and steer you into a meta spiral. Combat
+// archetypes (burn, crit, rage, mobility, aoe, …) still cluster as intended.
+const NON_SYNERGY_TAGS: ReadonlySet<string> = new Set(['economy', 'luck', 'draft']);
+// Global synergy dampening — how hard owning an archetype steers future drafts toward
+// it. The raw `synergy × synergyWeight` term could 10× a card's base weight, which felt
+// FORCED (one pick railroaded the whole run). Scaled down + a lower cap so synergy is a
+// nudge, not a lock-in; you still trend toward your build, but the draft stays varied.
+const SYNERGY_SCALE = 0.6;
+const SYNERGY_CAP = 4; // max owned-tag count counted toward synergy (was 6)
+
 /** The rarity a card presents at a given owned level — climbs along `rarityTiers`
  *  (a rarity upgrade), capped at the last tier; falls back to the flat `rarity`. */
 export function effectiveRarity(def: UpgradeDefinition, ownedLevel: number): Rarity {
@@ -287,13 +299,18 @@ function weightOf(
 ): number {
   // Synergy is the SUM of owned tag counts, but capped so one deep archetype can't
   // run away and crowd the draft with a single family (the "all pets" problem).
+  // UTILITY/META tags are EXCLUDED (NON_SYNERGY_TAGS): picking one rarity-odds/draft
+  // utility card shouldn't make the draft over-serve more of the same — those are
+  // standalone picks, not a build archetype to cluster.
   let synergy = 0;
-  for (const t of u.tags) synergy += counts.get(t) ?? 0;
-  if (u.requiresAnyTags) for (const t of u.requiresAnyTags) synergy += counts.get(t) ?? 0;
-  if (u.requiresAllTags) for (const t of u.requiresAllTags) synergy += counts.get(t) ?? 0;
-  synergy = Math.min(synergy, 6); // cap the snowball — synergy biases, never dominates
+  for (const t of u.tags) if (!NON_SYNERGY_TAGS.has(t)) synergy += counts.get(t) ?? 0;
+  if (u.requiresAnyTags)
+    for (const t of u.requiresAnyTags) if (!NON_SYNERGY_TAGS.has(t)) synergy += counts.get(t) ?? 0;
+  if (u.requiresAllTags)
+    for (const t of u.requiresAllTags) if (!NON_SYNERGY_TAGS.has(t)) synergy += counts.get(t) ?? 0;
+  synergy = Math.min(synergy, SYNERGY_CAP); // cap the snowball — synergy biases, never dominates
   let w =
-    (u.baseWeight + synergy * u.synergyWeight) *
+    (u.baseWeight + synergy * u.synergyWeight * SYNERGY_SCALE) *
     rarityWeight(effectiveRarity(u, ownedLevel), level, luck, rarityBias);
   // Damp the EXACT card by how many levels of it you already own → forces variety.
   if (ownedLevel > 0) w /= 1 + ownedLevel * REPEAT_DAMP;

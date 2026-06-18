@@ -76,7 +76,9 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     maxLevel: 3,
     baseWeight: 4,
     synergyWeight: 2,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '2.4m', to: '2.4m' }],
+    previewStats: (lvl) => [
+      { label: 'Shockwave', from: lvl === 0 ? '—' : `${5 * lvl} dmg`, to: `${5 * (lvl + 1)} dmg` },
+    ],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
         ctx.dealArea(ctx.x, ctx.z, 2.4, 5);

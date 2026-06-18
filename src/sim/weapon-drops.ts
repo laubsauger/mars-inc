@@ -15,12 +15,12 @@ import { WEAPONS } from '../content/weapons/index';
 export const MAX_WEAPON_DROPS = 5;
 
 const BOSS_VARIANT = 2;
-const DROP_CHANCE = 0.004; // per ordinary kill — rare enough that a find feels earned
-// (at high kill counts 1.5% buried the floor in crates; ~0.4% keeps them special)
+const DROP_CHANCE = 0.0065; // per ordinary kill — rare enough that a find feels earned
+// (1.5% buried the floor; 0.4% was too stingy — ~0.65% keeps them special but findable)
 const PICKUP_RADIUS = 2.0; // how close you must stand to equip a crate
 /** Seconds a crate lingers before it decays — long enough to reach, not forever.
- *  Shortened (was 20) so ignored crates clear off the floor instead of piling up. */
-export const DROP_TTL = 10;
+ *  16s (was 10) so a crate across the arena is still grabbable before it fades. */
+export const DROP_TTL = 16;
 /** Last seconds of a crate's life: the view flashes it as a fade-out warning. */
 export const DROP_FADE = 4;
 // Droppable pool excludes the starter sidearm (index 0) — drops feel like finds.

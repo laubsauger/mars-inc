@@ -19,6 +19,9 @@ export interface CharacterSheet {
   level: number;
   weapon: string;
   attributes: { label: string; value: string }[];
+  /** Conditional build modifiers FIRING right now (Momentum, rage, point-blank, …) —
+   *  the live offense buffs, so the pause sheet shows what's actually active. */
+  activeBuffs: { label: string; value: string }[];
   /** Owned upgrades with enough detail to read the build at a glance (T51):
    *  name, owned/max level, rarity (for colour), and what the card does. */
   upgrades: {
@@ -39,6 +42,9 @@ export interface SheetContext {
   effects: BuildEffects;
   firingRampSec: number;
   stationarySec: number;
+  /** Live conditional context so the sheet reflects what's ACTIVE right now. */
+  movingSec: number;
+  recentCrit: boolean;
   upgradeLevels: UpgradeLevels;
   weaponSystem: WeaponSystem;
 }
@@ -68,12 +74,12 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
     nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
     firingRampSec: ctx.firingRampSec,
     hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 0,
-    recentCrit: false,
+    recentCrit: ctx.recentCrit,
     recoilActive: p.recoilTimer > 0,
     stationarySec: ctx.stationarySec,
-    moving: false,
-    movingSec: 0,
-    rageStacks: 0,
+    moving: ctx.movingSec > 0,
+    movingSec: ctx.movingSec,
+    rageStacks: p.rage,
   });
   const probe = ctx.effects.evalConditionals({
     enemiesOnScreen: 99,
@@ -137,10 +143,18 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
       };
     })
     .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+  // Conditional buffs firing RIGHT NOW (the `live` eval against the current battlefield):
+  // anything above neutral is an active situational bonus the player should see.
+  const activeBuffs: { label: string; value: string }[] = [];
+  if (live.damageMult > 1.001) activeBuffs.push({ label: 'Damage', value: xMult(live.damageMult) });
+  if (live.fireRateMult > 1.001)
+    activeBuffs.push({ label: 'Fire rate', value: xMult(live.fireRateMult) });
+  if (live.critAdd > 0.001) activeBuffs.push({ label: 'Crit', value: `+${pct(live.critAdd)}` });
   return {
     level: p.level,
     weapon: ctx.weaponSystem.weapons[0]?.def.displayName ?? '—',
     attributes,
+    activeBuffs,
     upgrades,
   };
 }

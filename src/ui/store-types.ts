@@ -224,6 +224,8 @@ export interface SheetView {
   level: number;
   weapon: string;
   attributes: { label: string; value: string }[];
+  /** Conditional buffs active right now (shown in the pause sheet). */
+  activeBuffs: { label: string; value: string }[];
   upgrades: {
     name: string;
     level: number;
