@@ -357,7 +357,7 @@ export const RUST_MITE: EnemyType = {
 export const DEBT_HOUND: EnemyType = {
   id: 'debt-hound',
   radius: 0.82,
-  maxHealth: 14,
+  maxHealth: 22, // tankier than a mite — takes a couple hits, not a one-shot (was 14)
   speed: 4.6, // the fast mover: real pressure (~0.65× player) but leaves kiting room
   separationWeight: 1.2,
   variant: 1,

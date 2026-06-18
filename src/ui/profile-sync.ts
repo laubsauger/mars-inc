@@ -65,6 +65,7 @@ export function buildSettingsView(save: SaveManager): SettingsView {
     cameraControls: s.cameraControls,
     showGrenadeRange: s.showGrenadeRange,
     projectileLighting: s.projectileLighting,
+    musicInCombat: s.musicInCombat,
     ambientOcclusion: s.ambientOcclusion,
     colorblind: save.current.accessibility.colorblindPalette,
   };

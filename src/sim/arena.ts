@@ -56,9 +56,11 @@ export const RUST_CROWN: ArenaDef = {
   // selector, so Act 1 stays relevant and Act 2 doesn't obsolete it at 3.5× HP.
   difficultyMult: 1.3, // modest base — difficulty TIERS provide the climb
   paceMult: 1.25, // a touch denser; the composition shift is the real pressure
-  // Act 2 pays MORE, but modestly — its pace already floods kills (the kills term in
-  // gloryFor rewards that). A fat mult on top double-dipped (a long FAIL paid ~3500).
-  gloryMult: 1.3,
+  // Acts are SEQUENTIAL content, not difficulty choices — the global DIFFICULTY ladder
+  // owns Glory scaling now, so an act carries NO inherent Glory bonus (it'd double-dip
+  // with the difficulty mult). Play Act 2 on a higher tier for more Glory, not for a
+  // flat per-act bump. (Was 1.3 — removed in the rarity calibration pass.)
+  gloryMult: 1,
 };
 
 /** Selectable arenas (settings). */

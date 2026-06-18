@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useUiStore } from '../store';
 import { RunSheet } from '../RunSheet';
-import { SettingsControls } from './MainMenu';
+import { SettingsTabs } from './MainMenu';
 import { SocialFooter } from '../SocialFooter';
 
 export function PauseScreen() {
@@ -31,7 +31,7 @@ export function PauseScreen() {
 
       {showSettings ? (
         <div className="w-[40rem] max-w-[92vw]">
-          <SettingsControls />
+          <SettingsTabs />
           <button
             onClick={() => setShowSettings(false)}
             className="mt-3 w-full rounded-sm border border-rust bg-umber/80 px-4 py-2 text-sm font-bold tracking-widest text-bone transition hover:border-gold hover:bg-iron/70 focus:outline-none"

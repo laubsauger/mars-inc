@@ -24,6 +24,7 @@ export interface SettingsData {
   cameraControls: boolean; // opt-in orbit/zoom camera (default off — players nudged it by accident)
   showGrenadeRange: boolean; // grenade max-range cross marker on the aim line (default on)
   projectileLighting: boolean; // bolts spill light onto floor/walls via the light buffer (default on)
+  musicInCombat: boolean; // keep the menu music playing into the fight (default off — combat is quiet)
 }
 
 export interface AccessibilityData {
@@ -147,6 +148,7 @@ export function defaultSettings(): SettingsData {
     cameraControls: false,
     showGrenadeRange: true,
     projectileLighting: true,
+    musicInCombat: false,
   };
 }
 

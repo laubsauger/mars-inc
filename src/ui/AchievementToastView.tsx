@@ -41,7 +41,7 @@ export function AchievementToastView() {
   if (!shown) return null;
   const tier = TIER[shown.tier] ?? TIER.expected!;
   return (
-    <div className="pointer-events-none fixed left-1/2 top-6 z-[58] -translate-x-1/2 px-3">
+    <div className="pointer-events-none fixed bottom-28 left-6 z-[58]">
       <div
         key={shown.id}
         className={`ach-toast flex max-w-[92vw] items-center gap-4 rounded-sm border-2 bg-pit/95 px-5 py-3 font-mono backdrop-blur-sm ${tier.border} ${tier.glow}`}

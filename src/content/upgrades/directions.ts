@@ -9,6 +9,7 @@
 // chosen so synergy weighting + future tag gates branch these into real archetypes.
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
+import { ImpactProfile } from '../../sim/fx';
 
 export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   // ══ CRIT-MOMENTUM — land crits to stay "hot", which makes you crit/kill more ═══
@@ -84,8 +85,9 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     previewStats: () => [{ label: 'Panic shockwave', from: '—', to: '12 dmg + knockback, 4.5m' }],
     apply: ({ effects }) =>
       effects.on('lowHp', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 4.5, 12); // shove + light damage (knockback in the spec)
-        ctx.fx.push('impact', ctx.x, ctx.z);
+        const r = 4.5;
+        ctx.dealArea(ctx.x, ctx.z, r, 12); // shove + light damage (knockback in the spec)
+        ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
       }),
   },
   {
@@ -172,7 +174,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'slipstream-rounds',
     name: 'Slipstream Rounds',
-    description: 'Starting a sprint discharges a 14-damage burst in a 3.5m ring per level.',
+    description: 'Starting a sprint discharges a 14-damage burst in a 5m ring per level.',
     tags: ['movement', 'aoe', 'tempo'],
     grantsTags: ['sprint-build'],
     rarity: 'uncommon',
@@ -186,14 +188,16 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     ],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 3.5, 14);
-        ctx.fx.push('impact', ctx.x, ctx.z);
+        const r = 5;
+        ctx.dealArea(ctx.x, ctx.z, r, 14);
+        // Scaled blast ring so the burst's reach is VISIBLE (dx = radius, Blast profile).
+        ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
       }),
   },
   {
     id: 'detonation-dash',
     name: 'Detonation Dash',
-    description: 'Each sprint detonates a heavy 36-damage concussive blast in a 5.5m radius.',
+    description: 'Each sprint detonates a heavy 36-damage concussive blast in a 6.5m radius.',
     tags: ['movement', 'aoe', 'explosive'],
     grantsTags: ['sprint-build'],
     rarity: 'rare',
@@ -205,11 +209,12 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     riskTier: 1,
     // A single big burst per sprint (the player-trigger dealArea shoves via the
     // pipeline knockback) — distinct from Slipstream's light, stackable chip.
-    previewStats: () => [{ label: 'Sprint blast', from: '—', to: '36 dmg, 5.5m' }],
+    previewStats: () => [{ label: 'Sprint blast', from: '—', to: '36 dmg, 6.5m' }],
     apply: ({ effects }) =>
       effects.on('sprint', (ctx) => {
-        ctx.dealArea(ctx.x, ctx.z, 5.5, 36);
-        ctx.fx.push('impact', ctx.x, ctx.z);
+        const r = 6.5;
+        ctx.dealArea(ctx.x, ctx.z, r, 36);
+        ctx.fx.push('impact', ctx.x, ctx.z, r, 0, ImpactProfile.Blast);
       }),
   },
 

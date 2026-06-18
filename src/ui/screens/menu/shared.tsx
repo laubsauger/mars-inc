@@ -78,8 +78,8 @@ export function Panel({ title, children }: { title: string; children: React.Reac
   const setMenuView = useUiStore((s) => s.setMenuView);
   return (
     <MenuShell>
-      <Frame className="w-full p-5 md:p-7">
-        <div className="mb-5 flex items-center justify-between gap-4 border-b border-rust/70 pb-3">
+      <Frame className="flex max-h-[calc(100vh-14rem)] w-full flex-col p-5 md:p-7">
+        <div className="mb-5 flex shrink-0 items-center justify-between gap-4 border-b border-rust/70 pb-3">
           <div>
             <Eyebrow>Mars Inc terminal</Eyebrow>
             <div className="text-2xl font-black text-bone">{title}</div>
@@ -91,7 +91,9 @@ export function Panel({ title, children }: { title: string; children: React.Reac
             BACK
           </button>
         </div>
-        {children}
+        {/* Only the panel BODY scrolls (title + BACK stay pinned); the frame itself is
+            capped to the viewport so the page never body-scrolls (game UI, V-no-scroll). */}
+        <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
       </Frame>
     </MenuShell>
   );

@@ -16,7 +16,7 @@ import { SettingsPanel } from './menu/SettingsPanel';
 import { ArsenalPanel } from './menu/ArsenalPanel';
 import { CreditsPanel } from './menu/CreditsPanel';
 import { AchievementsPanel } from './menu/AchievementsPanel';
-export { SettingsControls } from './menu/SettingsPanel'; // PauseScreen imports via ./MainMenu
+export { SettingsControls, SettingsTabs } from './menu/SettingsPanel'; // PauseScreen imports via ./MainMenu
 
 const PRIMARY_ITEM = { label: 'Enter the Pit', sub: 'Begin a run', icon: '⚔' };
 
@@ -86,11 +86,8 @@ function ActSelector() {
                 >
                   Act {a.act}
                 </span>
-                {a.gloryMult > 1 ? (
-                  <span className="shrink-0 text-[10px] font-bold text-gold">
-                    +{Math.round((a.gloryMult - 1) * 100)}% ◆
-                  </span>
-                ) : null}
+                {/* No per-act Glory chip — the global difficulty tier owns Glory scaling
+                    now (acts are sequential content, not difficulty choices). */}
               </div>
               <div className="text-sm font-black text-bone">{a.name}</div>
               <div className="mt-0.5 text-[11px] leading-tight text-bone/60">{a.tagline}</div>

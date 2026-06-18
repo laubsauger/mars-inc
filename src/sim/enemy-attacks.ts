@@ -249,12 +249,21 @@ export class EnemyAttackSystem {
    *  Fired beams are locked. Validates the owner index wasn't reused by a swap-remove. */
   private followCharging(enemies: EnemyPool): void {
     const b = this.beams;
-    for (let i = 0; i < b.count; i++) {
+    // Backward so a CANCEL (swap-remove) doesn't skip a beam.
+    for (let i = b.count - 1; i >= 0; i--) {
       if (b.state[i] !== BeamState.Charging) continue;
       const o = b.owner[i]!;
-      if (o < 0 || o >= enemies.count) continue;
-      if (enemies.variant[o] !== b.ownerVariant[i] || enemies.state[o] !== EnemyState.Active) {
-        continue; // owner gone / index reused → leave the line where it last was
+      if (o < 0) continue; // unowned fixed beam (boss-charge telegraph) — never auto-cancel
+      const alive =
+        o < enemies.count &&
+        enemies.variant[o] === b.ownerVariant[i] &&
+        enemies.state[o] === EnemyState.Active;
+      if (!alive) {
+        // The charging unit died (or was removed) mid-charge → CANCEL the attack
+        // outright: no lock, no flash, no damage. Killing it before it can reach the
+        // Firing state in stepBeams.
+        b.kill(i);
+        continue;
       }
       const muzzle = enemies.radius[o]! + 0.2; // emit from the hull edge
       const ox = enemies.posX[o]! + b.dirX[i]! * muzzle;

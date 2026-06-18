@@ -29,6 +29,34 @@
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
+/* Themed thin scrollbar for every in-UI scroll region — the default browser bar is
+   too wide and off-palette. The Three canvas lives outside React and never scrolls, so
+   styling globally only ever touches the menu/HUD overlays. */
+* {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--color-iron) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-iron) 80%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Draft hand entrance (T-variety): replays each time a NEW level-up draft mounts
    (keyed on level+options) so sequential level-ups visibly re-deal the cards
    instead of swapping instantly. Cards stagger in via per-card animation-delay. */
@@ -76,15 +104,15 @@
   animation: draft-discard 0.22s ease-in forwards;
   pointer-events: none;
 }
-/* Achievement toast: a quick slide-down + settle, then it holds (auto-dismissed by JS). */
+/* Achievement toast: rises up from the bottom-left + settles, then holds (JS dismiss). */
 @keyframes ach-toast {
   0% {
     opacity: 0;
-    transform: translateY(-22px) scale(0.96);
+    transform: translateY(22px) scale(0.96);
   }
   60% {
     opacity: 1;
-    transform: translateY(3px) scale(1.01);
+    transform: translateY(-3px) scale(1.01);
   }
   100% {
     opacity: 1;

@@ -12,6 +12,7 @@ import { PlayerView } from './render/player-view';
 import { EnemyView } from './render/enemy-view';
 import { StatusMarkerView } from './render/status-marker-view';
 import { EliteMarkerView } from './render/elite-marker-view';
+import { BossMarkerView } from './render/boss-marker-view';
 import { GroundShadowView } from './render/ground-shadow-view';
 import { EnemyHealthbarView } from './render/enemy-healthbar-view';
 import { ProjectileView } from './render/projectile-view';
@@ -76,7 +77,13 @@ import {
   levelCost,
   permanentGateMet,
 } from './content/permanent/index';
-import { newlyEarned, ACHIEVEMENT_BY_ID, type AchTier } from './content/achievements';
+import {
+  newlyEarned,
+  ACHIEVEMENT_BY_ID,
+  stageName,
+  stageDesc,
+  type AchTier,
+} from './content/achievements';
 import { SaveManager } from './save/save-manager';
 import type { PermanentView, InspectView } from './ui/store';
 import {
@@ -241,6 +248,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const enemyView = new EnemyView(scene, lightBuffer);
   const statusMarkers = new StatusMarkerView(scene);
   const eliteMarkers = new EliteMarkerView(scene);
+  const bossMarkers = new BossMarkerView(scene);
   const groundShadowView = new GroundShadowView(scene);
   const enemyHealthbars = new EnemyHealthbarView(scene);
   const projectileView = new ProjectileView(scene);
@@ -366,12 +374,18 @@ async function boot(parent: HTMLElement): Promise<void> {
     );
     if (earned.length === 0) return;
     save.mutate((p) => {
-      for (const id of earned) if (!p.achievements[id]) p.achievements[id] = Date.now();
+      for (const e of earned) p.achievements[e.id] = e.stage; // store the highest stage
     });
     pushProfile();
-    for (const id of earned) {
-      const a = ACHIEVEMENT_BY_ID.get(id);
-      if (a) achQueue.push({ name: a.name, desc: a.desc, icon: a.icon, tier: a.tier });
+    for (const e of earned) {
+      const a = ACHIEVEMENT_BY_ID.get(e.id);
+      if (a)
+        achQueue.push({
+          name: stageName(a, e.stage),
+          desc: stageDesc(a, e.stage),
+          icon: a.icon,
+          tier: a.tier,
+        });
     }
     dispatchAch();
   };
@@ -618,7 +632,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     world.setPrestige(save.current.prestige.nodes); // T72 Red-Dust seeds
     world.reset(); // fresh arena + player at spawn; `started` stays false
     discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
-    audio.stopMusic(); // menu theme off in the pit
+    if (!save.current.settings.musicInCombat) audio.stopMusic(); // menu theme off in the pit (opt-out)
     endShown = false;
     securedThisRun = 0;
     runPot = 0;
@@ -843,6 +857,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       enemyView.sync(world.enemies, alpha);
       statusMarkers.sync(world.enemies, camera, alpha);
       eliteMarkers.sync(world.enemies, camera, alpha);
+      bossMarkers.sync(world.enemies, camera, alpha);
       enemyHealthbars.sync(world.enemies, camera, alpha);
       projectileView.sync(world.weaponSystem.projectiles, alpha);
       accumulateLights(lightBuffer, world, alpha, laserView); // all emitters → the projectile light buffer
@@ -891,7 +906,16 @@ async function boot(parent: HTMLElement): Promise<void> {
         // connects), unless a closer enemy stops it first — but never past weapon
         // range. Without a cursor (keyboard facing), it shows the full reach.
         // EFFECTIVE range = base × rangeMult, so range upgrades move the terminus.
-        const range = w0 ? w0.def.range * world.mods.rangeMult : 16;
+        // BUT a projectile actually fizzles at lifetime×speed if that's shorter than
+        // the range cap (e.g. shotgun pellets) — match the sim's `life` clamp in
+        // weapon-system so the indicator ends EXACTLY where the shots stop. Hitscan
+        // beams have no travel, so they reach the full range.
+        let range = 16;
+        if (w0) {
+          const eff = w0.def.range * world.mods.rangeMult;
+          const proj = w0.def.projectile;
+          range = w0.def.hitscan ? eff : Math.min(eff, proj.lifetime * proj.speed);
+        }
         const cursorDist = pl.aim.has
           ? Math.hypot(pl.aim.x - pl.pos.x, pl.aim.z - pl.pos.z)
           : range;

@@ -99,10 +99,11 @@ export const VARIANT_SHAPE: number[] = [
 // keeps fodder readable above an OCEAN of XP shards (shards sit at ~0.5 tall, so a
 // flat low-profile mite drowns in them). Default [1,1]; only the early fodder needs
 // a lift so they read as bodies, not specks. ⊥ sim (radius/hitbox unchanged, V2/V4).
-const VARIANT_SIZE: ReadonlyArray<readonly [number, number]> = [
-  [1.0, 1.32], // 0 mite — same footprint, taller so it clears the shard layer
-  [1.12, 1.26], // 1 hound (tier 2) — a touch wider + taller, reads as the bigger threat
-];
+const VARIANT_SIZE: Readonly<Record<number, readonly [number, number]>> = {
+  0: [1.22, 1.55], // mite — bigger body so the fodder reads above the shard ocean
+  1: [1.32, 1.5], // hound (tier 2) — wider + taller, reads as the bigger threat
+  11: [1.3, 1.38], // phase stalker (pink fast) — beefier silhouette so it's easy to track
+};
 const UNIT_SIZE: readonly [number, number] = [1, 1]; // every other variant — unchanged
 // Shapes whose silhouette has a clear front → rotate to face movement direction.
 const SHAPE_FACES = [true, true, true, true, true, false, false, false, false];

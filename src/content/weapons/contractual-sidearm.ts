@@ -8,7 +8,7 @@ export const contractualSidearm: WeaponDefinition = {
   family: 'sidearm',
   tier: 0,
   targeting: 'aim',
-  range: 20, // a touch more opening reach so early game breathes (still rewards range upgrades)
+  range: 23, // a touch more opening reach so early game breathes (still rewards range upgrades)
   cooldown: 0.42, // baseline attack speed raised so early game is survivable
   spread: 0.015,
   recoil: 6,

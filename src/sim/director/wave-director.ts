@@ -73,7 +73,7 @@ interface ThemedWave {
 }
 const THEMED_WAVES: readonly ThemedWave[] = [
   // ── ACT 1 — learn the beats: a swarm, a split, a pack, a wall. ──
-  { at: 30, act: 1, type: RUST_MITE, count: 22, label: 'MITE SWARM' },
+  { at: 30, act: 1, type: RUST_MITE, count: 48, label: 'MITE SWARM' },
   { at: 70, act: 1, type: LIABILITY_BLOB, count: 6, label: 'SPLITTER PACK' },
   { at: 110, act: 1, type: DEBT_HOUND, count: 14, label: 'HOUND PACK' },
   { at: 150, act: 1, type: AUDIT_BRUTE, count: 5, label: 'BRUTE SQUAD' },
@@ -310,9 +310,11 @@ export class WaveDirector {
       if (eff > 120 && r < 0.72) return GARGANTUAN; // devourer — kill it before it snowballs
       return AUDIT_BRUTE; // the bulk of specials are the melee wall
     }
-    // Fodder: Rust Mites + a growing minority of Debt Hounds.
-    if (eff > 25) {
-      const p = Math.min(0.4, (eff - 25) * 0.006 + houndBias);
+    // Fodder: Rust Mites + a growing minority of Debt Hounds. Hounds start mixing in
+    // EARLY (eff > 10) so the open isn't a long mites-only slog, ramping to a healthy
+    // ~45% share so the crowd has texture, not a sea of identical fodder.
+    if (eff > 10) {
+      const p = Math.min(0.45, (eff - 10) * 0.008 + 0.08 + houndBias);
       if (rng.next() < p) return DEBT_HOUND;
     }
     return RUST_MITE;

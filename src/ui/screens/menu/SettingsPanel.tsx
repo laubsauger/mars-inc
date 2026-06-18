@@ -19,6 +19,9 @@ export function SettingsControls() {
       <SettingRow label="MUSIC VOLUME">
         <Slider value={s.musicVolume} onChange={(v) => set({ musicVolume: v })} />
       </SettingRow>
+      <SettingRow label="MUSIC DURING COMBAT">
+        <Toggle on={s.musicInCombat} onChange={(v) => set({ musicInCombat: v })} />
+      </SettingRow>
       <SettingRow label="SCREEN SHAKE">
         <Slider value={s.screenShake} onChange={(v) => set({ screenShake: v })} />
       </SettingRow>
@@ -65,12 +68,13 @@ export function SettingsControls() {
   );
 }
 
-export function SettingsPanel() {
-  const resetProgress = useUiStore((s) => s.resetProgress);
-  const [confirmWipe, setConfirmWipe] = useState(false);
+// Tabbed settings body (Options / Controls) — the SHARED surface for both the menu
+// Settings panel and the in-game pause menu. `footer` renders inside the Options tab
+// below the form (the menu passes its danger-zone Reset there; the pause menu omits it).
+export function SettingsTabs({ footer }: { footer?: React.ReactNode }) {
   const [tab, setTab] = useState<'options' | 'controls'>('options');
   return (
-    <Panel title="SETTINGS">
+    <>
       <div className="mb-4 flex gap-2">
         {(['options', 'controls'] as const).map((t) => (
           <button
@@ -100,32 +104,47 @@ export function SettingsPanel() {
           <div className="mt-3 text-xs text-bone/40">
             Key rebinding, controller, and colorblind palettes land in a later pass.
           </div>
-
-          {/* Danger zone — wipes the entire save (Glory, unlocks, records, settings). */}
-          <div className="mt-4 rounded-md border border-bleed/50 bg-pit/50 px-6 py-4">
-            <div className="text-sm font-bold tracking-wide text-bleed">RESET PROGRESS</div>
-            <p className="mt-1 text-xs leading-relaxed text-bone/55">
-              Permanently erases ALL saved data — Martian Glory, the Glory Tree, unlocks, records,
-              run history, and settings. This cannot be undone. The page reloads into a fresh save.
-            </p>
-            <button
-              onClick={() => {
-                if (confirmWipe) resetProgress();
-                else setConfirmWipe(true);
-              }}
-              onBlur={() => setConfirmWipe(false)}
-              title="Erase all saved progress and start over"
-              className={`mt-3 rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none ${
-                confirmWipe
-                  ? 'border-bleed bg-bleed/25 text-bleed'
-                  : 'border-bleed/70 bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
-              }`}
-            >
-              {confirmWipe ? 'CONFIRM · ERASE EVERYTHING' : 'RESET ALL PROGRESS'}
-            </button>
-          </div>
+          {footer}
         </>
       )}
+    </>
+  );
+}
+
+/** Danger zone — wipes the entire save (menu Settings only, never in-run pause). */
+function ResetProgressSection() {
+  const resetProgress = useUiStore((s) => s.resetProgress);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+  return (
+    <div className="mt-4 rounded-md border border-bleed/50 bg-pit/50 px-6 py-4">
+      <div className="text-sm font-bold tracking-wide text-bleed">RESET PROGRESS</div>
+      <p className="mt-1 text-xs leading-relaxed text-bone/55">
+        Permanently erases ALL saved data — Martian Glory, the Glory Tree, unlocks, records, run
+        history, and settings. This cannot be undone. The page reloads into a fresh save.
+      </p>
+      <button
+        onClick={() => {
+          if (confirmWipe) resetProgress();
+          else setConfirmWipe(true);
+        }}
+        onBlur={() => setConfirmWipe(false)}
+        title="Erase all saved progress and start over"
+        className={`mt-3 rounded-sm border px-4 py-1.5 text-sm font-bold transition focus:outline-none ${
+          confirmWipe
+            ? 'border-bleed bg-bleed/25 text-bleed'
+            : 'border-bleed/70 bg-umber/80 text-bone/80 hover:border-bleed hover:text-bleed'
+        }`}
+      >
+        {confirmWipe ? 'CONFIRM · ERASE EVERYTHING' : 'RESET ALL PROGRESS'}
+      </button>
+    </div>
+  );
+}
+
+export function SettingsPanel() {
+  return (
+    <Panel title="SETTINGS">
+      <SettingsTabs footer={<ResetProgressSection />} />
     </Panel>
   );
 }

@@ -38,6 +38,12 @@ const MAX_PLAYER_RECOIL = 26; // hard cap on the impulse channel (V10 spirit)
 // overlapping kill-shockwaves / nova / blasts could stack into a launch — this keeps
 // even a multi-blast pile-up a firm shove, not a rocket across the arena.
 const MAX_ENEMY_KB = 30;
+// Wall is ABSORBENT: when knockback drives a body into it, the outward motion is
+// reflected with low restitution (mostly killed, not a trampoline) and the whole
+// impulse + steering velocity is dampened by friction. Stops the "punted through the
+// wall" exploit while reading as the body slamming a soft barrier.
+const WALL_RESTITUTION = 0.2; // 20% of the into-wall energy bounces back, 80% absorbed
+const WALL_FRICTION = 0.55; // remaining velocity dampened hard on contact
 
 export class EnemySystem {
   readonly pool: EnemyPool;
@@ -208,17 +214,40 @@ export class EnemySystem {
         if (Math.abs(p.kbZ[i]!) < 0.05) p.kbZ[i] = 0;
       }
 
-      // Keep inside the arena (shape-aware) — but DON'T clamp an enemy that just
-      // went live and is still WALKING IN from the gate (outside the keep-in boundary,
-      // moving inward). Clamping it would snap it forward across the threshold (the
-      // "zip in" jank). It clamps normally once it's inside, or if it's being pushed
-      // further OUT (knockback) rather than ambling in.
+      // Keep inside the arena (shape-aware). The ONLY exception is an enemy still
+      // WALKING IN from the gate (entryEase > 0) — clamping it would snap it across the
+      // threshold (the "zip in" jank). EVERY other active body is clamped HARD so
+      // nothing — knockback, shockwave, dash — can punt it through the wall (the
+      // sentinel-out-of-arena bug: the old `inside || movingOut` test skipped the clamp
+      // whenever a shoved body's STEERING still pointed inward, letting it slip out).
       const px = p.posX[i]!;
       const pz = p.posZ[i]!;
-      const inside = arenaContains(px, pz, -1); // within the keep-in boundary
-      const movingOut = px * p.velX[i]! + pz * p.velZ[i]! > 0; // radial velocity outward
-      if (inside || movingOut) {
+      if (p.entryEase[i]! <= 0) {
         const c = clampPoint(px, pz, 1);
+        if (c.x !== px || c.z !== pz) {
+          // Hit the wall. Inward normal = the direction the clamp shoved the body back.
+          let nx = c.x - px;
+          let nz = c.z - pz;
+          const nl = Math.hypot(nx, nz) || 1;
+          nx /= nl;
+          nz /= nl;
+          // Reflect+absorb the INTO-wall component of both the knockback impulse and the
+          // steering velocity, then dampen the rest (friction) so the wall eats the hit.
+          const kbDot = -(p.kbX[i]! * nx + p.kbZ[i]! * nz); // outward (into-wall) part
+          if (kbDot > 0) {
+            p.kbX[i]! += (1 + WALL_RESTITUTION) * kbDot * nx;
+            p.kbZ[i]! += (1 + WALL_RESTITUTION) * kbDot * nz;
+          }
+          p.kbX[i]! *= WALL_FRICTION;
+          p.kbZ[i]! *= WALL_FRICTION;
+          const vDot = -(p.velX[i]! * nx + p.velZ[i]! * nz);
+          if (vDot > 0) {
+            p.velX[i]! += (1 + WALL_RESTITUTION) * vDot * nx;
+            p.velZ[i]! += (1 + WALL_RESTITUTION) * vDot * nz;
+          }
+          p.velX[i]! *= WALL_FRICTION;
+          p.velZ[i]! *= WALL_FRICTION;
+        }
         p.posX[i] = c.x;
         p.posZ[i] = c.z;
       }

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { newlyEarned, ACHIEVEMENTS, type AchCtx } from './achievements';
+import {
+  newlyEarned,
+  stageOf,
+  maxStage,
+  ACHIEVEMENTS,
+  ACHIEVEMENT_BY_ID,
+  type AchCtx,
+} from './achievements';
 
 const base = (over: Partial<AchCtx> = {}): AchCtx => ({
   kills: 0,
@@ -26,32 +33,61 @@ describe('achievements', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('first-blood fires on the first kill, not before', () => {
-    expect(newlyEarned(base({ kills: 0 }), {})).not.toContain('first-blood');
-    expect(newlyEarned(base({ kills: 1 }), {})).toContain('first-blood');
-  });
-
   it('cheated runs bank nothing', () => {
-    expect(newlyEarned(base({ kills: 9999, level: 99, cheated: true }), {})).toEqual([]);
+    expect(newlyEarned(base({ kills: 99999, level: 99, cheated: true }), {})).toEqual([]);
   });
 
-  it('already-unlocked achievements are not re-emitted', () => {
-    const ctx = base({ kills: 200 });
-    expect(newlyEarned(ctx, {})).toContain('first-blood');
-    expect(newlyEarned(ctx, { 'first-blood': 1, centurion: 1 })).not.toContain('first-blood');
+  it('leveled achievements stage up with the metric, not all at once', () => {
+    const bl = ACHIEVEMENT_BY_ID.get('bloodletter')!;
+    expect(stageOf(bl, base({ kills: 10 }))).toBe(0); // below first threshold (50)
+    expect(stageOf(bl, base({ kills: 60 }))).toBe(1);
+    expect(stageOf(bl, base({ kills: 300 }))).toBe(2);
+    expect(stageOf(bl, base({ kills: 99999 }))).toBe(maxStage(bl));
   });
 
-  it('hidden funny ones fire on their odd conditions', () => {
-    // Total Liability: die with zero kills.
-    expect(newlyEarned(base({ ended: true, won: false, kills: 0 }), {})).toContain('liability');
-    // No Notes: win taking no damage.
-    expect(newlyEarned(base({ ended: true, won: true, damageTaken: 0 }), {})).toContain('no-notes');
+  it('newlyEarned reports only stages ABOVE the stored one', () => {
+    const ctx = base({ kills: 300 }); // bloodletter stage 2
+    expect(newlyEarned(ctx, {}).find((e) => e.id === 'bloodletter')?.stage).toBe(2);
+    // Already at stage 2 → no new event.
+    expect(
+      newlyEarned(ctx, { bloodletter: 2 }).find((e) => e.id === 'bloodletter'),
+    ).toBeUndefined();
+    // At stage 1 → re-reports the new top stage 2.
+    expect(newlyEarned(ctx, { bloodletter: 1 }).find((e) => e.id === 'bloodletter')?.stage).toBe(2);
+  });
+
+  it('a single strong run does NOT unlock half the set', () => {
+    // A good-but-not-insane run: 220 kills, level 16, 4 min, 14 upgrades, no boss.
+    const run = base({
+      kills: 220,
+      level: 16,
+      timeSurvived: 240,
+      upgradesTaken: 14,
+      ended: true,
+    });
+    const earned = newlyEarned(run, {});
+    const totalStages = ACHIEVEMENTS.reduce((s, a) => s + maxStage(a), 0);
+    const gotStages = earned.reduce((s, e) => s + e.stage, 0);
+    expect(gotStages).toBeLessThan(totalStages * 0.35); // well under half the total stages
+  });
+
+  it('hidden funny one-shots fire on their odd conditions', () => {
+    expect(newlyEarned(base({ ended: true, kills: 0 }), {}).some((e) => e.id === 'liability')).toBe(
+      true,
+    );
+    expect(
+      newlyEarned(base({ ended: true, won: true, damageTaken: 0 }), {}).some(
+        (e) => e.id === 'no-notes',
+      ),
+    ).toBe(true);
   });
 
   it('flawless-felling needs a boss kill AND zero damage', () => {
-    expect(newlyEarned(base({ bossKills: 1, damageTaken: 5 }), {})).not.toContain(
-      'flawless-felling',
-    );
-    expect(newlyEarned(base({ bossKills: 1, damageTaken: 0 }), {})).toContain('flawless-felling');
+    expect(
+      stageOf(ACHIEVEMENT_BY_ID.get('flawless-felling')!, base({ bossKills: 1, damageTaken: 5 })),
+    ).toBe(0);
+    expect(
+      stageOf(ACHIEVEMENT_BY_ID.get('flawless-felling')!, base({ bossKills: 1, damageTaken: 0 })),
+    ).toBe(1);
   });
 });

@@ -224,6 +224,7 @@ const INITIAL_SETTINGS: SettingsView = {
   cameraControls: false,
   showGrenadeRange: true,
   projectileLighting: true,
+  musicInCombat: false,
   colorblind: 'off',
 };
 

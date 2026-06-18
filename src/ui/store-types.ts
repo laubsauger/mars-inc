@@ -72,6 +72,7 @@ export interface SettingsView {
   cameraControls: boolean;
   showGrenadeRange: boolean;
   projectileLighting: boolean;
+  musicInCombat: boolean;
   colorblind: 'off' | 'protanopia' | 'deuteranopia' | 'tritanopia';
 }
 
