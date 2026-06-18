@@ -11,11 +11,11 @@ export interface InputSnapshot {
   pickup: boolean;
   /** Primary fire held (left mouse). Auto-fire toggle ORs in via `autoFire`. */
   fire: boolean;
-  /** Edge-triggered once per press (right mouse): throw a grenade at the cursor. */
+  /** Edge-triggered once per press (Space OR right mouse): throw a grenade at the cursor. */
   grenade: boolean;
-  /** Right mouse HELD: auto-throw grenades on cooldown (in addition to the edge). */
+  /** Space / right mouse HELD: auto-throw grenades on cooldown (in addition to the edge). */
   grenadeHeld: boolean;
-  /** Edge-triggered once per press (Space): toggle persistent auto-fire. */
+  /** Edge-triggered once per press (Ctrl): toggle persistent auto-fire. */
   toggleAuto: boolean;
   /** Mouse position in CSS pixels; -1 when pointer never seen. */
   mouseX: number;
@@ -44,9 +44,9 @@ export class Input {
   private pausePressed = false;
   private pickupPressed = false;
   private leftDown = false; // primary fire held (left mouse button)
-  private grenadePressed = false; // edge: right mouse → grenade
+  private grenadePressed = false; // edge: Space / right mouse → grenade
   private rightDown = false; // right mouse HELD → auto-throw grenades on cooldown
-  private autoPressed = false; // edge: Space → toggle auto-fire
+  private autoPressed = false; // edge: Ctrl → toggle auto-fire
   private mouseX = -1;
   private mouseY = -1;
   private mouseInside = false;
@@ -60,9 +60,16 @@ export class Input {
       if ((e.code === 'KeyE' || e.code === 'KeyF') && !this.down.has(e.code)) {
         this.pickupPressed = true;
       }
+      // Space → GRENADE (edge throws once; held auto-throws on cooldown). Mirrors the
+      // right-mouse bind so touchpad players never need the awkward right-click.
       if (e.code === 'Space') {
         e.preventDefault(); // don't scroll the page
-        if (!this.down.has('Space')) this.autoPressed = true; // edge → toggle auto-fire
+        if (!this.down.has('Space')) this.grenadePressed = true; // edge → instant first throw
+      }
+      // Ctrl → toggle persistent auto-fire (moved off Space, which is now grenade).
+      if ((e.code === 'ControlLeft' || e.code === 'ControlRight') && !this.down.has(e.code)) {
+        e.preventDefault();
+        this.autoPressed = true;
       }
       this.down.add(e.code);
     };
@@ -142,7 +149,7 @@ export class Input {
       pickup,
       fire: this.leftDown,
       grenade,
-      grenadeHeld: this.rightDown,
+      grenadeHeld: this.rightDown || this.down.has('Space'), // right-mouse OR Space held
       toggleAuto,
       mouseX: this.mouseX,
       mouseY: this.mouseY,

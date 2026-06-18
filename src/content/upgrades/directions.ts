@@ -31,7 +31,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'bloodlust',
     name: 'Bloodlust',
-    description: '+8% damage per level for 1.5s after a critical hit, plus +2% base crit chance.',
+    description: '+8% damage per level for 1.5s after a critical hit, plus +4% base crit chance.',
     tags: ['crit', 'tempo'],
     rarity: 'rare',
     maxLevel: 2,
@@ -41,7 +41,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     role: 'engine',
     riskTier: 0,
     apply: ({ mods, effects }) => {
-      mods.critChanceAdd += 0.02; // a little base crit so the loop can start
+      mods.critChanceAdd += 0.04; // a little base crit so the loop can start
       effects.addConditional((c) => (c.recentCrit ? { damageMult: 1.08 } : {}));
     },
   },
@@ -119,13 +119,13 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
       }),
   },
 
-  // ══ KITE & CLEAR — open up LOCAL space (no enemy within 7m) for a payoff. Full
+  // ══ KITE & CLEAR — open up LOCAL space (no enemy within 10m) for a payoff. Full
   //    arena clears almost never happen here, so these reward good kiting instead. ══
   {
     id: 'breather',
     name: 'Breather',
     description:
-      'Open up space (no enemy within 7m) to patch 4% max health per level — reward for kiting.',
+      'Open up space (no enemy within 10m) to patch 4% max health per level — reward for kiting.',
     tags: ['sustain', 'defense'],
     grantsTags: ['sustain'],
     rarity: 'uncommon',
@@ -153,7 +153,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'overtime-bonus',
     name: 'Overtime Bonus',
     description:
-      'Opening up space (no enemy within 7m) grants 0.6s of invulnerability — kite to reset.',
+      'Opening up space (no enemy within 10m) grants 0.6s of invulnerability — kite to reset.',
     tags: ['sustain', 'tempo'],
     grantsTags: ['sustain'],
     rarity: 'rare',

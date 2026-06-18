@@ -20,7 +20,7 @@ const find = (id: string): UpgradeDefinition => {
 describe('previewUpgrade', () => {
   it('surfaces simple mod deltas as from→to', () => {
     const changes = previewUpgrade(find('sharpshooter'), defaultMods(), createPlayer());
-    expect(changes).toContainEqual({ label: 'Crit Chance', from: '0%', to: '4%' });
+    expect(changes).toContainEqual({ label: 'Crit Chance', from: '0%', to: '7%' });
   });
 
   it('surfaces player-stat upgrades (Max HP)', () => {

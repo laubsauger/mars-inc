@@ -10,7 +10,7 @@ export const NECRO_UPGRADES: UpgradeDefinition[] = [
     id: 'gravediggers-pact',
     name: "Gravedigger's Pact",
     description:
-      'UNLOCK the Gravedigger: slain enemies gain a 7% chance to RISE as a pet that fights for you, then decays.',
+      'UNLOCK the Gravedigger: slain enemies gain a 10% chance to RISE as a pet that fights for you, then decays.',
     tags: ['necro', 'summon'],
     rarity: 'rare',
     // One-time OPENER (maxLevel 1) — it unlocks the build, then leaves the pool so
@@ -21,7 +21,7 @@ export const NECRO_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 5,
     grantsTags: ['necro'],
     apply: ({ player }) => {
-      player.necroChance = Math.min(0.3, player.necroChance + 0.07);
+      player.necroChance = Math.min(0.35, player.necroChance + 0.1); // baseline raise chance (was 0.07)
     },
   },
   {

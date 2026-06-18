@@ -110,8 +110,8 @@ export function HotBar() {
     <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-end gap-3">
       <AbilitySlot
         icon="✸"
-        keyLabel="RMB"
-        name="Grenade — AoE knockback"
+        keyLabel="SPACE"
+        name="Grenade — AoE knockback (Space / RMB)"
         progress={grenade01}
         accent="#ff5a36"
       />

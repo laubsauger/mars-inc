@@ -118,7 +118,7 @@ export interface HudState {
   // Ability hotbar (ARPG-style): radial cooldown + ready state per slot.
   sprintMax: number; // max sprint charges (slot pips)
   grenade01: number; // 0..1 grenade cooldown progress (1 = ready to throw)
-  autoShoot: boolean; // persistent auto-fire toggle state (Space)
+  autoShoot: boolean; // persistent auto-fire toggle state (Ctrl)
   runGlory: number; // Martian Glory this run would bank SO FAR (live estimate)
 }
 

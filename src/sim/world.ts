@@ -84,7 +84,7 @@ const COUNTDOWN_SECONDS = 3;
  *  blood catastrophe play out in the (otherwise quiet) scene before the freeze (T43). */
 const BOSS_REWARD_DELAY = 1.4;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
-const LOCAL_CROWD_RADIUS = 9; // m around the player counted as "nearby" for crowd cards (was 7 — too tight; crowd-crit was near-impossible to trigger)
+const LOCAL_CROWD_RADIUS = 10; // m around the player counted as "nearby" for crowd/breather cards (was 7, then 9 — too tight; widened so proximity effects actually trigger)
 const STATIONARY_MOVE_DECAY = 2; // hold-ground ramp BLEEDS this× build-rate while moving
 const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky integer ticks,
 // not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.

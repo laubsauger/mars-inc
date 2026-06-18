@@ -60,7 +60,7 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
     const dz = e.posZ[i]! - p.pos.z;
     const d2 = dx * dx + dz * dz;
     if (d2 < nearest) nearest = d2;
-    if (d2 <= 49) nearby++; // within 7m (LOCAL_CROWD_RADIUS) — crowd cards read this
+    if (d2 <= 100) nearby++; // within 10m (LOCAL_CROWD_RADIUS) — crowd cards read this
   }
   const live = ctx.effects.evalConditionals({
     enemiesOnScreen: e.count,

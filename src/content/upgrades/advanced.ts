@@ -7,7 +7,7 @@ import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 
 /** Point-Blank Clause: the nearest-enemy distance (m) under which the bonus applies.
  *  Shared by the conditional + the floor-ring visual so they never drift apart. */
-const POINT_BLANK_RANGE = 5;
+const POINT_BLANK_RANGE = 8; // was 5 — too tight to the body to ever matter at this camera
 
 export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   // CONDITIONAL — risk build: huge damage while near death (corrupted curse vibe).
@@ -29,7 +29,7 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'point-blank-clause',
     name: 'Point-Blank Clause',
-    description: '+50% damage while the nearest enemy is within 5m (the red ring on the floor).',
+    description: '+50% damage while the nearest enemy is within 8m (the red ring on the floor).',
     tags: ['conditional', 'damage', 'risk'],
     rarity: 'rare',
     maxLevel: 2,
@@ -45,7 +45,7 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
     id: 'crowd-clause',
     name: 'Crowd Control Clause',
     description:
-      'The more they swarm you, the deadlier: +4% crit per nearby enemy (within 9m), up to +24%.',
+      'The more they swarm you, the deadlier: +4% crit per nearby enemy (within 10m), up to +24%.',
     tags: ['crit', 'crowd'],
     rarity: 'uncommon',
     maxLevel: 2,

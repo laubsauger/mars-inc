@@ -13,14 +13,14 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'sharpshooter',
     name: 'Sharpshooter Clause',
-    description: '+4% crit chance.',
+    description: '+7% crit chance.',
     tags: ['crit'],
     rarity: 'common',
     maxLevel: 5,
     baseWeight: 10,
     synergyWeight: 2,
     apply: ({ mods }) => {
-      mods.critChanceAdd += 0.04;
+      mods.critChanceAdd += 0.07; // was 0.04 — baseline crit per pick was too weak (×5 = +35% maxed)
     },
   },
   {
@@ -201,7 +201,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'recon-optics',
     name: 'Recon Optics',
-    description: '+18% weapon range and +2% crit chance per level — pick targets from afar.',
+    description: '+18% weapon range and +4% crit chance per level — pick targets from afar.',
     tags: ['range', 'precision', 'crit'],
     grantsTags: ['range'],
     rarity: 'rare',
@@ -210,7 +210,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 5,
     apply: ({ mods }) => {
       mods.rangeMult += 0.18;
-      mods.critChanceAdd += 0.02;
+      mods.critChanceAdd += 0.04;
     },
   },
 
@@ -281,7 +281,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'apex-hunter',
     name: 'Apex Hunter',
-    description: '+crit as the space around you clears — up to +30% with no enemies within 7m.',
+    description: '+crit as the space around you clears — up to +30% with no enemies within 10m.',
     tags: ['conditional', 'crit'],
     rarity: 'rare',
     maxLevel: 1,
