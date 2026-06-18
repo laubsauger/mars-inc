@@ -20,6 +20,7 @@ describe('EnemySystem (T11/T13)', () => {
     const pool = new EnemyPool();
     const e = pool.spawn(RUST_MITE, 0.1, 0, 0, 0);
     pool.state[e] = EnemyState.Active;
+    pool.meleeCd[e] = 0; // ready to SWING this step (skip the first-swing wind-up)
     const sys = new EnemySystem(pool, 2);
     const player = createPlayer();
     sys.step(player, 1, 1 / 60);

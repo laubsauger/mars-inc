@@ -90,6 +90,7 @@ const RECOIL_CAP = 5.0; // max per-shot velocity kick (V10) — heavy guns kick,
 const RECOIL_SCALE = 6.5; // global recoil punch-up so kick is a real movement factor (toned down from 10 — minigun shove was uncontrollable)
 const RICOCHET_HOLD = 0.05; // seconds a projectile parks at a bounce point
 const PIERCE_GAP = 0.07; // after a pierce hit, ignore collisions this long (clear the body)
+const HOMING_RANGE = 14; // Smart Rounds seek radius — projectiles only curve toward nearby enemies
 
 export class WeaponSystem {
   readonly projectiles = new ProjectilePool();
@@ -262,6 +263,7 @@ export class WeaponSystem {
           procCoef,
           1, // inherit global on-hit mods (player shots always do)
           FAMILY_STYLE[w.def.family], // per-family projectile look (T37)
+          mods.homingTurn, // Smart Rounds: curve toward enemies (0 = straight)
         );
       }
 
@@ -385,6 +387,9 @@ export class WeaponSystem {
         if (pr.life[i]! <= 0) pr.kill(i);
         continue;
       }
+      // Smart Rounds (T-homing): curve the velocity toward the nearest enemy,
+      // capped at the projectile's turn rate so it arcs in rather than snapping.
+      if (pr.homing[i]! > 0) this.steerHoming(enemies, hash, pr, i, dt);
       pr.prevX[i] = pr.posX[i]!;
       pr.prevZ[i] = pr.posZ[i]!;
       pr.posX[i]! += pr.velX[i]! * dt;
@@ -520,6 +525,49 @@ export class WeaponSystem {
 
       if (dead) pr.kill(i);
     }
+  }
+
+  /**
+   * Smart Rounds: rotate a projectile's velocity toward the nearest active enemy
+   * within HOMING_RANGE, by at most `homing` rad this step (capped turn → it arcs
+   * in, never snaps). Preserves speed. Deterministic: nearest-by-distance, no rng.
+   */
+  private steerHoming(
+    enemies: EnemyPool,
+    hash: SpatialHash,
+    pr: ProjectilePool,
+    i: number,
+    dt: number,
+  ): void {
+    const ox = pr.posX[i]!;
+    const oz = pr.posZ[i]!;
+    const n = hash.queryCircle(ox, oz, HOMING_RANGE, this.chainQuery);
+    let bestE = -1;
+    let bestD2 = HOMING_RANGE * HOMING_RANGE;
+    for (let k = 0; k < n; k++) {
+      const e = this.chainQuery[k]!;
+      if (e >= enemies.count || enemies.health[e]! <= 0) continue;
+      if (enemies.state[e] !== EnemyState.Active) continue;
+      const dx = enemies.posX[e]! - ox;
+      const dz = enemies.posZ[e]! - oz;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestE = e;
+      }
+    }
+    if (bestE < 0) return;
+    const speed = Math.hypot(pr.velX[i]!, pr.velZ[i]!) || 1;
+    const cur = Math.atan2(pr.velZ[i]!, pr.velX[i]!);
+    const want = Math.atan2(enemies.posZ[bestE]! - oz, enemies.posX[bestE]! - ox);
+    let diff = want - cur;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const maxTurn = pr.homing[i]! * dt;
+    const turn = diff > maxTurn ? maxTurn : diff < -maxTurn ? -maxTurn : diff;
+    const a = cur + turn;
+    pr.velX[i] = Math.cos(a) * speed;
+    pr.velZ[i] = Math.sin(a) * speed;
   }
 
   /**

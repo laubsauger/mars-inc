@@ -35,10 +35,11 @@ describe('advanced upgrades drive the build engine (T38)', () => {
     expect(e.evalConditionals({ ...BASE, nearestDist: 3 }).damageMult).toBeCloseTo(1.5, 6);
   });
 
-  it('Crowd Control Clause: crit only against 12+ enemies', () => {
+  it('Crowd Control Clause: crit ramps with nearby enemies, capped', () => {
     const e = apply('crowd-clause');
-    expect(e.evalConditionals({ ...BASE, enemiesNearby: 5 }).critAdd).toBe(0);
-    expect(e.evalConditionals({ ...BASE, enemiesNearby: 20 }).critAdd).toBeCloseTo(0.15, 6);
+    expect(e.evalConditionals({ ...BASE, enemiesNearby: 0 }).critAdd).toBe(0);
+    expect(e.evalConditionals({ ...BASE, enemiesNearby: 3 }).critAdd).toBeCloseTo(0.12, 6);
+    expect(e.evalConditionals({ ...BASE, enemiesNearby: 20 }).critAdd).toBeCloseTo(0.24, 6); // capped
   });
 
   it('Severance Package: registers an on-kill trigger that deals area damage', () => {

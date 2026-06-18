@@ -9,6 +9,8 @@ import {
   steerEnemy,
   DEFAULT_STEER,
   ENEMY_BY_VARIANT,
+  meleeCooldownOf,
+  LUNGE_DURATION,
 } from './enemies';
 import { SpatialHash } from './spatial-hash';
 import { type Player, hitPlayer } from './player';
@@ -252,32 +254,42 @@ export class EnemySystem {
         p.posZ[i] = c.z;
       }
 
-      // Contact damage: triggers when the enemy reaches the player's FOOTPRINT
-      // ring. Reach scales with the enemy's OWN size (×1.35) so a big brute can
-      // body-check THROUGH a rank of small fodder that rings the player — without
-      // the size term, tiny enemies pack the contact ring and "shield" you from
-      // the big hitters parked just behind them.
+      // Melee SWING: an enemy deals contact damage on its own ATTACK-SPEED cadence
+      // (meleeCd), not every frame it touches you (the old "perma damage field"). The
+      // swing cooldown ticks always; when the enemy is in the player's FOOTPRINT ring
+      // AND its swing is ready, it SWINGS — resetting its cadence regardless of whether
+      // the player i-frames the hit (so attack speed, not i-frames, paces an enemy).
+      // Reach scales with the enemy's OWN size (×1.35) so a big brute can body-check
+      // THROUGH a rank of small fodder ringing the player.
+      if (p.meleeCd[i]! > 0) p.meleeCd[i]! -= dt;
+      if (p.lungeT[i]! > 0) p.lungeT[i]! -= dt; // swing-lunge animation decays (render reads it)
       const dx = p.posX[i]! - target.x;
       const dz = p.posZ[i]! - target.z;
       const rr = p.radius[i]! * 1.35 + player.stats.collisionRadius + 0.25;
-      if (
-        dx * dx + dz * dz <= rr * rr &&
-        hitPlayer(player, p.contactDmg[i]!, { variant: p.variant[i]!, kind: 'contact' })
-      ) {
-        fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
-        // Body-check shoves the player AWAY from the enemy (enemy → player dir is
-        // -dx,-dz), scaled by the enemy's size, through the recoil-impulse channel.
-        const force = CONTACT_KNOCKBACK * (p.radius[i]! / KNOCKBACK_REF_RADIUS);
-        const kb = knockbackVelocity(-dx, -dz, force, player.stats.knockbackResistance);
-        player.recoilVel.x += kb.x;
-        player.recoilVel.z += kb.z;
-        const mag = Math.hypot(player.recoilVel.x, player.recoilVel.z);
-        if (mag > MAX_PLAYER_RECOIL) {
-          const k = MAX_PLAYER_RECOIL / mag;
-          player.recoilVel.x *= k;
-          player.recoilVel.z *= k;
-        }
-      }
+      const inReach = dx * dx + dz * dz <= rr * rr;
+      if (inReach && p.meleeCd[i]! <= 0) {
+        p.meleeCd[i] = meleeCooldownOf(p.variant[i]!); // spend the swing (its attack speed)
+        // Punch lunge: a quick forward nudge TOWARD the player, paired with the swing.
+        const inv = 1 / (Math.hypot(dx, dz) || 1);
+        p.lungeT[i] = LUNGE_DURATION;
+        p.lungeDx[i] = -dx * inv; // toward the player (dx = enemy − player)
+        p.lungeDz[i] = -dz * inv;
+        if (hitPlayer(player, p.contactDmg[i]!, { variant: p.variant[i]!, kind: 'contact' })) {
+          fx?.push('dmg', player.pos.x, player.pos.z, p.contactDmg[i]!, 0, 2);
+          // Body-check shoves the player AWAY from the enemy (enemy → player dir is
+          // -dx,-dz), scaled by the enemy's size, through the recoil-impulse channel.
+          const force = CONTACT_KNOCKBACK * (p.radius[i]! / KNOCKBACK_REF_RADIUS);
+          const kb = knockbackVelocity(-dx, -dz, force, player.stats.knockbackResistance);
+          player.recoilVel.x += kb.x;
+          player.recoilVel.z += kb.z;
+          const mag = Math.hypot(player.recoilVel.x, player.recoilVel.z);
+          if (mag > MAX_PLAYER_RECOIL) {
+            const k = MAX_PLAYER_RECOIL / mag;
+            player.recoilVel.x *= k;
+            player.recoilVel.z *= k;
+          }
+        } // hit landed (damage + knockback)
+      } // swing (in reach + cooldown ready)
     }
   }
 }

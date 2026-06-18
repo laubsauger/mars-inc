@@ -239,7 +239,9 @@ export class CorpseSystem {
           hitFx: true, // sparks + blood on each enemy → the blast reads as real hits
           falloff: 0.75, // squared-distance falloff: core kills, rim barely tapped
           // Physically punch a hole — meteors clear a crater, corpses shove a lane.
-          knockback: meteor ? 46 : Math.min(34, 12 + stored * 0.12),
+          // A fresh (level-1) pop has little `stored`, so keep the FLOOR gentle and
+          // let knockback grow with stored overkill — early pops nudge, late ones shove.
+          knockback: meteor ? 46 : Math.min(30, 4 + stored * 0.1),
         },
         rng,
       );

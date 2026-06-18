@@ -12,8 +12,9 @@ function hitOnce(type: typeof RUST_MITE): number {
   const player = createPlayer();
   const i = pool.spawn(type, 0, 0, 0, 0); // on top of the player
   pool.state[i] = EnemyState.Active;
+  pool.meleeCd[i] = 0; // ready to SWING now (skip the first-swing wind-up)
   const before = player.health;
-  sys.step(player, 0, 1 / 60); // one contact (i-frames gate further hits)
+  sys.step(player, 0, 1 / 60); // one swing (i-frames gate further hits)
   return before - player.health;
 }
 

@@ -26,6 +26,7 @@ import { BountyView } from './render/bounty-view';
 import { ShardView } from './render/shard-view';
 import { CursorView } from './render/cursor-view';
 import { DroneView } from './render/drone-view';
+import { OrbitalBladeView } from './render/orbital-blade-view';
 import { CorpseView } from './render/corpse-view';
 import { GrenadeView } from './render/grenade-view';
 import { PetView } from './render/pet-view';
@@ -263,6 +264,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   const shardView = new ShardView(scene);
   const cursorView = new CursorView(scene);
   const droneView = new DroneView(scene);
+  const orbitalBladeView = new OrbitalBladeView(scene);
   const corpseView = new CorpseView(scene);
   const petView = new PetView(scene);
   const aimLine = new AimLineView(scene, window.innerWidth, window.innerHeight);
@@ -881,6 +883,7 @@ async function boot(parent: HTMLElement): Promise<void> {
       bountyView.sync(world.bounties.pool);
       shardView.sync(world.shards, alpha);
       droneView.sync(world.drones, alpha, fxDt);
+      orbitalBladeView.sync(world.orbitals, alpha, fxDt);
       corpseView.sync(world.corpses.pool, alpha);
       petView.sync(world.pets.pool, camera, alpha);
       cursorView.sync(world.player);

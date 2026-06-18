@@ -67,6 +67,9 @@ export interface EnemyType {
   attack?: EnemyAttack;
   /** Contact (melee) damage on touch; defaults to DEFAULT_CONTACT_DAMAGE. */
   contactDamage?: number;
+  /** Melee SWING interval (s) — the enemy's attack speed in contact. Defaults to
+   *  DEFAULT_MELEE_COOLDOWN. Fast skirmishers swing quick, heavy units wind up slow. */
+  meleeCooldown?: number;
   /** On death, split into `count` enemies of this variant (T33 blob). */
   splitInto?: { variant: number; count: number };
   /** What a hit/kill sprays (art doc "Commercial Blood Sport"). `blood` = red
@@ -94,6 +97,27 @@ export interface EnemyType {
 
 /** Touch damage when an enemy reaches the player, unless its type overrides it. */
 export const DEFAULT_CONTACT_DAMAGE = 6;
+/** Default melee SWING interval (s) — most units hit roughly once a second in contact
+ *  (not every frame). Per-type `meleeCooldown` overrides it. */
+export const DEFAULT_MELEE_COOLDOWN = 1.0;
+/** Cap on the first-swing wind-up. The actual wind-up scales with the unit's attack
+ *  speed (`meleeCooldown` × MELEE_WINDUP_FRAC), so FAST aggressors snap a hit the instant
+ *  they reach you (they can clip a walking player on a pass-by — only sprinting escapes),
+ *  while HEAVY units wind up slow + telegraphed (dodgeable). */
+export const MELEE_WINDUP_MAX = 0.42;
+export const MELEE_WINDUP_FRAC = 0.18;
+
+/** First-swing wind-up (s) for a type — short for fast units, longer for heavy ones. */
+export function meleeWindupOf(meleeCooldown: number): number {
+  return Math.min(MELEE_WINDUP_MAX, meleeCooldown * MELEE_WINDUP_FRAC);
+}
+/** Duration (s) of the forward "punch" lunge the render plays on each melee swing. */
+export const LUNGE_DURATION = 0.22;
+
+/** Per-type melee swing interval (s), or the default. Pure lookup by variant. */
+export function meleeCooldownOf(variant: number): number {
+  return ENEMY_BY_VARIANT[variant]?.meleeCooldown ?? DEFAULT_MELEE_COOLDOWN;
+}
 
 export const MAX_ENEMIES = 2000;
 
@@ -124,6 +148,16 @@ export class EnemyPool {
   readonly steerPhase: Uint8Array;
   /** Ranged-attack cooldown remaining (s); 0 = ready (T33). */
   readonly attackCd: Float32Array;
+  /** Melee SWING cooldown remaining (s); 0 = ready to swing. A melee enemy deals
+   *  contact damage as a SWING on this cadence (per-type attack speed) — NOT a perma
+   *  damage field while touching. Decremented each step, reset on a swing. */
+  readonly meleeCd: Float32Array;
+  /** Melee SWING animation: seconds left on the forward "punch" lunge (set on a swing,
+   *  decays). The render nudges the body forward along (lungeDx,lungeDz) by an amount
+   *  that peaks mid-lunge — a visual tell that pairs with the swing. Render-only (V2/V4). */
+  readonly lungeT: Float32Array;
+  readonly lungeDx: Float32Array;
+  readonly lungeDz: Float32Array;
   /** Per-enemy contact (melee) damage (T33). */
   readonly contactDmg: Float32Array;
   /** Engagement radius (world u); 0 = always aggressive. >0 → roams until the
@@ -182,6 +216,10 @@ export class EnemyPool {
     this.stateTimer = new Float32Array(capacity);
     this.steerPhase = new Uint8Array(capacity);
     this.attackCd = new Float32Array(capacity);
+    this.meleeCd = new Float32Array(capacity);
+    this.lungeT = new Float32Array(capacity);
+    this.lungeDx = new Float32Array(capacity);
+    this.lungeDz = new Float32Array(capacity);
     this.burnTime = new Float32Array(capacity);
     this.burnDps = new Float32Array(capacity);
     this.chillTime = new Float32Array(capacity);
@@ -246,6 +284,10 @@ export class EnemyPool {
     // spawning so it walks out of the gate + repositions before its first laser,
     // instead of charging the instant it appears.
     this.attackCd[i] = type.attack?.kind === 'beam' ? type.attack.cooldown * 0.7 : 0;
+    // First melee swing wind-up SCALES with attack speed — a fast unit snaps a hit on
+    // reach (clips a walking player), a heavy one winds up slow (telegraphed, dodgeable).
+    this.meleeCd[i] = meleeWindupOf(type.meleeCooldown ?? DEFAULT_MELEE_COOLDOWN);
+    this.lungeT[i] = 0;
     // Contact damage also scales with difficulty (dampened ~sqrt of HP scale) so
     // late-game / Act-2 hosts actually THREATEN, not just soak hits (T44/T-Act).
     this.contactDmg[i] =
@@ -307,6 +349,10 @@ export class EnemyPool {
       this.stateTimer[i] = this.stateTimer[last]!;
       this.steerPhase[i] = this.steerPhase[last]!;
       this.attackCd[i] = this.attackCd[last]!;
+      this.meleeCd[i] = this.meleeCd[last]!;
+      this.lungeT[i] = this.lungeT[last]!;
+      this.lungeDx[i] = this.lungeDx[last]!;
+      this.lungeDz[i] = this.lungeDz[last]!;
       this.contactDmg[i] = this.contactDmg[last]!;
       this.aggroRange[i] = this.aggroRange[last]!;
       this.burnTime[i] = this.burnTime[last]!;
@@ -358,6 +404,7 @@ export const RUST_MITE: EnemyType = {
   separationWeight: 1.0,
   variant: 0,
   threat: 1,
+  meleeCooldown: 0.9, // quick little nibbles, but weak
   gore: 'blood', // tier-1 fodder still bleeds (scaled small by its radius, see blood-view)
 };
 
@@ -369,6 +416,7 @@ export const DEBT_HOUND: EnemyType = {
   separationWeight: 1.2,
   variant: 1,
   threat: 4,
+  meleeCooldown: 0.7, // fast, aggressive bites — its identity
   gore: 'blood',
 };
 
@@ -574,6 +622,7 @@ export const AUDIT_BRUTE: EnemyType = {
   gore: 'blood',
   threat: 16,
   contactDamage: 16,
+  meleeCooldown: 1.7, // heavy, slow wind-up swings — big hits, but telegraphed by the gap
   aggroRange: 15,
 };
 
@@ -589,6 +638,7 @@ export const LIABILITY_BLOB: EnemyType = {
   variant: 9,
   gore: 'ichor',
   threat: 7,
+  meleeCooldown: 1.2, // a slow, gooey body-slam
   splitInto: { variant: 10, count: 2 },
 };
 
@@ -619,6 +669,7 @@ export const PHASE_STALKER: EnemyType = {
   gore: 'blood',
   threat: 9,
   contactDamage: 12,
+  meleeCooldown: 0.85, // fast ambusher — quick strikes once it's on you
 };
 
 /** Display names by variant — for HUD intros / readouts (T33). */
@@ -709,6 +760,7 @@ export const GARGANTUAN: EnemyType = {
   variant: 13,
   gore: 'blood',
   contactDamage: 14,
+  meleeCooldown: 2.0, // ponderous — its stomp/slam is the real threat, contact is rare + slow
   threat: 22, // expensive → rare, never in groups
 };
 

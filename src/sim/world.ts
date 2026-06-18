@@ -20,6 +20,7 @@ import {
 } from './director/wave-director';
 import { WeaponSystem } from './combat/weapon-system';
 import { DroneSystem } from './combat/drones';
+import { OrbitalSystem } from './combat/orbitals';
 import { CorpseSystem } from './combat/corpses';
 import { GrenadeSystem, GRENADE_MAX_THROW } from './combat/grenades';
 import { PetSystem } from './combat/pets';
@@ -83,11 +84,12 @@ const COUNTDOWN_SECONDS = 3;
  *  blood catastrophe play out in the (otherwise quiet) scene before the freeze (T43). */
 const BOSS_REWARD_DELAY = 1.4;
 const RECENT_CRIT_WINDOW = 1.5; // s a crit keeps the `recentCrit` conditional live
-const LOCAL_CROWD_RADIUS = 7; // m around the player counted as "nearby" for crowd cards
+const LOCAL_CROWD_RADIUS = 9; // m around the player counted as "nearby" for crowd cards (was 7 — too tight; crowd-crit was near-impossible to trigger)
 const STATIONARY_MOVE_DECAY = 2; // hold-ground ramp BLEEDS this× build-rate while moving
 const DOT_INTERVAL = 0.5; // s between damage-over-time ticks (2/s) — chunky integer ticks,
 // not 60 sub-1 ticks/s that the damage-number layer rounds up to a spam of "1"s.
 const LOW_HP_FRAC = 0.4; // health fraction below which the `lowHp` trigger fires (on the drop)
+const TIME_WARP_MULT = 0.4; // enemy dt scale while Time Dilation is active (you keep full speed)
 
 const ZERO_INPUT: InputSnapshot = {
   moveX: 0,
@@ -131,6 +133,8 @@ export class World {
   readonly weaponSystem: WeaponSystem;
   /** Companion drones orbiting the player, auto-hunting enemies (T40/T42). */
   readonly drones = new DroneSystem();
+  /** Orbital blades — spinning melee bodies that slice the swarm (T-orbit). */
+  readonly orbitals = new OrbitalSystem();
   /** Overkill corpses: detonate/launch/chain/meteor build family (T65). */
   readonly corpses = new CorpseSystem();
   /** Player grenades: right-mouse AoE+knockback lobs (crowd-parting tool). */
@@ -363,6 +367,14 @@ export class World {
     // Capture the sprint rising edge before the dash-shock block consumes
     // `prevSprintActive` — XP Liquidation (T58) fires on the same edge.
     const sprintRising = this.player.sprint.active && !this.prevSprintActive;
+    // Time Dilation (T-timewarp): while active, every ENEMY system steps at a slice
+    // of dt — slowed movement, attacks, and in-flight enemy projectiles — while the
+    // player keeps full speed. Decays in real time. Triggers (e.g. lowHp) set it.
+    let enemyDt = dt;
+    if (this.player.timeWarp > 0) {
+      this.player.timeWarp = Math.max(0, this.player.timeWarp - dt);
+      enemyDt = dt * TIME_WARP_MULT;
+    }
     // Orchestrate boss-creep cadence by the active boss's phase (T44/V42): a boss
     // deeper into its phases floods more reinforcements. (One-step lag is fine — the
     // boss controller updates phase later this step.)
@@ -387,10 +399,10 @@ export class World {
     // Escalate difficulty in KIND, not just count (T-elite): freshly-spawned fodder
     // gains baseline shields as the run deepens + a slice promotes to elites.
     promoteSpawns(this.enemies, eliteProgress(this.player.level, this.stats.bossKills), this.rng);
-    this.enemySystem.step(this.player, this.tick, dt, this.fx);
+    this.enemySystem.step(this.player, this.tick, enemyDt, this.fx);
     // Gargantuans devour overlapping fodder + grow, and SLAM a size-scaled blast
     // (after steering → current positions). A fat one carves a huge lethal zone.
-    stepGargantuans(this.enemies, this.enemyAttacks, dt, this.fx);
+    stepGargantuans(this.enemies, this.enemyAttacks, enemyDt, this.fx);
     // Companion drones hunt + fire into the shared projectile pool (V3 pipeline).
     // After the enemy system so the spatial hash is current; before the weapon
     // system so their bolts are stepped/collided this frame too.
@@ -476,14 +488,28 @@ export class World {
       }
     }
     this.prevSprintActive = this.player.sprint.active;
+    // Orbital blades (T-orbit): spin around the player + slice the swarm on their
+    // tick cadence (pipeline-routed, V3). Runs BEFORE the weapon system so blade
+    // kills compact + drop XP this step exactly like a bullet hit.
+    this.orbitals.setCount(this.player.orbitCount);
+    const orbitalDmg = this.orbitals.step(
+      this.player,
+      this.enemies,
+      this.enemySystem.hash,
+      this.player.orbitDamage * this.mods.damageMult,
+      this.player.orbitRadius,
+      dt,
+      this.rng,
+      this.fx,
+    );
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
-    this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
+    this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, enemyDt, this.fx);
     // Run-phase environmental hazard (T44/V23): each boss kill graduates the pit to a
     // deadlier state — telegraphed ground eruptions start at tier 1 and quicken with
     // each kill. Queued BEFORE enemyAttacks.step so they tick + telegraph this step.
     this.stepArenaHazards(dt);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
-    this.enemyAttacks.step(this.enemies, this.player, this.rng, dt, this.fx);
+    this.enemyAttacks.step(this.enemies, this.player, this.rng, enemyDt, this.fx);
 
     // Dynamic build conditionals (T38): evaluate against live combat context.
     const cond = this.evalConditionals(dt);
@@ -663,10 +689,14 @@ export class World {
       corpseDmg +
       petDmg +
       xpResDmg +
-      grenadeDmg;
+      grenadeDmg +
+      orbitalDmg;
     // Health only drops from damage this step (heals/maxHP changes happen while
     // the sim is frozen for a draft), so the positive delta is damage taken.
-    this.stats.damageTaken += Math.max(0, healthBefore - this.player.health);
+    const tookDamage = Math.max(0, healthBefore - this.player.health);
+    this.stats.damageTaken += tookDamage;
+    // Hurt trigger (thorns / retaliate): fire once per step the player lost health.
+    if (tookDamage > 0 && this.effects.has('hurt')) this.firePlayerTrigger('hurt', tookDamage);
     this.stats.timeSurvived = this.elapsed;
     this.stats.level = this.player.level;
 
@@ -916,7 +946,7 @@ export class World {
    *  with no specific enemy target. AoE routes through the V3 pipeline like the
    *  other triggers; status falls on the nearest hit. Batch 1 wires sprint/lowHp/
    *  waveClear so cards can hook movement, panic, and clear-the-room moments. */
-  private firePlayerTrigger(event: TriggerEvent): void {
+  private firePlayerTrigger(event: TriggerEvent, magnitude = 0): void {
     this.effects.fire(event, {
       x: this.player.pos.x,
       z: this.player.pos.z,
@@ -926,7 +956,7 @@ export class World {
       rng: this.rng,
       fx: this.fx,
       variant: 0,
-      magnitude: 0,
+      magnitude,
       targetIndex: -1,
       procCoef: 1,
       hitDamage: 0,
@@ -1104,6 +1134,7 @@ export class World {
     this.stationarySec = 0;
     this.director.reset();
     this.drones.reset();
+    this.orbitals.reset();
     this.grenades.reset();
     this.grenadeCd = 0;
     this.autoShoot = false;

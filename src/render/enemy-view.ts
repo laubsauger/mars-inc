@@ -28,7 +28,7 @@ import {
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { EnemyPool } from '../sim/enemies';
-import { MAX_ENEMIES, EnemyState, SpawnKind } from '../sim/enemies';
+import { MAX_ENEMIES, EnemyState, SpawnKind, LUNGE_DURATION } from '../sim/enemies';
 import { COL } from './art/palette';
 import { toonMaterial } from './art/toon';
 import type { LightBuffer } from './light-buffer';
@@ -300,11 +300,28 @@ export class EnemyView {
       const scaleMul = 0.3 + 0.7 * (1 - mat);
       const base = (r / 0.5) * scaleMul;
       const sz = VARIANT_SIZE[pool.variant[i]!] ?? UNIT_SIZE;
-      this.dummy.position.set(x, 0, z);
+      // Melee SWING punch (V2/V4 render-only): on a swing the body NUDGES forward toward
+      // the player + briefly stretches along its facing — a short jab paired with the
+      // hit. `lungeT` decays in the sim; ease in→out so it punches and recovers.
+      let px = x;
+      let pz = z;
+      let stretch = 1;
+      const lt = pool.lungeT[i]!;
+      if (lt > 0) {
+        const e = Math.sin(Math.min(1, 1 - lt / LUNGE_DURATION) * Math.PI); // 0→1→0
+        const ldx = pool.lungeDx[i]!;
+        const ldz = pool.lungeDz[i]!;
+        px += ldx * e * (0.5 * r); // forward jab distance scales with the body
+        pz += ldz * e * (0.5 * r);
+        stretch = 1 + e * 0.2; // quick forward extend
+        if (SHAPE_FACES[shape]) yaw = Math.atan2(ldx, ldz); // face the punch
+      }
+      this.dummy.position.set(px, 0, pz);
       this.dummy.rotation.set(0, yaw, 0);
       // Width on x/z, height on y → a per-variant silhouette lift without touching
-      // the sim footprint (ground-seated geometry, so taller grows upward, V4).
-      this.dummy.scale.set(base * sz[0], base * sz[1], base * sz[0]);
+      // the sim footprint (ground-seated geometry, so taller grows upward, V4). The
+      // punch stretches the FACING axis (local z) so the jab reads as a thrust.
+      this.dummy.scale.set(base * sz[0], base * sz[1], base * sz[0] * stretch);
       this.dummy.updateMatrix();
       mesh.setMatrixAt(idx, this.dummy.matrix);
 

@@ -33,10 +33,11 @@ function apply(
 }
 
 describe('recoil build family (T55)', () => {
-  it('Backblast Harness turns on recoil→sprint recharge', () => {
-    const player = createPlayer();
-    apply(byId('backblast-harness'), { player, mods: defaultMods(), effects: new BuildEffects() });
-    expect(player.recoilSprintRecharge).toBe(true);
+  it('Counterthrust Rig adds knockback + firms the recoil kick (the primer)', () => {
+    const mods = defaultMods();
+    apply(byId('counterthrust-rig'), { player: createPlayer(), mods, effects: new BuildEffects() });
+    expect(mods.knockback).toBeCloseTo(8, 6);
+    expect(mods.recoilMult).toBeCloseTo(1.25, 6);
   });
 
   it('Brass Surfing adds pierce + only buffs damage while recoil is active', () => {
@@ -60,16 +61,16 @@ describe('recoil build family (T55)', () => {
 
   it('the recoil cards are gated behind owning a recoil source', () => {
     expect(available(RECOIL_UPGRADES, {}).some((u) => u.id === 'brass-surfing')).toBe(false);
-    const owned = { 'backblast-harness': 1 };
+    const owned = { 'counterthrust-rig': 1 };
     expect(available(RECOIL_UPGRADES, owned).some((u) => u.id === 'brass-surfing')).toBe(true);
   });
 
   it('God-Kicker needs Kinetic Overdraft first', () => {
-    const withRecoil = { 'backblast-harness': 1 };
+    const withRecoil = { 'counterthrust-rig': 1 };
     expect(available(RECOIL_UPGRADES, withRecoil).some((u) => u.id === 'god-kicker-assembly')).toBe(
       false,
     );
-    const ready = { 'backblast-harness': 1, 'kinetic-overdraft': 1 };
+    const ready = { 'counterthrust-rig': 1, 'kinetic-overdraft': 1 };
     expect(available(RECOIL_UPGRADES, ready).some((u) => u.id === 'god-kicker-assembly')).toBe(
       true,
     );

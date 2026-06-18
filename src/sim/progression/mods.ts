@@ -24,6 +24,7 @@ export interface RunMods {
   blastDamageMult: number; // fraction of weapon dmg the splash carries — starts LOW, scales up
   rangeMult: number; // weapon targeting/effective range multiplier (T33 progression)
   knockback: number; // outward impulse applied to enemies on projectile hit (0 = off)
+  homingTurn: number; // projectile turn rate toward nearest enemy, rad/s (0 = straight; Smart Rounds)
   recoilMult: number; // scales per-shot recoil impulse (T55; still capped by V10)
   procCoefBonus: number; // added to the weapon's proc coefficient (T69/T70; status builds)
   statusDamageMult: number; // global DoT amplifier — burn/bleed × this (T35/T70 status lane)
@@ -57,6 +58,7 @@ export function defaultMods(): RunMods {
     blastDamageMult: 0.34, // splash starts at 34% of weapon dmg — scale up via upgrades
     rangeMult: 1,
     knockback: 0,
+    homingTurn: 0,
     recoilMult: 1,
     procCoefBonus: 0,
     statusDamageMult: 1,

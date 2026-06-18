@@ -7,21 +7,25 @@
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 
 export const RECOIL_UPGRADES: UpgradeDefinition[] = [
-  // PRIMER — recoil feeds sprint (the entry into the family).
+  // PRIMER — recoil works both ways: it firms the kick into real mobility AND your
+  // shots physically SHOVE enemies back. Always useful (crowd control on every hit),
+  // and the entry that grants the `recoil` tag for the rest of the family.
   {
-    id: 'backblast-harness',
-    name: 'Backblast Harness',
-    description: 'Firing recharges your Sprint — the recoil vents into the thruster.',
-    tags: ['recoil', 'mobility'],
+    id: 'counterthrust-rig',
+    name: 'Counterthrust Rig',
+    description:
+      'Newton bites both ways: your shots SHOVE enemies back and the kick drives you harder.',
+    tags: ['recoil', 'mobility', 'control'],
     grantsTags: ['recoil'],
     rarity: 'uncommon',
-    maxLevel: 1,
+    maxLevel: 2,
     baseWeight: 6,
     synergyWeight: 2,
     role: 'primer',
     riskTier: 0,
-    apply: ({ player }) => {
-      player.recoilSprintRecharge = true;
+    apply: ({ mods }) => {
+      mods.knockback += 8; // every hit nudges the target back — real space-buying CC
+      mods.recoilMult += 0.25; // firmer kick → recoil becomes a mobility tool
     },
   },
   // ENGINE — shots hit harder + pierce while recoil is moving you.

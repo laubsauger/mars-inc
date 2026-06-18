@@ -49,6 +49,9 @@ export class ProjectilePool {
   /** Visual style index (weapon family) → the render picks shape/length/colour so
    *  guns read distinctly (sidearm bolt vs energy lance vs cannon shell). Cosmetic. */
   readonly style: Uint8Array;
+  /** Homing turn rate (rad/s): >0 = the projectile curves toward the nearest enemy
+   *  each step, capped at this angular speed. 0 = flies straight (Smart Rounds, T-homing). */
+  readonly homing: Float32Array;
 
   constructor(capacity: number = MAX_PROJECTILES) {
     this.capacity = capacity;
@@ -74,6 +77,7 @@ export class ProjectilePool {
     this.procCoef = new Float32Array(capacity);
     this.inherit = new Uint8Array(capacity);
     this.style = new Uint8Array(capacity);
+    this.homing = new Float32Array(capacity);
   }
 
   spawn(
@@ -91,6 +95,7 @@ export class ProjectilePool {
     procCoef = 1,
     inherit = 1,
     style = 0,
+    homing = 0,
   ): number {
     if (this.count >= this.capacity) return -1;
     const i = this.count++;
@@ -116,6 +121,7 @@ export class ProjectilePool {
     this.procCoef[i] = procCoef;
     this.inherit[i] = inherit;
     this.style[i] = style;
+    this.homing[i] = homing;
     return i;
   }
 
@@ -144,6 +150,7 @@ export class ProjectilePool {
       this.procCoef[i] = this.procCoef[last]!;
       this.inherit[i] = this.inherit[last]!;
       this.style[i] = this.style[last]!;
+      this.homing[i] = this.homing[last]!;
     }
   }
 }

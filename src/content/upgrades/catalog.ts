@@ -106,7 +106,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     id: 'repulsor-pulse',
     name: 'Repulsor Pulse',
     description:
-      'A repulsor shockwave knocks back + damages everything within ~4m (the cyan ring shows the reach). Each level: bigger radius, harder shove, faster pulse.',
+      'A repulsor shockwave knocks back + damages within ~4m . Each level: bigger radius, harder shove, faster pulse.',
     tags: ['defense', 'control', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 5,
@@ -454,31 +454,8 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
         ctx.fx.push('impact', ctx.x, ctx.z, 3.2, 0, ImpactProfile.Blast);
       }),
   },
-  {
-    id: 'warmup-protocol',
-    name: 'Warmup Protocol',
-    description: 'Sustained fire spins you up: fire rate climbs the longer you keep shooting.',
-    tags: ['fire-rate', 'tempo'],
-    grantsTags: ['ramp'],
-    rarity: 'uncommon',
-    maxLevel: 3,
-    baseWeight: 7,
-    synergyWeight: 2,
-    role: 'engine',
-    riskTier: 0,
-    previewStats: (lvl) => [
-      {
-        label: 'Max fire rate',
-        from: `+${Math.round(15 * lvl)}%`,
-        to: `+${Math.round(15 * (lvl + 1))}%`,
-      },
-    ],
-    // firingRampSec ramps 0→12s while enemies are up; +5%/s/level capped per level.
-    apply: ({ effects }) =>
-      effects.addConditional((c) => ({
-        fireRateMult: 1 + Math.min(0.15, c.firingRampSec * 0.0125),
-      })),
-  },
+  // (Warmup Protocol removed — a sustained-fire ramp does nothing when you already
+  //  hold fire 100% of the time. Replaced by the "Overwhelm" crowd card in spice.ts.)
   {
     id: 'crowd-suppression',
     name: 'Crowd Suppression',

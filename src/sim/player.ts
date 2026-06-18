@@ -77,6 +77,7 @@ export interface Player {
   lastDamage: { variant: number; kind: string; amount: number } | null;
   droneDamageMult: number; // COMMAND: scales companion-drone damage
   droneFireRateMult: number; // COMMAND: scales companion-drone fire rate (cadence)
+  pointBlankRange: number; // >0 = Point-Blank Clause owned → render a floor ring at this radius
   gloryMult: number; // ARENA/INFAMY: multiplies Glory earned from this run
   /** Chill (slow) from enemy frost effects (T33): time left + speed multiplier. */
   chillTime: number;
@@ -111,6 +112,14 @@ export interface Player {
   /** Recoil build (T55): seconds since the last shot's recoil (>0 = "recoil is
    *  moving the player"). Set on fire, decays here. Read by recoil conditionals. */
   recoilTimer: number;
+  /** Time Dilation (T-timewarp): seconds of enemy slow-mo remaining. While >0 the
+   *  world steps every ENEMY system at TIME_WARP_MULT dt (you keep full speed). */
+  timeWarp: number;
+  /** Orbital blades (T-orbit): spinning bodies circling the player that slice
+   *  enemies they sweep. 0 = off. Damage scales with the build's damage mult. */
+  orbitCount: number;
+  orbitDamage: number; // base slice damage per blade per tick (before damageMult)
+  orbitRadius: number; // orbit distance from the player
   /** Backblast Harness: while firing, recoil feeds the sprint recharge (T55). */
   recoilSprintRecharge: boolean;
   /** Corpse / overkill build (T65). Off until the family's cards are drafted. */
@@ -162,6 +171,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     lastDamage: null,
     droneDamageMult: 1,
     droneFireRateMult: 1,
+    pointBlankRange: 0,
     gloryMult: 1,
     bonusRerolls: 0,
     bonusBanishes: 0,
@@ -184,6 +194,10 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     dashShockForce: 0,
     dashShockRadius: 5,
     recoilTimer: 0,
+    timeWarp: 0,
+    orbitCount: 0,
+    orbitDamage: 7,
+    orbitRadius: 3.4,
     recoilSprintRecharge: false,
     corpseStore: false,
     corpseDetonate: false,
@@ -235,6 +249,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.lastDamage = null;
   p.droneDamageMult = 1;
   p.droneFireRateMult = 1;
+  p.pointBlankRange = 0;
   p.gloryMult = 1;
   p.bonusRerolls = 0;
   p.bonusBanishes = 0;
@@ -257,6 +272,10 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.dashShockForce = 0;
   p.dashShockRadius = 5;
   p.recoilTimer = 0;
+  p.timeWarp = 0;
+  p.orbitCount = 0;
+  p.orbitDamage = 7;
+  p.orbitRadius = 3.4;
   p.recoilSprintRecharge = false;
   p.corpseStore = false;
   p.corpseDetonate = false;

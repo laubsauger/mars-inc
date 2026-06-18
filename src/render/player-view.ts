@@ -70,6 +70,10 @@ export class PlayerView {
   // reach, brightening as the next pulse charges. Only shown once the pulse is owned.
   private novaRing!: Mesh;
   private novaRingMat!: MeshBasicMaterial;
+  // Point-Blank Clause zone: a faint red ring at the bonus radius so you can SEE how
+  // close "point-blank" is. Only shown once the card is owned (player.pointBlankRange>0).
+  private pbRing!: Mesh;
+  private pbRingMat!: MeshBasicMaterial;
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -164,6 +168,23 @@ export class PlayerView {
     this.novaRing.renderOrder = 2;
     this.novaRing.visible = false;
     this.group.add(this.novaRing);
+
+    // Point-Blank zone ring — warm red (close = risk), thin, faint. Scaled to the bonus
+    // radius each frame; hidden until the clause is owned.
+    this.pbRingMat = new MeshBasicMaterial({
+      color: COL.healthRed,
+      transparent: true,
+      opacity: 0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.pbRing = new Mesh(new RingGeometry(0.95, 1.0, 64), this.pbRingMat);
+    this.pbRing.rotation.x = -Math.PI / 2;
+    this.pbRing.position.y = 0.11;
+    this.pbRing.renderOrder = 2;
+    this.pbRing.visible = false;
+    this.group.add(this.pbRing);
 
     this.healthPlate = this.buildHealthPlate();
     this.healthFill = this.healthPlate.getObjectByName('fill') as Mesh;
@@ -328,6 +349,18 @@ export class PlayerView {
       this.novaRingMat.opacity = 0.07 + 0.28 * charge * charge; // ramps hard right before the pulse
     } else if (this.novaRing.visible) {
       this.novaRing.visible = false;
+    }
+
+    // Point-Blank zone ring: faint red circle at the bonus radius (slow breathe so it
+    // reads as a zone, not a hard line). The buff aura already flares when the bonus is
+    // actually live; this just shows HOW CLOSE point-blank is.
+    if (player.pointBlankRange > 0) {
+      this.pbRing.visible = true;
+      const r = player.pointBlankRange;
+      this.pbRing.scale.set(r, r, r);
+      this.pbRingMat.opacity = 0.1 + 0.05 * Math.sin(this.platePhase * 1.1);
+    } else if (this.pbRing.visible) {
+      this.pbRing.visible = false;
     }
   }
 

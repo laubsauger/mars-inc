@@ -5,6 +5,10 @@
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
 
+/** Point-Blank Clause: the nearest-enemy distance (m) under which the bonus applies.
+ *  Shared by the conditional + the floor-ring visual so they never drift apart. */
+const POINT_BLANK_RANGE = 5;
+
 export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   // CONDITIONAL — risk build: huge damage while near death (corrupted curse vibe).
   {
@@ -25,27 +29,33 @@ export const ADVANCED_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'point-blank-clause',
     name: 'Point-Blank Clause',
-    description: '+50% damage to enemies at point-blank range.',
+    description: '+50% damage while the nearest enemy is within 5m (the red ring on the floor).',
     tags: ['conditional', 'damage', 'risk'],
     rarity: 'rare',
     maxLevel: 2,
     baseWeight: 4,
     synergyWeight: 2,
-    apply: ({ effects }) =>
-      effects.addConditional((c) => (c.nearestDist < 5 ? { damageMult: 1.5 } : {})),
+    apply: ({ effects, player }) => {
+      player.pointBlankRange = POINT_BLANK_RANGE; // drives the floor-ring visual
+      effects.addConditional((c) => (c.nearestDist < POINT_BLANK_RANGE ? { damageMult: 1.5 } : {}));
+    },
   },
   // CONDITIONAL — crowd build: crit harder against swarms.
   {
     id: 'crowd-clause',
     name: 'Crowd Control Clause',
-    description: '+15% crit chance while 8+ enemies are within 7m of you.',
+    description:
+      'The more they swarm you, the deadlier: +4% crit per nearby enemy (within 9m), up to +24%.',
     tags: ['crit', 'crowd'],
     rarity: 'uncommon',
     maxLevel: 2,
     baseWeight: 5,
     synergyWeight: 2,
+    // Ramps from the FIRST nearby enemy instead of a hard 8+ wall — useful in a
+    // modest cluster, scaling toward the cap in a real swarm (the old threshold was
+    // near-impossible to hit at 7m). Reads off the widened LOCAL_CROWD_RADIUS.
     apply: ({ effects }) =>
-      effects.addConditional((c) => (c.enemiesNearby >= 8 ? { critAdd: 0.15 } : {})),
+      effects.addConditional((c) => ({ critAdd: Math.min(0.24, c.enemiesNearby * 0.04) })),
   },
   // TRIGGER — on-kill shockwave (executioner / explosive direction).
   {

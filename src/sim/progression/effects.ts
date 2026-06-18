@@ -70,6 +70,7 @@ export type TriggerEvent =
   | 'sprint'
   | 'waveClear' // every enemy on the field is dead (rare — full clear)
   | 'breather' // your LOCAL space cleared: no enemies within 7m (achievable via kiting)
+  | 'hurt' // the player took damage THIS step (thorns / retaliate cards) — magnitude = dmg
   | 'reaction'; // a status reaction fired (T53 cross-upgrade hook)
 
 export interface TriggerCtx {
