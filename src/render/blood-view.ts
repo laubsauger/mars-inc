@@ -32,6 +32,7 @@ const COAT_RANGE = 4.4; // blood from a kill within this of the player coats the
 const PLAYER_GORE_LIFE = 38; // s — lingers WAY longer than floor decals so it builds up
 const GRAVITY = 22; // droplet fall accel (world u/s²)
 const FLOOR_Y = 0.04; // decal rests just above the floor inlays
+const FLOOR_DECAL_DIM = 0.68; // floor splats sit darker than fresh spray (soaked-in look)
 // Decals dry + sink into the arena shadow over their life, then recycle.
 const DECAL_LIFE = 7;
 const DECAL_TARGET = COL.umberShadow;
@@ -354,9 +355,11 @@ export class BloodView {
     const base = 0.4 * size;
     this.cLen[i] = base + Math.min(1.4, speed * 0.07) + rnd() * 0.4 * size;
     this.cWid[i] = base * (0.6 + rnd() * 0.7);
-    this.cr[i] = r;
-    this.cg[i] = g;
-    this.cb[i] = b;
+    // Floor splats read DARKER than the airborne spray/gibs — dried, soaked-into-the-
+    // floor matter, not a fresh bright spurt. Dims only the settled decal.
+    this.cr[i] = r * FLOOR_DECAL_DIM;
+    this.cg[i] = g * FLOOR_DECAL_DIM;
+    this.cb[i] = b * FLOOR_DECAL_DIM;
   }
 
   update(dt: number): void {

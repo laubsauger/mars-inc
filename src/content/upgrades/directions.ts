@@ -286,7 +286,7 @@ export const DIRECTION_UPGRADES: UpgradeDefinition[] = [
     id: 'phoenix-protocol',
     name: 'Phoenix Protocol',
     description:
-      'CAPSTONE: at low health you ERUPT — huge nova, a 25% heal, and a second of invulnerability.',
+      'CAPSTONE: when you DROP below 40% health you ERUPT — huge nova, a 25% heal, and a second of invulnerability. Re-arms each time you fall back under 40%.',
     tags: ['risk', 'panic', 'explosive'],
     rarity: 'legendary',
     maxLevel: 1,

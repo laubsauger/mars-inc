@@ -156,6 +156,7 @@ export class ArenaView {
       for (let i = 0; i < GATE_COUNT; i++) this.buildGate((i / GATE_COUNT) * Math.PI * 2);
       this.buildLighting(scene);
     }
+    this.buildScaleRuler(); // 1 / 5 / 10 m distance reference on the floor
     // Collapse static geometry into one mesh per material (animated doors, if any,
     // are tagged batchDynamic and left untouched).
     batchStatic(this.group, { skip: (o) => o.userData.batchDynamic === true });
@@ -167,6 +168,45 @@ export class ArenaView {
     scene.remove(this.group);
     for (const l of this.lights) scene.remove(l);
     this.lights.length = 0;
+  }
+
+  /** A floor SCALE RULER near the near (south) edge: a 10 m rail with a tick every
+   *  metre, the first metre filled solid + the 0/5/10 m ticks raised in gold — a
+   *  map-style scale so the player can read in-game distances at a glance. */
+  private buildScaleRuler(): void {
+    const shape = activeArena().shape;
+    const edge = shape.kind === 'rect' ? shape.halfZ : shape.radius;
+    const cz = edge - 3.5; // sit just inside the camera-near edge
+    const LEN = 10; // ten metres end-to-end
+    const x0 = -LEN / 2;
+    const y = 0.05;
+    const dim = mat(STEEL_LIT, 0.85, 0.05);
+    const goldMat = new MeshStandardMaterial({
+      color: TRIM,
+      emissive: TRIM,
+      emissiveIntensity: 0.45,
+      roughness: 0.55,
+    });
+    const add = (mesh: Mesh): void => {
+      asFloorDecal(mesh);
+      this.group.add(mesh);
+    };
+    // Base rail.
+    const rail = new Mesh(new BoxGeometry(LEN, 0.03, 0.07), dim);
+    rail.position.set(0, y, cz);
+    add(rail);
+    // Metre ticks — taller + gold at 0 / 5 / 10, short + dim between.
+    for (let i = 0; i <= LEN; i++) {
+      const major = i % 5 === 0;
+      const d = major ? 0.95 : 0.42;
+      const tk = new Mesh(new BoxGeometry(0.08, 0.04, d), major ? goldMat : dim);
+      tk.position.set(x0 + i, y, cz - d / 2);
+      add(tk);
+    }
+    // Solid gold FIRST metre — the unit reference (this length = 1 m).
+    const unit = new Mesh(new BoxGeometry(1, 0.04, 0.2), goldMat);
+    unit.position.set(x0 + 0.5, y, cz - 0.1);
+    add(unit);
   }
 
   private addLight(scene: Scene, l: Object3D): void {

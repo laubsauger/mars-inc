@@ -102,9 +102,23 @@ export const VARIANT_SHAPE: number[] = [
 const VARIANT_SIZE: Readonly<Record<number, readonly [number, number]>> = {
   0: [1.22, 1.55], // mite — bigger body so the fodder reads above the shard ocean
   1: [1.32, 1.5], // hound (tier 2) — wider + taller, reads as the bigger threat
+  // Ranged shooters were all tiny (r 0.74–0.8) — bulk every gun/artillery unit so the
+  // thing shooting at you actually reads on the floor.
+  3: [1.32, 1.42], // severance lobber (grenadier)
+  4: [1.35, 1.45], // repo marshal (rifle gunner)
+  5: [1.32, 1.42], // foreclosure mortar (artillery)
+  6: [1.35, 1.45], // riot shotgunner
+  8: [1.32, 1.42], // frostbite auditor (cryo)
   11: [1.3, 1.38], // phase stalker (pink fast) — beefier silhouette so it's easy to track
 };
 const UNIT_SIZE: readonly [number, number] = [1, 1]; // every other variant — unchanged
+
+/** Visual WIDTH multiplier for a variant (the x/z footprint scale on top of radius).
+ *  Shared so the contact-shadow disc matches the rendered body size (else a visually
+ *  enlarged enemy gets a tiny shadow + reads as floaty/unshaded). */
+export function variantWidthMul(variant: number): number {
+  return VARIANT_SIZE[variant]?.[0] ?? UNIT_SIZE[0];
+}
 // Shapes whose silhouette has a clear front → rotate to face movement direction.
 const SHAPE_FACES = [true, true, true, true, true, false, false, false, false];
 

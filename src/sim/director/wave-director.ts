@@ -55,6 +55,9 @@ export const TIMELINE_STRETCH = 2;
 // Wave rhythm (T33 pacing): spawn in clustered PULSES with breathers between —
 // not a constant fill. Early waves are small groups from 2 of the 4 gates; the
 // gap shrinks, groups grow, and more gates open as the run escalates.
+const INITIAL_BANK = 16; // seed so the FIRST wave is a real group, not a trickle (the open
+// fires before the bank could accrue). Field-init AND reset use it so a fresh director and
+// a reset one are identical (V16 determinism).
 const WAVE_DISPLAY_PERIOD = 8; // escalation-seconds per HUD "wave" tick (coarse readout)
 const WAVE_GAP_START = 1.2; // seconds between waves at the open — snappy, ⊥ draggy
 const WAVE_GAP_MIN = 0.45; // late-game floor — waves crash in fast deep in the run
@@ -169,7 +172,7 @@ export function budgetAt(elapsed: number): SpawnBudget {
 }
 
 export class WaveDirector {
-  private bank = 0;
+  private bank = INITIAL_BANK;
   private phase = 0;
   private boss = false; // at least one boss has spawned this run
   // Act runner (T75): the FINITE default path fields the act's bosses in order.
@@ -178,6 +181,8 @@ export class WaveDirector {
   // arms (set on a kill via advanceBossStage). `act` is this run's roster.
   private act: ActDef = actFor(1);
   private bossStage = 0;
+  private spawnedStage = -1; // highest stage we've actually FIELDED — guards against
+  // re-spawning the SAME miniboss if the kill-edge ever fails to advance the stage.
   private bossArmTimer = 0;
   private forceNextBoss = false; // dev: spawn the next staged boss ASAP (T74)
   private bossCreepTimer = 0; // countdown to the next boss-creep reinforcement trickle
@@ -189,7 +194,7 @@ export class WaveDirector {
   // escalating HP. `infinite` flips on via enterInfinite().
   private infinite = false;
   private bossesSpawned = 0; // how many bosses fielded → escalates HP in Overrun
-  private waveTimer = 0.4; // first wave lands quickly — no slow empty open
+  private waveTimer = 0.25; // first wave lands fast (matches reset() — V16 determinism)
   private sweepGate = 0; // clockwise cursor for the Sweep pattern
   private lastSentinelGate = -1; // last gate a sentinel used → spread them across gates
   /** Wave pulse counter (HUD): one per released gate-wave pulse, 1-based once the run
@@ -209,17 +214,18 @@ export class WaveDirector {
   waveEvent: string | null = null;
 
   reset(): void {
-    this.bank = 0;
+    this.bank = INITIAL_BANK; // SEED so the first wave is a real group (see the const)
     this.phase = 0;
     this.boss = false;
     this.bossStage = 0;
+    this.spawnedStage = -1;
     this.bossArmTimer = 0;
     this.forceNextBoss = false;
     this.bossCreepTimer = BOSS_CREEP_FIRST;
     this.bossPhase = 0;
     this.infinite = false;
     this.bossesSpawned = 0;
-    this.waveTimer = 0.4;
+    this.waveTimer = 0.25; // first wave lands fast — the open shouldn't feel empty
     this.sweepGate = 0;
     this.lastSentinelGate = -1;
     this.teleTimer = TELE_PERIOD;
@@ -357,6 +363,15 @@ export class WaveDirector {
     if (pool.count >= cap) return;
     if (this.bossOnField(pool)) return; // a boss is up; stage advances on its death
 
+    // SAFEGUARD: we've passed the on-field check, so no boss is up. If this stage's boss
+    // was ALREADY fielded, its kill never advanced us — SELF-ADVANCE (with the gap) so the
+    // NEXT boss comes up instead of re-spawning the SAME miniboss back-to-back. In the
+    // normal flow the world's kill-edge advances `bossStage` first, so this never fires.
+    if (this.bossStage <= this.spawnedStage) {
+      this.advanceBossStage();
+      return;
+    }
+
     let ready: boolean;
     if (this.bossStage === 0 && !this.boss) {
       ready = elapsed >= this.act.firstBossAt; // escalation-time gate for the opener
@@ -370,6 +385,7 @@ export class WaveDirector {
     const def = this.act.bosses[this.bossStage]!;
     if (this.spawnAtGate(pool, rng, def.enemyType, def.scale * actDiff)) {
       this.boss = true;
+      this.spawnedStage = this.bossStage; // remember we've fielded this stage's boss
       this.forceNextBoss = false;
       this.bossCreepTimer = BOSS_CREEP_FIRST; // hold the creep a beat after the boss lands
     }

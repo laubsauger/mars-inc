@@ -52,15 +52,15 @@ export const COMMAND_PERMANENTS: PermanentUpgrade[] = [
     },
   },
   {
-    id: 'munitions-cache',
-    name: 'Munitions Cache',
-    description: 'AMPLIFY: +16% drone damage per level — fuller magazines.',
+    id: 'rapid-servos',
+    name: 'Rapid Servos',
+    description: 'AMPLIFY: +18% drone FIRE RATE per level — the swarm cycles faster.',
     branch: 'command',
     rarity: 'common',
     cost: 160,
     maxLevel: 2,
     apply: (p, level) => {
-      p.droneDamageMult += 0.16 * level;
+      p.droneFireRateMult += 0.18 * level;
     },
   },
   {

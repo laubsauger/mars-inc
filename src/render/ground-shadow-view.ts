@@ -14,6 +14,7 @@ import {
 } from 'three';
 import type { EnemyPool } from '../sim/enemies';
 import { MAX_ENEMIES } from '../sim/enemies';
+import { variantWidthMul } from './enemy-view';
 
 export class GroundShadowView {
   private readonly mesh: InstancedMesh;
@@ -46,7 +47,9 @@ export class GroundShadowView {
       const x = pool.prevX[i]! + (pool.posX[i]! - pool.prevX[i]!) * alpha;
       const z = pool.prevZ[i]! + (pool.posZ[i]! - pool.prevZ[i]!) * alpha;
       this.dummy.position.set(x, 0.03, z);
-      this.dummy.scale.setScalar(pool.radius[i]! * 1.15);
+      // Match the disc to the RENDERED body width (radius × the variant's visual width
+      // mul) so an enlarged enemy keeps a proportional contact shadow, not a tiny one.
+      this.dummy.scale.setScalar(pool.radius[i]! * 1.15 * variantWidthMul(pool.variant[i]!));
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
     }

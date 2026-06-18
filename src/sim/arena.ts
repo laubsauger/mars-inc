@@ -38,7 +38,7 @@ export const COLD_VAULT: ArenaDef = {
   tagline: 'Standard contract for freshmen.',
   difficultyMult: 1,
   paceMult: 1,
-  gloryMult: 1,
+  gloryMult: 1.15, // +15% Glory on Act 1 — the entry grind pays a touch better
 };
 
 /** Act 2 — the circular Rust Crown, warm-lit. Tougher hosts, fatter Glory payouts;

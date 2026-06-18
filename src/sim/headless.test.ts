@@ -23,6 +23,7 @@ const PASSIVE: InputSnapshot = {
   pickup: false,
   fire: false,
   grenade: false,
+  grenadeHeld: false,
   toggleAuto: false,
   mouseX: -1,
   mouseY: -1,

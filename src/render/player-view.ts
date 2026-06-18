@@ -66,6 +66,10 @@ export class PlayerView {
   private buffAura!: Mesh;
   private buffAuraMat!: MeshBasicMaterial;
   private buffGlow = 0;
+  // Repulsor-pulse RANGE ring: a faint cyan circle at the nova radius so you SEE its
+  // reach, brightening as the next pulse charges. Only shown once the pulse is owned.
+  private novaRing!: Mesh;
+  private novaRingMat!: MeshBasicMaterial;
 
   constructor(scene: Scene, player: Player) {
     this.group = new Group();
@@ -142,6 +146,24 @@ export class PlayerView {
     this.buffAura.renderOrder = 2;
     this.buffAura.visible = false;
     this.group.add(this.buffAura);
+
+    // Repulsor-pulse range ring — a thin cyan circle laid flat on the floor, scaled to
+    // the live nova radius each frame (unit ring × radius). Cool kinetic hue so it never
+    // reads as an explosion (those are orange). Hidden until the pulse is owned.
+    this.novaRingMat = new MeshBasicMaterial({
+      color: COL.shieldCyan,
+      transparent: true,
+      opacity: 0,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.novaRing = new Mesh(new RingGeometry(0.94, 1.0, 64), this.novaRingMat);
+    this.novaRing.rotation.x = -Math.PI / 2;
+    this.novaRing.position.y = 0.12;
+    this.novaRing.renderOrder = 2;
+    this.novaRing.visible = false;
+    this.group.add(this.novaRing);
 
     this.healthPlate = this.buildHealthPlate();
     this.healthFill = this.healthPlate.getObjectByName('fill') as Mesh;
@@ -294,6 +316,18 @@ export class PlayerView {
       this.buffAura.scale.set(s, s, s);
     } else if (this.buffAura.visible) {
       this.buffAura.visible = false;
+    }
+
+    // Repulsor-pulse range ring: scale to the live nova radius, brighten as the next
+    // pulse charges (faint at rest → bright just before it fires), so the reach reads.
+    if (player.novaInterval > 0 && player.novaRadius > 0) {
+      this.novaRing.visible = true;
+      const r = player.novaRadius;
+      this.novaRing.scale.set(r, r, r);
+      const charge = 1 - Math.max(0, Math.min(1, player.novaTimer / player.novaInterval)); // 0→1 to fire
+      this.novaRingMat.opacity = 0.07 + 0.28 * charge * charge; // ramps hard right before the pulse
+    } else if (this.novaRing.visible) {
+      this.novaRing.visible = false;
     }
   }
 

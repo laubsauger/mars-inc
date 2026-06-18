@@ -29,12 +29,12 @@ describe('emitShards (T17 drop on kill)', () => {
 describe('stepXp (collection + leveling)', () => {
   it('collects a shard within pickup radius and adds xp', () => {
     const pool = new ShardPool();
-    pool.spawn(0, 0, 5); // on top of player
+    pool.spawn(0, 0, 3); // on top of player — below the first level-up threshold
     const player = createPlayer();
     const ups = stepXp(pool, player, 1 / 60);
     expect(pool.count).toBe(0);
-    expect(player.xp).toBe(5);
-    expect(ups).toBe(0); // 5 < xpToNext
+    expect(player.xp).toBe(3);
+    expect(ups).toBe(0); // 3 < xpRequired(1)
   });
 
   it('does not collect a shard far outside pickup/magnet range', () => {

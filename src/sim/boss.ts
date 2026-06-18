@@ -131,6 +131,10 @@ export class BossController {
     // Per-instance max so the HP bar reads correctly for SCALED (escalating) bosses.
     this.hp01 = hp / Math.max(1, enemies.maxHp[b]! || this.def?.enemyType.maxHealth || 1);
 
+    // Still walking in from the gate (telegraph) — registered as on-field (so the defeat
+    // edge works) but it doesn't attack/phase until it's actually live.
+    if (enemies.state[b] !== EnemyState.Active) return;
+
     // Phase break: crossing a threshold escalates + punishes with a shockwave/adds.
     const want = this.phaseFor(this.hp01, phases);
     if (want > this.phase) {
@@ -254,9 +258,13 @@ export class BossController {
     };
   }
 
+  /** Index of the boss on the field in ANY state (telegraph or active), or -1. Tracking
+   *  the boss from the moment it spawns (not just once Active) is what lets `justDefeated`
+   *  fire even when it's killed DURING its gate telegraph — otherwise the stage never
+   *  advances and the SAME miniboss respawns back-to-back. Attacks still gate on Active. */
   private findBoss(enemies: EnemyPool): number {
     for (let i = 0; i < enemies.count; i++) {
-      if (enemies.state[i] === EnemyState.Active && isBossVariant(enemies.variant[i]!)) return i;
+      if (isBossVariant(enemies.variant[i]!)) return i;
     }
     return -1;
   }

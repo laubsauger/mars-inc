@@ -46,7 +46,7 @@ export const ARSENAL_PERMANENTS: PermanentUpgrade[] = [
     branch: 'arsenal',
     rarity: 'common',
     cost: 85,
-    maxLevel: 4,
+    maxLevel: 2, // was 4 — recoil resistance is a small utility, 2 levels is plenty
     apply: (p, level) => {
       p.stats.recoilResistance += 0.1 * level;
     },

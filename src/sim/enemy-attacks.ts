@@ -39,6 +39,31 @@ const enum ProjKind {
   Gun = 1,
 }
 
+/** True if the segment muzzle(ox,oz) → player has NO other Active enemy body sitting on
+ *  it within `maxT` (the beam shooter only fires through a clear lane, not its allies). */
+function hasClearShot(
+  enemies: EnemyPool,
+  self: number,
+  ox: number,
+  oz: number,
+  dirX: number,
+  dirZ: number,
+  maxT: number,
+): boolean {
+  const PAD = 0.2; // a little slack so a body grazing the lane still blocks
+  for (let j = 0; j < enemies.count; j++) {
+    if (j === self || enemies.state[j] !== EnemyState.Active) continue;
+    const rx = enemies.posX[j]! - ox;
+    const rz = enemies.posZ[j]! - oz;
+    const t = rx * dirX + rz * dirZ; // distance along the lane
+    if (t <= 0 || t >= maxT) continue; // behind the muzzle or past the player
+    const perp2 = rx * rx + rz * rz - t * t; // squared perpendicular distance to the lane
+    const block = enemies.radius[j]! + PAD;
+    if (perp2 < block * block) return false; // an ally body is in the way
+  }
+  return true;
+}
+
 /** Lobbed grenades / gun rounds in flight (enemy faction). */
 export class EnemyProjectilePool {
   count = 0;
@@ -301,6 +326,13 @@ export class EnemyAttackSystem {
         const muzzle = enemies.radius[e]! + 0.2;
         const ox = ex + ax * muzzle;
         const oz = ez + az * muzzle;
+        // Only fire with a CLEAR LANE to the player — don't charge a laser through a
+        // crowd of its own allies (reads as friendly-fire / wasted telegraph). Blocked →
+        // hold a short retry and wait for the lane to open.
+        if (!hasClearShot(enemies, e, ox, oz, ax, az, dist - muzzle)) {
+          enemies.attackCd[e] = 0.4;
+          continue;
+        }
         const len = wallDistance(ox, oz, ax, az, 120);
         this.beams.spawn(
           ox,

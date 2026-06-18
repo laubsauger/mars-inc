@@ -45,9 +45,15 @@ describe('rollDraft (V11 pool never empty, no invalid combo)', () => {
   });
 
   it('returns fewer than 3 only when the pool is that small', () => {
-    // Max out all but two upgrades.
+    // Leave exactly two UNGATED upgrades unmaxed; max everything else. Both must be
+    // draftable, so the roll returns 2 (the pool-size clamp — not a gating accident,
+    // e.g. a capstone whose prerequisite was maxed-or-absent).
+    const ungated = UPGRADES.filter(
+      (u) => !u.requiresAnyTags && !u.requiresAllTags && !u.prerequisites,
+    );
+    const keep = new Set([ungated[0]!.id, ungated[1]!.id]);
     const levels: UpgradeLevels = {};
-    for (let i = 0; i < UPGRADES.length - 2; i++) levels[UPGRADES[i]!.id] = UPGRADES[i]!.maxLevel;
+    for (const u of UPGRADES) if (!keep.has(u.id)) levels[u.id] = u.maxLevel;
     expect(rollDraft(UPGRADES, levels, new Rng(1))).toHaveLength(2);
   });
 

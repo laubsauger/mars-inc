@@ -13,6 +13,8 @@ export interface InputSnapshot {
   fire: boolean;
   /** Edge-triggered once per press (right mouse): throw a grenade at the cursor. */
   grenade: boolean;
+  /** Right mouse HELD: auto-throw grenades on cooldown (in addition to the edge). */
+  grenadeHeld: boolean;
   /** Edge-triggered once per press (Space): toggle persistent auto-fire. */
   toggleAuto: boolean;
   /** Mouse position in CSS pixels; -1 when pointer never seen. */
@@ -43,6 +45,7 @@ export class Input {
   private pickupPressed = false;
   private leftDown = false; // primary fire held (left mouse button)
   private grenadePressed = false; // edge: right mouse → grenade
+  private rightDown = false; // right mouse HELD → auto-throw grenades on cooldown
   private autoPressed = false; // edge: Space → toggle auto-fire
   private mouseX = -1;
   private mouseY = -1;
@@ -69,6 +72,8 @@ export class Input {
     const onBlur = (): void => {
       this.down.clear();
       this.mouseInside = false;
+      this.leftDown = false; // release held buttons so nothing keeps firing off-window
+      this.rightDown = false;
     };
     const onMove = (e: MouseEvent): void => {
       this.mouseX = e.clientX;
@@ -79,12 +84,16 @@ export class Input {
       this.mouseInside = false;
     };
     const onMouseDown = (e: MouseEvent): void => {
-      if (e.button === 0)
+      if (e.button === 0) {
         this.leftDown = true; // primary fire
-      else if (e.button === 2) this.grenadePressed = true; // right → grenade (edge)
+      } else if (e.button === 2) {
+        this.grenadePressed = true; // right → grenade (edge — instant first throw)
+        this.rightDown = true; // ...and HOLD → keep throwing on cooldown
+      }
     };
     const onMouseUp = (e: MouseEvent): void => {
       if (e.button === 0) this.leftDown = false;
+      else if (e.button === 2) this.rightDown = false;
     };
     const onContext = (e: Event): void => e.preventDefault(); // no right-click menu
     target.addEventListener('keydown', onDown);
@@ -133,6 +142,7 @@ export class Input {
       pickup,
       fire: this.leftDown,
       grenade,
+      grenadeHeld: this.rightDown,
       toggleAuto,
       mouseX: this.mouseX,
       mouseY: this.mouseY,

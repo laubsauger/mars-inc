@@ -76,6 +76,7 @@ export interface Player {
    *  255 = unknown source. `amount` is the effective health lost. */
   lastDamage: { variant: number; kind: string; amount: number } | null;
   droneDamageMult: number; // COMMAND: scales companion-drone damage
+  droneFireRateMult: number; // COMMAND: scales companion-drone fire rate (cadence)
   gloryMult: number; // ARENA/INFAMY: multiplies Glory earned from this run
   /** Chill (slow) from enemy frost effects (T33): time left + speed multiplier. */
   chillTime: number;
@@ -160,6 +161,7 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     reviveCharges: 0,
     lastDamage: null,
     droneDamageMult: 1,
+    droneFireRateMult: 1,
     gloryMult: 1,
     bonusRerolls: 0,
     bonusBanishes: 0,
@@ -175,9 +177,9 @@ export function createPlayer(stats: MovementStats = LILU_STATS): Player {
     droneInheritMods: false,
     novaInterval: 0,
     novaTimer: 0,
-    novaRadius: 3.4, // T44 nerf: was 6 — far too wide on the first level
-    novaForce: 16,
-    novaDamage: 6, // T44 nerf: was 8
+    novaRadius: 4.2, // a usable footprint from level 1 (was 3.4 — felt weak/small)
+    novaForce: 24, // punchier shove (was 16 — felt limp, esp. after weight-scaled KB)
+    novaDamage: 10, // was 6
     novaPull: false,
     dashShockForce: 0,
     dashShockRadius: 5,
@@ -232,6 +234,7 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.reviveCharges = 0;
   p.lastDamage = null;
   p.droneDamageMult = 1;
+  p.droneFireRateMult = 1;
   p.gloryMult = 1;
   p.bonusRerolls = 0;
   p.bonusBanishes = 0;
@@ -247,9 +250,9 @@ export function resetPlayer(p: Player, stats: MovementStats = LILU_STATS): void 
   p.droneInheritMods = false;
   p.novaInterval = 0;
   p.novaTimer = 0;
-  p.novaRadius = 3.4;
-  p.novaForce = 16;
-  p.novaDamage = 6;
+  p.novaRadius = 4.2;
+  p.novaForce = 24;
+  p.novaDamage = 10;
   p.novaPull = false;
   p.dashShockForce = 0;
   p.dashShockRadius = 5;

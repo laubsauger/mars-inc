@@ -34,17 +34,21 @@ describe('Phase Stalker teleporter (T33+)', () => {
     const fx = new FxQueue();
     // Teleport unlock is stretched: TELE_AT 60 × TIMELINE_STRETCH 2 = 120s real.
     // Step ~40s of run time starting past that so a teleport wave fires.
+    // Count teleporters as they spawn, then CLEAR the pool each step — without deaths
+    // the gate waves would fill the concurrent cap and (correctly) block the teleporter,
+    // which never happens in real play where the player mows the crowd down.
+    let teleporters = 0;
     for (let t = 0; t < 40; t += 1 / 60) {
       d.step(pool, rng, 185 + t, 1 / 60, NEUTRAL_ADAPT, 1, fx);
-    }
-    let teleporters = 0;
-    for (let i = 0; i < pool.count; i++) {
-      if (pool.variant[i] === PHASE_STALKER.variant) {
-        teleporters++;
-        expect(pool.spawnKind[i]).toBe(SpawnKind.Teleport);
-        // Interior of the arena, not out past a gate wall.
-        expect(arenaContains(pool.posX[i]!, pool.posZ[i]!)).toBe(true);
+      for (let i = 0; i < pool.count; i++) {
+        if (pool.variant[i] === PHASE_STALKER.variant) {
+          teleporters++;
+          expect(pool.spawnKind[i]).toBe(SpawnKind.Teleport);
+          // Interior of the arena, not out past a gate wall.
+          expect(arenaContains(pool.posX[i]!, pool.posZ[i]!)).toBe(true);
+        }
       }
+      pool.count = 0; // simulate the field being cleared so the cap never gates spawns
     }
     expect(teleporters).toBeGreaterThan(0);
     expect(fx.events.some((e) => e.kind === 'teleport')).toBe(true);
@@ -175,11 +179,11 @@ describe('WaveDirector (V8 bounded spawns)', () => {
     expect(Array.from(a.posX.slice(0, a.count))).toEqual(Array.from(b.posX.slice(0, b.count)));
   });
 
-  it('reset clears the bank', () => {
+  it('reset reseeds the bank to its opening seed', () => {
     const pool = new EnemyPool();
     const d = simulate(10, pool);
     d.reset();
-    expect(d.banked).toBe(0);
+    expect(d.banked).toBe(16); // INITIAL_BANK — funds the first wave so the open isn't empty
   });
 
   it('faster pace fields more enemies than neutral over the same window', () => {

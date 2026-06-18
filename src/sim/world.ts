@@ -30,7 +30,7 @@ import { weaponById } from '../content/weapons/index';
 import { ShardPool } from './xp';
 import { emitShards, stepXp } from './xp-system';
 import { stepXpResource } from './xp-resource';
-import { FxQueue } from './fx';
+import { FxQueue, ImpactProfile } from './fx';
 import { type RunMods, defaultMods, resetMods } from './progression/mods';
 import { type PermanentLevels, applyPermanents } from './progression/permanents';
 import { type PrestigeLevels, applyPrestige } from '../content/prestige-nodes';
@@ -97,6 +97,7 @@ const ZERO_INPUT: InputSnapshot = {
   pickup: false,
   fire: false,
   grenade: false,
+  grenadeHeld: false,
   toggleAuto: false,
   mouseX: -1,
   mouseY: -1,
@@ -437,7 +438,9 @@ export class World {
           },
           this.rng,
         );
-        this.fx.push('impact', px, pz); // shockwave ring
+        // Shockwave ring sized to the FULL nova radius (Blast profile) so the player
+        // SEES the wave's reach — it was an invisible, range-less pop before.
+        this.fx.push('impact', px, pz, this.player.novaRadius, 0, 4 /* ImpactProfile.Blast */);
       }
     }
     // Kinetic Boots (CC mobility, T42): dashing carves a CHANNEL through the
@@ -459,7 +462,18 @@ export class World {
         this.player.dashShockRadius,
         force,
       );
-      if (rising) this.fx.push('impact', this.player.pos.x, this.player.pos.z);
+      // On the launch edge, draw a full-size blast ring scaled to the shock radius so
+      // the shove READS (not a tiny spark at the feet).
+      if (rising) {
+        this.fx.push(
+          'impact',
+          this.player.pos.x,
+          this.player.pos.z,
+          this.player.dashShockRadius,
+          0,
+          ImpactProfile.Blast,
+        );
+      }
     }
     this.prevSprintActive = this.player.sprint.active;
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
@@ -509,7 +523,13 @@ export class World {
     // Grenade (T-grenade): right-mouse lobs an AoE+knockback grenade at the cursor,
     // on a cooldown — a crowd-parting tool. Reuses the pipeline (V3) + radial push.
     this.grenadeCd = Math.max(0, this.grenadeCd - dt);
-    if (this.input.grenade && this.grenadeCd <= 0 && this.player.aim.has) {
+    // Throw on the right-click EDGE (instant) or while right-mouse is HELD (auto-throw
+    // every time the cooldown refreshes). Needs a live aim (mouse in window).
+    if (
+      (this.input.grenade || this.input.grenadeHeld) &&
+      this.grenadeCd <= 0 &&
+      this.player.aim.has
+    ) {
       this.throwGrenade();
     }
     const grenadeDmg = this.grenades.step(

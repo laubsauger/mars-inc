@@ -23,6 +23,7 @@ function scriptInput(t: number): InputSnapshot {
     pickup: false,
     fire: true, // hold fire so the run shoots (default is manual now)
     grenade: false,
+    grenadeHeld: false,
     toggleAuto: false,
     mouseX: -1,
     mouseY: -1,

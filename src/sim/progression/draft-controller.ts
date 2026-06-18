@@ -29,7 +29,8 @@ import {
 import { previewUpgrade, type UpgradeChange } from './preview';
 import { DRAFT_POOL } from './draft-pool';
 
-const MILESTONE_EVERY = 5; // every Nth level → a draft guaranteed an "interesting" card
+const MILESTONE_EVERY = 3; // every Nth level → a draft guaranteed an "interesting" card
+// (was 5 — early game felt repetitive; spice arrives sooner now)
 const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)

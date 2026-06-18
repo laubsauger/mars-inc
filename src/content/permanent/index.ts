@@ -87,7 +87,7 @@ const UNLOCK_DISCOUNT = 0.7; // level 1 costs 70% of the node's base
 // Each further level escalates HARD (×2.2) so deep-stacking ONE node is a serious
 // Glory sink — you can't cheaply max a branch and steamroll. Pairs with the tapered
 // late-run Glory income (gloryFor) so progression stays earned, not snowballed.
-const COST_GROWTH = 2.2;
+const COST_GROWTH = 1.7; // per-level cost step (was 2.2 — too steep; L4 was 10.6× base, now ~4.9×)
 // Prices climb HARDER along the tree: a node's rarity (which tracks its depth — the
 // cost-sorted layout pushes rare/legendary nodes outward) multiplies its cost, so the
 // deeper you path the steeper each node gets. Pure in (def, level) → refund stays exact.

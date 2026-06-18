@@ -4,7 +4,7 @@
 // in the menu's Glory Tree — this screen is for reading your run. Restart in
 // place (V15) or return to the menu.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUiStore } from '../store';
 import { RunSheet } from '../RunSheet';
 
@@ -39,18 +39,45 @@ export function GameOverScreen() {
   const sheet = useUiStore((s) => s.sheet);
   const restart = useUiStore((s) => s.restartRun);
   const toMenu = useUiStore((s) => s.toMenu);
+  // "Peek" hides the whole summary so the frozen aftermath (the scene is still rendered
+  // behind this overlay) can be surveyed; a back button restores the results.
+  const [peek, setPeek] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (peek)
+          setPeek(false); // Esc first backs out of the peek, then exits
+        else toMenu();
+        return;
+      }
+      if (peek) return; // while surveying, swallow the run-end hotkeys
       if (e.key === 'Enter') restart();
-      if (e.key === 'Escape') toMenu();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [restart, toMenu]);
+  }, [restart, toMenu, peek]);
 
   if (!result) return null;
   const won = result.won;
+
+  // Aftermath survey: drop the overlay (the run is frozen, scene still drawn) and float
+  // a single button to return. pointer-events only on the button so the pit shows through.
+  if (peek) {
+    return (
+      <div className="pointer-events-none absolute inset-0 font-mono">
+        <button
+          onClick={() => setPeek(false)}
+          className="pointer-events-auto fixed left-1/2 top-5 -translate-x-1/2 rounded-md border-2 border-gold bg-pit/85 px-6 py-2.5 text-sm font-bold tracking-widest text-gold shadow-[0_8px_28px_rgba(0,0,0,0.55)] backdrop-blur-sm transition hover:bg-gold/15 focus:outline-none"
+        >
+          ← BACK TO RESULTS
+        </button>
+        <div className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 text-[11px] uppercase tracking-[0.3em] text-bone/45">
+          Surveying the aftermath · the contract is closed
+        </div>
+      </div>
+    );
+  }
 
   return (
     // Viewport-locked column: verdict + spoils header and the action footer are
@@ -154,9 +181,16 @@ export function GameOverScreen() {
           >
             MENU
           </button>
+          <button
+            onClick={() => setPeek(true)}
+            title="Hide this summary and survey the frozen aftermath"
+            className="rounded-md border-2 border-rust/70 bg-pit/60 px-6 py-3 text-lg font-bold tracking-widest text-bone/80 transition hover:-translate-y-0.5 hover:border-cyan hover:text-cyan focus:outline-none"
+          >
+            VIEW THE PIT
+          </button>
         </div>
         <div className="text-xs text-bone/50">
-          Enter to restart · Esc for menu · spend Glory in the Glory Tree
+          Enter to restart · Esc for menu · View the Pit to survey the aftermath
         </div>
       </div>
     </div>

@@ -72,7 +72,8 @@ export class DroneSystem {
     if (this.count === 0) return;
     // Drones inherit the player's reach + fire cadence from the build.
     const range = DRONE_RANGE * mods.rangeMult;
-    const fireInterval = FIRE_INTERVAL / Math.max(0.05, mods.fireRateMult);
+    const fireInterval =
+      FIRE_INTERVAL / Math.max(0.05, mods.fireRateMult * player.droneFireRateMult);
     this.spin += ORBIT_SPEED * dt;
     for (let i = 0; i < this.count; i++) {
       const a = this.spin + (i / this.count) * Math.PI * 2;

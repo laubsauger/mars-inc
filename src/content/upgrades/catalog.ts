@@ -6,6 +6,7 @@
 // experiments (prototype) are rare, swingy payoffs. Anti-synergy via exclusions.
 
 import type { UpgradeDefinition } from '../../sim/progression/upgrades';
+import { ImpactProfile } from '../../sim/fx';
 
 export const CATALOG_UPGRADES: UpgradeDefinition[] = [
   // ── Common ────────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     id: 'repulsor-pulse',
     name: 'Repulsor Pulse',
     description:
-      'Periodic shockwave shoves nearby enemies back (+light damage); levels speed it up.',
+      'A repulsor shockwave knocks back + damages everything within ~4m (the cyan ring shows the reach). Each level: bigger radius, harder shove, faster pulse.',
     tags: ['defense', 'control', 'kinetic'],
     rarity: 'uncommon',
     maxLevel: 5,
@@ -116,11 +117,12 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
         player.novaInterval = 4.5; // first level enables it
         player.novaTimer = 1.5; // fire soon after taking it
       } else {
-        // Slower growth so it ramps over the run instead of dominating early.
+        // Each level: noticeably MORE reach (you can see the ring grow), a harder
+        // shove, more damage, and a faster pulse.
         player.novaInterval = Math.max(2.2, player.novaInterval - 0.5);
-        player.novaRadius += 0.6;
-        player.novaForce += 4;
-        player.novaDamage += 4;
+        player.novaRadius += 0.9;
+        player.novaForce += 6;
+        player.novaDamage += 5;
       }
     },
   },
@@ -157,15 +159,15 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
     id: 'kinetic-boots',
     name: 'Kinetic Boots',
     description:
-      'Starting a sprint emits a shockwave that shoves enemies back — dash to part a blob.',
+      'Starting a sprint blasts a WIDE shockwave that shoves enemies back — dash to part a blob.',
     tags: ['control', 'movement'],
     rarity: 'uncommon',
     maxLevel: 3,
     baseWeight: 8,
     synergyWeight: 3,
     apply: ({ player }) => {
-      player.dashShockForce += 18;
-      player.dashShockRadius += 0.6;
+      player.dashShockForce += 22;
+      player.dashShockRadius += 1.6; // a real clearing blast, not a nudge at the feet
     },
   },
   {
@@ -425,5 +427,84 @@ export const CATALOG_UPGRADES: UpgradeDefinition[] = [
       mods.projectileCount += 2;
       mods.damageMult = Math.max(0.3, mods.damageMult - 0.2);
     },
+  },
+
+  // ══ EARLY SPICE (variety pass) — interesting, UNGATED, low-rarity cards so the
+  //    opening picks aren't the same handful of flat stat bumps. Offense-tagged so
+  //    the foundation-pity surfaces them as live options too. ══════════════════════
+  {
+    id: 'reapers-cut',
+    name: "Reaper's Cut",
+    description: 'Kills have a 30% chance to burst shrapnel — a 12-dmg blast that chains the pack.',
+    tags: ['aoe', 'damage'],
+    grantsTags: ['on-kill'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 7,
+    synergyWeight: 3,
+    role: 'engine',
+    riskTier: 0,
+    previewStats: (lvl) => [
+      { label: 'Shrapnel burst', from: `${30 * lvl}%`, to: `${30 * (lvl + 1)}%` },
+    ],
+    apply: ({ effects }) =>
+      effects.on('kill', (ctx) => {
+        if (ctx.rng.next() >= 0.3) return;
+        ctx.dealArea(ctx.x, ctx.z, 3.2, 12);
+        ctx.fx.push('impact', ctx.x, ctx.z, 3.2, 0, ImpactProfile.Blast);
+      }),
+  },
+  {
+    id: 'warmup-protocol',
+    name: 'Warmup Protocol',
+    description: 'Sustained fire spins you up: fire rate climbs the longer you keep shooting.',
+    tags: ['fire-rate', 'tempo'],
+    grantsTags: ['ramp'],
+    rarity: 'uncommon',
+    maxLevel: 3,
+    baseWeight: 7,
+    synergyWeight: 2,
+    role: 'engine',
+    riskTier: 0,
+    previewStats: (lvl) => [
+      {
+        label: 'Max fire rate',
+        from: `+${Math.round(15 * lvl)}%`,
+        to: `+${Math.round(15 * (lvl + 1))}%`,
+      },
+    ],
+    // firingRampSec ramps 0→12s while enemies are up; +5%/s/level capped per level.
+    apply: ({ effects }) =>
+      effects.addConditional((c) => ({
+        fireRateMult: 1 + Math.min(0.15, c.firingRampSec * 0.0125),
+      })),
+  },
+  {
+    id: 'crowd-suppression',
+    name: 'Crowd Suppression',
+    description: 'The thicker the swarm, the faster you fire (+3% fire rate per nearby foe).',
+    tags: ['fire-rate', 'tempo'],
+    rarity: 'common',
+    maxLevel: 4,
+    baseWeight: 9,
+    synergyWeight: 2,
+    role: 'engine',
+    riskTier: 0,
+    apply: ({ effects }) =>
+      effects.addConditional((c) => ({ fireRateMult: 1 + Math.min(0.45, c.enemiesNearby * 0.03) })),
+  },
+  {
+    id: 'steady-aim',
+    name: 'Steady Aim',
+    description: 'Plant your feet: crit chance builds the longer you hold position.',
+    tags: ['crit'],
+    rarity: 'common',
+    maxLevel: 4,
+    baseWeight: 9,
+    synergyWeight: 2,
+    role: 'primer',
+    riskTier: 0,
+    apply: ({ effects }) =>
+      effects.addConditional((c) => ({ critAdd: Math.min(0.2, c.stationarySec * 0.02) })),
   },
 ];

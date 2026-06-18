@@ -153,7 +153,8 @@ export function available(
 // with level + luck from this lower floor).
 const RARITY_BASE: Record<Rarity, number> = {
   common: 1,
-  uncommon: 0.26,
+  uncommon: 0.4, // lifted (was 0.26) — only ~9 commons exist, so early picks repeated
+  // them; richer uncommon pool now surfaces more often so the opening feels varied
   rare: 0.18,
   corrupted: 0.1,
   prototype: 0.1,

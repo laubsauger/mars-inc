@@ -445,6 +445,8 @@ async function boot(parent: HTMLElement): Promise<void> {
   const FOG_TIERS = 4;
   let lastFogTier = -1;
   let endShown = false; // de-dupe the game-over transition
+  let endRevealAt = 0; // real-time stamp the game-over screen may appear (0 = unset)
+  const DEATH_REVEAL_DELAY = 1200; // ms to LINGER on the death/aftermath before the spoils screen
   let wasPaused = false; // edge-detect pause to refresh the character sheet
   // Intro telegraphs (T33): announce the boss + each new enemy class once per run.
   let bossAnnounced = false;
@@ -634,6 +636,7 @@ async function boot(parent: HTMLElement): Promise<void> {
     discoverWeapon(world.weaponSystem.primaryId); // the loadout weapon is now known
     if (!save.current.settings.musicInCombat) audio.stopMusic(); // menu theme off in the pit (opt-out)
     endShown = false;
+    endRevealAt = 0;
     securedThisRun = 0;
     runPot = 0;
     lastBankedBossKills = 0;
@@ -652,6 +655,7 @@ async function boot(parent: HTMLElement): Promise<void> {
   uiActions.setToMenu(() => {
     world.reset();
     endShown = false;
+    endRevealAt = 0;
     uiActions.setResult(null);
     pushProfile();
     uiActions.setMenuView('root');
@@ -1089,7 +1093,10 @@ async function boot(parent: HTMLElement): Promise<void> {
 
       // Death → award Martian Glory (T26), record the run, show the game-over
       // screen with the result. Pushed once (V20).
-      if (world.ended && world.result && !endShown) {
+      // Arm the linger timer the moment the run ends — the spoils screen is held back
+      // until it elapses so the death/aftermath plays out (the scene keeps rendering).
+      if (world.ended && endRevealAt === 0) endRevealAt = now + DEATH_REVEAL_DELAY;
+      if (world.ended && world.result && !endShown && now >= endRevealAt) {
         endShown = true;
         const r = world.result;
         // A dev-tampered run NEVER banks Glory / records / history (V35) — still show

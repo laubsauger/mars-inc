@@ -178,7 +178,7 @@ describe('applyPermanents (T26 applied to next run)', () => {
       'fleet-footed': 2,
       'redline-servos': 2,
       'afterburn-clause': 2,
-      'gyro-bracing': 3,
+      'gyro-bracing': 2,
     });
     expect(p.bonusRerolls).toBe(2);
     expect(p.bonusBanishes).toBe(1);
@@ -186,7 +186,7 @@ describe('applyPermanents (T26 applied to next run)', () => {
     expect(p.stats.moveSpeed).toBeCloseTo(baseSpeed * 1.1, 5); // +5%/level × 2
     expect(p.stats.sprintCooldown).toBeCloseTo(baseCooldown * 0.88, 5);
     expect(p.stats.sprintDuration).toBeCloseTo(baseDuration * 1.14, 5);
-    expect(p.stats.recoilResistance).toBeCloseTo(baseRecoil + 0.3, 5);
+    expect(p.stats.recoilResistance).toBeCloseTo(baseRecoil + 0.2, 5); // +0.1/lvl × 2 (maxLevel 2)
   });
 
   it('Biology/Arsenal utility permanents affect pickup, magnet, and luck', () => {
