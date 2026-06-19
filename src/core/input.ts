@@ -9,6 +9,8 @@ export interface InputSnapshot {
   pause: boolean;
   /** Edge-triggered once per press: equip the weapon crate under the player. */
   pickup: boolean;
+  /** Edge-triggered once per press (X): drop the current weapon → back to the sidearm. */
+  dropWeapon: boolean;
   /** Primary fire held (left mouse). Auto-fire toggle ORs in via `autoFire`. */
   fire: boolean;
   /** Edge-triggered once per press (Space OR right mouse): throw a grenade at the cursor. */
@@ -43,6 +45,7 @@ export class Input {
   private down = new Set<string>();
   private pausePressed = false;
   private pickupPressed = false;
+  private dropPressed = false; // edge: X → drop weapon, revert to sidearm
   private leftDown = false; // primary fire held (left mouse button)
   private grenadePressed = false; // edge: Space / right mouse → grenade
   private rightDown = false; // right mouse HELD → auto-throw grenades on cooldown
@@ -60,6 +63,7 @@ export class Input {
       if ((e.code === 'KeyE' || e.code === 'KeyF') && !this.down.has(e.code)) {
         this.pickupPressed = true;
       }
+      if (e.code === 'KeyX' && !this.down.has('KeyX')) this.dropPressed = true;
       // Space → GRENADE (edge throws once; held auto-throws on cooldown). Mirrors the
       // right-mouse bind so touchpad players never need the awkward right-click.
       if (e.code === 'Space') {
@@ -137,6 +141,8 @@ export class Input {
     this.pausePressed = false;
     const pickup = this.pickupPressed;
     this.pickupPressed = false;
+    const dropWeapon = this.dropPressed;
+    this.dropPressed = false;
     const grenade = this.grenadePressed;
     this.grenadePressed = false;
     const toggleAuto = this.autoPressed;
@@ -147,6 +153,7 @@ export class Input {
       sprint: this.down.has('ShiftLeft') || this.down.has('ShiftRight'),
       pause,
       pickup,
+      dropWeapon,
       fire: this.leftDown,
       grenade,
       grenadeHeld: this.rightDown || this.down.has('Space'), // right-mouse OR Space held

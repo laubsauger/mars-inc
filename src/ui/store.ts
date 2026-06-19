@@ -172,6 +172,8 @@ const INITIAL_HUD: HudState = {
   sprintMax: 1,
   grenade01: 1,
   autoShoot: false,
+  rage: 0,
+  rageMax: 12,
   runGlory: 0,
 };
 

@@ -20,11 +20,12 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     id: 'field-medic',
     name: 'Field Medic',
     description:
-      'Patch up as you work: heal 2 HP per kill. Re-pick to UPGRADE (Common → Uncommon → Rare; +2 HP/kill each, up to 6).',
+      'Patch up as you work: heal 1 HP per kill. Re-pick to UPGRADE (Common → Uncommon → Rare; +1 HP/kill each, up to 3).',
     tags: ['defense'],
     grantsTags: ['lifesteal'],
     // RARITY-UPGRADE: merges Field Medic + Vampiric Rounds into one lifesteal ladder
-    // that climbs Common → Uncommon → Rare (heal stacks 2 → 4 → 6 per kill).
+    // that climbs Common → Uncommon → Rare (heal stacks 1 → 2 → 3 per kill). Small per
+    // kill ON PURPOSE — kill rates are high, so even 1/kill is strong sustain.
     rarity: 'common',
     rarityTiers: ['common', 'uncommon', 'rare'],
     maxLevel: 3,
@@ -32,10 +33,8 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 2,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [
-      { label: 'Heal per kill', from: `${2 * lvl} HP`, to: `${2 * (lvl + 1)} HP` },
-    ],
-    apply: ({ effects }) => effects.on('kill', (ctx) => heal(ctx.player, 2)),
+    previewStats: (lvl) => [{ label: 'Heal per kill', from: `${lvl} HP`, to: `${lvl + 1} HP` }],
+    apply: ({ effects }) => effects.on('kill', (ctx) => heal(ctx.player, 1)),
   },
   {
     id: 'hot-brass',
@@ -206,7 +205,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     id: 'apex-predator',
     name: 'Apex Predator',
     description:
-      'KEYSTONE: every kill heals 6 HP AND pops a 16-dmg burst on the corpse — snowball.',
+      'KEYSTONE: every kill heals 3 HP AND pops a 16-dmg burst on the corpse — snowball.',
     tags: ['aoe', 'defense'],
     grantsTags: ['lifesteal', 'on-kill'],
     rarity: 'legendary',
@@ -215,10 +214,13 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 4,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
+    previewStats: () => [
+      { label: 'Heal per kill', from: '—', to: '3 HP' },
+      { label: 'Corpse burst', from: '—', to: '16 dmg' },
+    ],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
-        heal(ctx.player, 6);
+        heal(ctx.player, 3);
         ctx.dealArea(ctx.x, ctx.z, 3, 16);
       }),
   },
@@ -389,7 +391,7 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
   {
     id: 'headhunter',
     name: 'Headhunter',
-    description: 'Felling a TOUGH unit (elite/ranged/brute) heals 6 HP + pops a 14-dmg burst.',
+    description: 'Felling a TOUGH unit (elite/ranged/brute) heals 4 HP + pops a 14-dmg burst.',
     tags: ['defense', 'aoe'],
     grantsTags: ['lifesteal'],
     rarity: 'rare',
@@ -398,11 +400,14 @@ export const SPICE_UPGRADES: UpgradeDefinition[] = [
     synergyWeight: 3,
     role: 'engine',
     riskTier: 0,
-    previewStats: (lvl) => [{ label: 'Radius', from: lvl === 0 ? '—' : '3m', to: '3m' }],
+    previewStats: () => [
+      { label: 'Heal (tough kill)', from: '—', to: '4 HP' },
+      { label: 'Burst', from: '—', to: '14 dmg' },
+    ],
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
         if ((ENEMY_BY_VARIANT[ctx.variant]?.threat ?? 0) < 8) return; // only real targets
-        heal(ctx.player, 6);
+        heal(ctx.player, 4);
         ctx.dealArea(ctx.x, ctx.z, 3, 14);
       }),
   },

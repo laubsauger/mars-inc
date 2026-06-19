@@ -36,6 +36,8 @@ export function buildHudState(world: World): HudState {
     sprintMax: sp.maxCharges,
     grenade01: world.grenadeCharge01,
     autoShoot: world.autoShoot,
+    rage: world.player.rage,
+    rageMax: world.rageMax,
     runGlory,
   };
 }

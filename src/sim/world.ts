@@ -104,6 +104,7 @@ const ZERO_INPUT: InputSnapshot = {
   sprint: false,
   pause: false,
   pickup: false,
+  dropWeapon: false,
   fire: false,
   grenade: false,
   grenadeHeld: false,
@@ -158,6 +159,9 @@ export class World {
   private stationarySec = 0;
   /** Mobility ramp (s): grows while the player moves, bleeds when still (run-and-gun). */
   private movingSec = 0;
+  /** Whether the player was MOVING on the last executed step — exact `moving` bool for
+   *  the pause sheet (movingSec lingers after stopping; this is precise). */
+  private lastMoving = false;
   /** Damage dealt by on-hit triggers this step (T39, folded into run stats). */
   private hitTriggerDamage = 0;
   /** Damage dealt by the repulsor nova this step (T42, folded into run stats). */
@@ -206,6 +210,10 @@ export class World {
   /** Grenade cooldown progress 0..1 (1 = ready to throw) — for the ability hotbar. */
   get grenadeCharge01(): number {
     return this.grenadeCdMax > 0 ? Math.min(1, 1 - this.grenadeCd / this.grenadeCdMax) : 1;
+  }
+  /** Kill-streak (rage) cap — for the HUD streak meter. */
+  get rageMax(): number {
+    return RAGE_CAP;
   }
   /** Effective max grenade throw distance (base + range upgrades). The render aim
    *  marker reads this so the reticle reflects throw-range upgrades. */
@@ -328,7 +336,7 @@ export class World {
       recentCrit: this.recentCritTimer > 0,
       recoilActive: this.player.recoilTimer > 0,
       stationarySec: this.stationarySec,
-      moving: this.movingSec > 0,
+      moving: this.lastMoving,
       movingSec: this.movingSec,
       rageStacks: this.player.rage,
     });
@@ -442,7 +450,7 @@ export class World {
     // Escalate difficulty in KIND, not just count (T-elite): freshly-spawned fodder
     // gains baseline shields as the run deepens + a slice promotes to elites.
     promoteSpawns(this.enemies, eliteProgress(this.player.level, this.stats.bossKills), this.rng);
-    this.enemySystem.step(this.player, this.tick, enemyDt, this.fx);
+    this.enemySystem.step(this.player, this.tick, enemyDt, this.fx, dt); // bosses use full dt (time-warp exempt)
     // Gargantuans devour overlapping fodder + grow, and SLAM a size-scaled blast
     // (after steering → current positions). A fat one carves a huge lethal zone.
     stepGargantuans(this.enemies, this.enemyAttacks, enemyDt, this.fx);
@@ -546,13 +554,16 @@ export class World {
       this.fx,
     );
     // Boss queues its phased attacks into the shared FX pools BEFORE they advance.
-    this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, enemyDt, this.fx);
+    // Boss controller (charge/attacks/phases) ignores time-warp — full dt (T-timewarp).
+    this.boss.step(this.enemies, this.player, this.enemyAttacks, this.rng, dt, this.fx);
     // Run-phase environmental hazard (T44/V23): each boss kill graduates the pit to a
     // deadlier state — telegraphed ground eruptions start at tier 1 and quicken with
     // each kill. Queued BEFORE enemyAttacks.step so they tick + telegraph this step.
     this.stepArenaHazards(dt);
     // Enemy ranged attacks: lob grenades that cook off into telegraphed AoE (T33).
-    this.enemyAttacks.step(this.enemies, this.player, this.rng, enemyDt, this.fx);
+    // Enemy projectiles (incl. boss meteors/lasers) run at full dt — no slow-mo dodging
+    // boss barrages. Time-warp's effect is the slowed fodder MOVEMENT, not bullet time.
+    this.enemyAttacks.step(this.enemies, this.player, this.rng, dt, this.fx);
 
     // Dynamic build conditionals (T38): evaluate against live combat context.
     const cond = this.evalConditionals(dt);
@@ -645,6 +656,12 @@ export class World {
       dt,
       this.input.pickup,
     );
+    // Drop the current weapon → revert to the default sidearm (X). The dropped weapon
+    // is destroyed (no crate). Prevents getting stuck with a pickup that wrecks the build.
+    if (this.input.dropWeapon && this.weaponSystem.primaryId !== contractualSidearm.id) {
+      this.weaponSystem.setPrimary(contractualSidearm);
+      this.fx.push('muzzle', this.player.pos.x, this.player.pos.z, 0, -1);
+    }
     // Medkits drop from kills + auto-heal on walk-over (T33+). Run-phase: each boss
     // kill raises the drop rate so survivability keeps pace with the escalation (T44).
     const dropMult = 1 + Math.min(4, this.stats.bossKills) * 0.3;
@@ -869,6 +886,7 @@ export class World {
     // walking only decays it ~2× build-rate. Tracks INPUT INTENT, not velocity, so
     // recoil drift never costs you (V4).
     const moving = Math.hypot(this.input.moveX, this.input.moveZ) > 0.1;
+    this.lastMoving = moving || this.player.sprint.active; // exact moving state for the pause sheet
     if (this.player.sprint.active) {
       this.stationarySec = 0; // sprint/dash → instant cancel
     } else {
@@ -1379,6 +1397,7 @@ export class World {
       firingRampSec: this.firingRampSec,
       stationarySec: this.stationarySec,
       movingSec: this.movingSec,
+      moving: this.lastMoving,
       recentCrit: this.recentCritTimer > 0,
       upgradeLevels: this.draftCtl.upgradeLevels,
       weaponSystem: this.weaponSystem,

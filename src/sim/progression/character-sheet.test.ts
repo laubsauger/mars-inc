@@ -16,6 +16,7 @@ function ctx(over: Partial<SheetContext> = {}): SheetContext {
     firingRampSec: 0,
     stationarySec: 0,
     movingSec: 0,
+    moving: false,
     recentCrit: false,
     upgradeLevels: {},
     weaponSystem: { weapons: [] } as unknown as WeaponSystem,

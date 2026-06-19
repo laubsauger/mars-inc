@@ -103,11 +103,16 @@ export function HotBar() {
   const sprintMax = useUiStore((s) => s.hud.sprintMax);
   const sprintCd01 = useUiStore((s) => s.hud.sprintCooldown01);
   const autoShoot = useUiStore((s) => s.hud.autoShoot);
+  const rage = useUiStore((s) => s.hud.rage);
+  const rageMax = useUiStore((s) => s.hud.rageMax);
   // Sprint slot is "ready" while at least one charge is available; otherwise it
   // shows the next charge's refill sweep.
   const sprintProgress = charges > 0 ? 1 : sprintCd01;
   return (
     <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-end gap-3">
+      {/* Kill-streak meter — appears while a streak is alive; brighter/hotter as it
+          climbs toward the cap. The rage/frenzy build reads off these stacks. */}
+      {rage > 0 ? <KillStreak rage={rage} rageMax={rageMax} /> : null}
       <AbilitySlot
         icon="✸"
         keyLabel="SPACE"
@@ -129,6 +134,28 @@ export function HotBar() {
           Auto-fire
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Kill-streak badge: flame + stack count, intensity scaling toward the cap. */
+function KillStreak({ rage, rageMax }: { rage: number; rageMax: number }) {
+  const frac = Math.min(1, rage / rageMax);
+  const maxed = rage >= rageMax;
+  return (
+    <div
+      className="mb-1 flex flex-col items-center self-center font-mono"
+      style={{ opacity: 0.55 + 0.45 * frac }}
+    >
+      <span
+        className={`text-base font-black leading-none tabular-nums ${maxed ? 'text-bleed' : 'text-ember'}`}
+        style={{ textShadow: `0 0 ${4 + 10 * frac}px rgba(255,90,54,${0.4 + 0.5 * frac})` }}
+      >
+        🔥{rage}
+      </span>
+      <span className="mt-0.5 text-[8px] font-black uppercase tracking-widest text-ember/80">
+        Streak
+      </span>
     </div>
   );
 }

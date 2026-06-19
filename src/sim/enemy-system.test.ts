@@ -27,6 +27,17 @@ describe('EnemySystem (T11/T13)', () => {
     expect(player.health).toBeLessThan(100);
   });
 
+  it('time-warp (baseDt=0) freezes fodder movement', () => {
+    const pool = new EnemyPool();
+    const mite = pool.spawn(RUST_MITE, 10, 0, 0, 0);
+    pool.state[mite] = EnemyState.Active;
+    const sys = new EnemySystem(pool, 4);
+    const player = createPlayer();
+    const x0 = pool.posX[mite]!;
+    sys.step(player, 1, 0, undefined, 1 / 60); // fodder dt 0; bosses would use bossDt
+    expect(pool.posX[mite]!).toBe(x0); // fodder frozen under full warp
+  });
+
   it('active enemy steers toward the player', () => {
     const pool = new EnemyPool();
     const e = pool.spawn(RUST_MITE, 10, 0, 0, 0);

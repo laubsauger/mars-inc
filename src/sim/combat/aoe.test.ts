@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyAreaDamage } from './aoe';
-import { EnemyPool, EnemyState, RUST_MITE } from '../enemies';
+import { EnemyPool, EnemyState, RUST_MITE, FOREMAN_KRILL } from '../enemies';
 import { SpatialHash } from '../spatial-hash';
 import { Rng } from '../../core/rng';
 import { FxQueue } from '../fx';
@@ -31,6 +31,17 @@ describe('applyAreaDamage (T38, V3 pipeline-routed)', () => {
     expect(pool.health[0]!).toBeLessThan(RUST_MITE.maxHealth);
     expect(pool.health[1]!).toBeLessThan(RUST_MITE.maxHealth);
     expect(pool.health[2]!).toBe(hp0); // untouched
+  });
+
+  it('hits a LARGE body whose centre is outside the blast but footprint overlaps it', () => {
+    const pool = new EnemyPool();
+    // Boss (radius ≈ 1.7) centred 2.5m away; a small blast (r=1) centred at origin would
+    // miss by centre-distance, but the body (1 + 1.7 = 2.7 reach) overlaps → must hit.
+    const b = pool.spawn(FOREMAN_KRILL, 2.5, 0, 0, 0);
+    pool.state[b] = EnemyState.Active;
+    const hp0 = pool.health[b]!;
+    applyAreaDamage(pool, hashOf(pool), 0, 0, 1, { amount: 20 }, new Rng(1));
+    expect(pool.health[b]!).toBeLessThan(hp0); // big body caught despite centre outside r
   });
 
   it('excludes the given index', () => {

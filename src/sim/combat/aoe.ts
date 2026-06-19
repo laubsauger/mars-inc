@@ -12,6 +12,9 @@ import { makePacket, computeOutgoing, applyMitigation, type DamageType } from '.
 import { radialPush } from './knockback';
 
 const _scratch: number[] = [];
+// Broad-phase query is widened by this so a large body (boss r≈2.7) whose centre is
+// just outside the blast but whose footprint overlaps it is still returned.
+const BODY_QUERY_MARGIN = 3;
 
 export interface AreaDamageSpec {
   amount: number;
@@ -45,8 +48,9 @@ export function applyAreaDamage(
   spec: AreaDamageSpec,
   rng: Rng,
 ): number {
-  const n = hash.queryCircle(x, z, radius, _scratch);
-  const r2 = radius * radius;
+  // Query wider than the blast so LARGE bodies (bosses/brutes) whose CENTER sits
+  // outside the radius — but whose footprint overlaps it — are still considered.
+  const n = hash.queryCircle(x, z, radius + BODY_QUERY_MARGIN, _scratch);
   let dealt = 0;
   for (let k = 0; k < n; k++) {
     const e = _scratch[k]!;
@@ -55,13 +59,17 @@ export function applyAreaDamage(
     const dx = enemies.posX[e]! - x;
     const dz = enemies.posZ[e]! - z;
     const d2 = dx * dx + dz * dz;
-    if (d2 > r2) continue;
-    // Distance falloff: full at the centre, much less toward the edge. SQUARED
-    // distance ratio so the drop bites EARLY — an enemy halfway out already takes a
-    // fraction, the rim barely a tap. This is the brake on explosion feedback-loops:
-    // a blast core kills, but the outer ring survives, so a chain of pops can't pass
-    // full damage to "enemy #10" and delete a whole wall.
-    const ratio = d2 / r2; // 0 at centre → 1 at the rim (already squared, no sqrt)
+    // Sphere overlap, not centre-in-radius: an enemy is hit if its BODY (footprint
+    // radius) overlaps the blast. Otherwise a small effect never touched a wide unit
+    // whose centre lay beyond the effect's own radius (V3 — effects must scale to size).
+    const er = enemies.radius[e]!;
+    const reach = radius + er;
+    if (d2 > reach * reach) continue;
+    // Distance falloff measured to the body SURFACE (not centre): a big unit whose
+    // body sits in the blast core takes near-full, the same as a small one there.
+    // SQUARED so the drop bites early (the chain-of-pops brake stays — outer ring weak).
+    const surf = radius > 1e-3 ? Math.max(0, Math.sqrt(d2) - er) / radius : 0;
+    const ratio = surf * surf; // 0 at/inside the surface → 1 at the rim
     const amount = spec.falloff ? spec.amount * (1 - spec.falloff * ratio) : spec.amount;
 
     const packet = makePacket({

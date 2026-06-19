@@ -8,6 +8,7 @@ const IDLE: InputSnapshot = {
   sprint: false,
   pause: false,
   pickup: false,
+  dropWeapon: false,
   fire: false,
   grenade: false,
   grenadeHeld: false,

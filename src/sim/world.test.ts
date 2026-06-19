@@ -32,6 +32,20 @@ function runToDeath(w: World, cap = 20000): number {
   return steps;
 }
 
+describe('World weapon drop', () => {
+  it('dropping the current weapon reverts to the default sidearm (X)', async () => {
+    const { WEAPONS } = await import('../content/weapons/index');
+    const { contractualSidearm } = await import('../content/weapons/contractual-sidearm');
+    const w = new World(7);
+    w.start();
+    w.weaponSystem.setPrimary(WEAPONS[1]!); // simulate picking up a non-sidearm weapon
+    expect(w.weaponSystem.primaryId).not.toBe(contractualSidearm.id);
+    w.input = { ...w.input, dropWeapon: true };
+    w.step(DT);
+    expect(w.weaponSystem.primaryId).toBe(contractualSidearm.id);
+  });
+});
+
 describe('World death', () => {
   it('latches ended and computes a result on death (V20)', () => {
     const w = new World(123);

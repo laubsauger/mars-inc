@@ -119,6 +119,8 @@ export interface HudState {
   sprintMax: number; // max sprint charges (slot pips)
   grenade01: number; // 0..1 grenade cooldown progress (1 = ready to throw)
   autoShoot: boolean; // persistent auto-fire toggle state (Ctrl)
+  rage: number; // current kill-streak stacks (0 = no streak)
+  rageMax: number; // streak cap (for the meter)
   runGlory: number; // Martian Glory this run would bank SO FAR (live estimate)
 }
 

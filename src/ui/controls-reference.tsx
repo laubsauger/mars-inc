@@ -16,6 +16,7 @@ export const CONTROL_GROUPS: { group: string; rows: { keys: string[]; action: st
       { keys: ['Ctrl'], action: 'Toggle auto-fire' },
       { keys: ['Shift'], action: 'Sprint' },
       { keys: ['E', 'F'], action: 'Pick up / equip' },
+      { keys: ['X'], action: 'Drop weapon (back to sidearm)' },
       { keys: ['Esc'], action: 'Pause' },
     ],
   },

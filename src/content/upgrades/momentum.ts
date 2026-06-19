@@ -155,7 +155,7 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
     id: 'cull-the-weak',
     name: 'Cull the Weak',
     description:
-      'Mowing down fodder sustains you: heal 2 HP whenever you kill a weak (low-threat) enemy.',
+      'Mowing down fodder sustains you: heal 1 HP whenever you kill a weak (low-threat) enemy.',
     tags: ['defense'],
     grantsTags: ['lifesteal'],
     rarity: 'common',
@@ -166,7 +166,7 @@ export const MOMENTUM_UPGRADES: UpgradeDefinition[] = [
     riskTier: 0,
     apply: ({ effects }) =>
       effects.on('kill', (ctx) => {
-        if ((ENEMY_BY_VARIANT[ctx.variant]?.threat ?? 0) <= 3) heal(ctx.player, 2);
+        if ((ENEMY_BY_VARIANT[ctx.variant]?.threat ?? 0) <= 3) heal(ctx.player, 1);
       }),
   },
   {

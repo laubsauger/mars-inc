@@ -61,7 +61,9 @@ export class EnemySystem {
     this.hash = new SpatialHash(cellSize);
   }
 
-  step(player: Player, tick: number, dt: number, fx?: FxQueue): void {
+  // `baseDt` slows non-boss enemies under Time Dilation; bosses/minibosses use
+  // `bossDt` (full speed) so time-warp can't trivialize a boss fight (T-timewarp).
+  step(player: Player, tick: number, baseDt: number, fx?: FxQueue, bossDt = baseDt): void {
     const p = this.pool;
 
     // Rebuild broad-phase over all live enemies.
@@ -71,6 +73,8 @@ export class EnemySystem {
     const target = player.pos;
 
     for (let i = 0; i < p.count; i++) {
+      // Bosses ignore time-warp (full dt); fodder runs at the warped dt.
+      const dt = ENEMY_BY_VARIANT[p.variant[i]!]?.boss ? bossDt : baseDt;
       if (p.state[i] === EnemyState.Telegraph) {
         p.prevX[i] = p.posX[i]!;
         p.prevZ[i] = p.posZ[i]!;

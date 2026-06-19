@@ -44,6 +44,7 @@ export interface SheetContext {
   stationarySec: number;
   /** Live conditional context so the sheet reflects what's ACTIVE right now. */
   movingSec: number;
+  moving: boolean;
   recentCrit: boolean;
   upgradeLevels: UpgradeLevels;
   weaponSystem: WeaponSystem;
@@ -77,7 +78,7 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
     recentCrit: ctx.recentCrit,
     recoilActive: p.recoilTimer > 0,
     stationarySec: ctx.stationarySec,
-    moving: ctx.movingSec > 0,
+    moving: ctx.moving,
     movingSec: ctx.movingSec,
     rageStacks: p.rage,
   });
@@ -146,6 +147,7 @@ export function buildCharacterSheet(ctx: SheetContext): CharacterSheet {
   // Conditional buffs firing RIGHT NOW (the `live` eval against the current battlefield):
   // anything above neutral is an active situational bonus the player should see.
   const activeBuffs: { label: string; value: string }[] = [];
+  if (p.rage > 0) activeBuffs.push({ label: 'Kill streak', value: `×${p.rage}` });
   if (live.damageMult > 1.001) activeBuffs.push({ label: 'Damage', value: xMult(live.damageMult) });
   if (live.fireRateMult > 1.001)
     activeBuffs.push({ label: 'Fire rate', value: xMult(live.fireRateMult) });
