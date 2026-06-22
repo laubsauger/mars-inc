@@ -108,3 +108,35 @@ describe('BuildEffects triggers (T38)', () => {
     expect(e.evalConditionals(CTX).damageMult).toBe(1);
   });
 });
+
+describe('BuildEffects.liveEffects (HUD strip)', () => {
+  it('reports only ATTRIBUTED effects, with live on/off state', () => {
+    const e = new BuildEffects();
+    // Un-attributed (no beginSource) → hidden from the strip.
+    e.addConditional((c) => (c.moving ? { critAdd: 0.12 } : {}));
+    e.beginSource({ id: 'momentum', label: 'Momentum', tags: ['damage', 'mobility'] });
+    e.addConditional((c) => ({ damageMult: 1 + Math.min(0.35, c.movingSec * 0.05) }));
+    e.endSource();
+
+    const still = e.liveEffects(CTX);
+    expect(still).toHaveLength(1); // only the attributed one
+    expect(still[0]!.id).toBe('momentum');
+    expect(still[0]!.kind).toBe('conditional');
+    expect(still[0]!.active).toBe(false); // not moving
+    expect(still[0]!.detail).toBe('+35% dmg'); // best-case probe magnitude
+
+    const moving = e.liveEffects({ ...CTX, movingSec: 4 });
+    expect(moving[0]!.active).toBe(true);
+  });
+
+  it('marks trigger-only sources as always-equipped procs', () => {
+    const e = new BuildEffects();
+    e.beginSource({ id: 'powder-trail', label: 'Powder Trail', tags: ['aoe', 'mobility'] });
+    e.on('sprint', () => {});
+    e.endSource();
+    const live = e.liveEffects(CTX);
+    expect(live).toHaveLength(1);
+    expect(live[0]!.kind).toBe('trigger');
+    expect(live[0]!.active).toBe(true);
+  });
+});

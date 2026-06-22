@@ -393,6 +393,10 @@ export function applyUpgrade(
   ctx: UpgradeContext,
   levels: UpgradeLevels,
 ): void {
+  // Attribute every conditional/trigger this card registers to the card itself, so
+  // the HUD effect strip can show each one with its live on/off state (T-clarity).
+  ctx.effects.beginSource({ id: def.id, label: def.name, tags: def.tags });
   def.apply(ctx);
+  ctx.effects.endSource();
   levels[def.id] = taken(levels, def.id) + 1;
 }

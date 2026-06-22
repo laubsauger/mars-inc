@@ -28,6 +28,7 @@ export type {
   MetaState,
   AchievementToast,
   DevBridge,
+  EffectStatus,
 } from './store-types';
 import type {
   Screen,
@@ -175,6 +176,7 @@ const INITIAL_HUD: HudState = {
   rage: 0,
   rageMax: 12,
   runGlory: 0,
+  effects: [],
 };
 
 const INITIAL_DRAFT: DraftState = {

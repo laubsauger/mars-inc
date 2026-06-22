@@ -186,6 +186,7 @@ export class WaveDirector {
   private bossArmTimer = 0;
   private forceNextBoss = false; // dev: spawn the next staged boss ASAP (T74)
   private bossCreepTimer = 0; // countdown to the next boss-creep reinforcement trickle
+  private bossPausedBank = false; // boss up last step → normal cadence + accrual were frozen
   /** Active boss phase (0-based), set by the world each step — orchestrates the
    *  boss-creep cadence (higher phase → more/faster reinforcements, T44/V42). */
   bossPhase = 0;
@@ -222,6 +223,7 @@ export class WaveDirector {
     this.bossArmTimer = 0;
     this.forceNextBoss = false;
     this.bossCreepTimer = BOSS_CREEP_FIRST;
+    this.bossPausedBank = false;
     this.bossPhase = 0;
     this.infinite = false;
     this.bossesSpawned = 0;
@@ -471,7 +473,6 @@ export class WaveDirector {
     // Act pace multiplier — higher Acts accrue threat faster AND raise the concurrent
     // cap, so the Crown fields more enemies, sooner (still V8-bounded by pool cap).
     const actPace = activeArena().paceMult * activeDifficulty().paceMult;
-    this.bank += b.threatPoints * pace * actPace * dt;
 
     // Sawtooth thins the crowd at each power step (capMul), so the cap tracks player
     // progression, not just elapsed time → fewer, beefier enemies after a step.
@@ -492,8 +493,26 @@ export class WaveDirector {
     // isn't "spent" mid-fight; they resume the instant the boss falls.
     const bossUp = this.bossOnField(pool);
     if (bossUp) {
+      // Boss phase: the normal cadence is frozen and boss-creep spawns FREE, so the
+      // bank must NOT accrue — otherwise it stockpiles to its clamp ceiling over the
+      // whole fight and dumps as an impossible surge the instant the boss falls (the
+      // wave clocks counted down during the fight, so a full bank fires immediately).
+      // Bleed any residual toward a single wave so the resume is one pulse, not four.
+      this.bossPausedBank = true;
+      this.bank = Math.min(this.bank, b.threatPoints * actPace + CHEAPEST);
       this.stepBossCreep(pool, rng, elapsed, dt, cap, fx);
     } else {
+      // Boss just fell → re-arm the wave clocks so the arena gets its breather before
+      // the normal horde resumes (they froze mid-fight; without this the first wave
+      // would fire instantly on top of the boss-death moment).
+      if (this.bossPausedBank) {
+        this.bossPausedBank = false;
+        this.waveTimer = waveGap(elapsed);
+        this.teleTimer = TELE_PERIOD;
+      }
+      // Threat accrues only during NORMAL play (paused above while a boss is up).
+      this.bank += b.threatPoints * pace * actPace * dt;
+
       // Themed milestone waves (T-themes): when the escalation clock crosses the next
       // scheduled theme, drop its scripted burst (FREE, surround) + flag a HUD banner.
       // Catches up if several thresholds passed in one big dt (while still ≤ capacity).

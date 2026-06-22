@@ -20,6 +20,21 @@ export function applyPermanents(
 ): void {
   for (const def of PERMANENT_UPGRADES) {
     const level = owned[def.id] ?? 0;
-    if (level > 0) def.apply(player, Math.min(level, def.maxLevel), mods, effects);
+    if (level === 0) continue;
+    // Attribute any conditional/trigger a node SEEDS to the node, so it shows on the
+    // HUD effect strip like a drafted card (branch → an archetype tag for the icon).
+    effects.beginSource({ id: def.id, label: def.name, tags: [BRANCH_TAG[def.branch]] });
+    def.apply(player, Math.min(level, def.maxLevel), mods, effects);
+    effects.endSource();
   }
 }
+
+/** Map a permanent's branch to the archetype tag the HUD strip uses for its glyph. */
+const BRANCH_TAG: Record<(typeof PERMANENT_UPGRADES)[number]['branch'], string> = {
+  arsenal: 'damage',
+  biology: 'defense',
+  mobility: 'mobility',
+  command: 'crit',
+  arena: 'aoe',
+  infamy: 'risk',
+};

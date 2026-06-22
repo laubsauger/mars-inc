@@ -39,5 +39,6 @@ export function buildHudState(world: World): HudState {
     rage: world.player.rage,
     rageMax: world.rageMax,
     runGlory,
+    effects: world.liveEffectStatus(),
   };
 }

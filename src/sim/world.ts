@@ -37,7 +37,9 @@ import { type PermanentLevels, applyPermanents } from './progression/permanents'
 import { type PrestigeLevels, applyPrestige } from '../content/prestige-nodes';
 import {
   BuildEffects,
+  type ConditionalCtx,
   type ConditionalResult,
+  type EffectStatus,
   type TriggerCtx,
   type TriggerEvent,
 } from './progression/effects';
@@ -316,6 +318,12 @@ export class World {
    *  mutation, unlike evalConditionals). Lets the draft preview show the SAME current
    *  damage/crit/fire-rate the pause sheet shows, so a card's baseline matches. */
   private currentConditional(): ConditionalResult {
+    return this.effects.evalConditionals(this.liveConditionalCtx());
+  }
+
+  /** The live conditional context (read-only snapshot of the battlefield) shared by
+   *  the draft preview, the pause sheet, and the HUD effect strip. */
+  private liveConditionalCtx(): ConditionalCtx {
     const e = this.enemies;
     let nearest = Infinity;
     let nearby = 0;
@@ -327,7 +335,7 @@ export class World {
       if (d2 < nearest) nearest = d2;
       if (d2 <= nearR2) nearby++;
     }
-    return this.effects.evalConditionals({
+    return {
       enemiesOnScreen: e.count,
       enemiesNearby: nearby,
       nearestDist: nearest === Infinity ? Infinity : Math.sqrt(nearest),
@@ -339,7 +347,13 @@ export class World {
       moving: this.lastMoving,
       movingSec: this.movingSec,
       rageStacks: this.player.rage,
-    });
+    };
+  }
+
+  /** Per-upgrade live build-effect status for the HUD strip (T-clarity): each
+   *  drafted conditional/trigger with its current on/off state. Read-only. */
+  liveEffectStatus(): EffectStatus[] {
+    return this.effects.liveEffects(this.liveConditionalCtx());
   }
   choose(index: number): void {
     this.draftCtl.choose(index);
@@ -1409,7 +1423,10 @@ export class World {
     if (!this.bossReward) return;
     const r = this.bossRewardChoices[index];
     if (!r) return;
+    // Attribute any effect this reward registers so it appears on the HUD strip.
+    this.effects.beginSource({ id: r.id, label: r.name, tags: [r.kind] });
     r.apply(this.rewardCtx());
+    this.effects.endSource();
     this.justEvolved =
       r.kind === 'evolution'
         ? (this.weaponSystem.weapons[0]?.def.displayName ?? null)

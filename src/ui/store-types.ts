@@ -2,6 +2,10 @@
 // store.ts so screens/HUD can import view types without depending on the store
 // implementation — and so multiple agents can edit shapes vs. logic independently.
 // Re-exported by store.ts, so `import { X } from './store'` keeps working.
+import type { EffectStatus } from '../sim/progression/effects';
+
+export type { EffectStatus };
+
 export type Screen = 'boot' | 'unsupported' | 'menu' | 'arena' | 'gameover';
 
 /** Which main-menu panel is open (T27). 'root' = the signage list. */
@@ -122,6 +126,7 @@ export interface HudState {
   rage: number; // current kill-streak stacks (0 = no streak)
   rageMax: number; // streak cap (for the meter)
   runGlory: number; // Martian Glory this run would bank SO FAR (live estimate)
+  effects: EffectStatus[]; // live build-effect strip: drafted conditionals/triggers + on/off state
 }
 
 /** Hovered-enemy inspect panel (mini character sheet). Computed render-side from

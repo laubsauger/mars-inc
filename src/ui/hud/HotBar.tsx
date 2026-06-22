@@ -1,5 +1,76 @@
 // HUD ability hotbar (T-grenade/sprint): radial-cooldown slots. Split from Hud.tsx.
 import { useUiStore } from '../store';
+import type { EffectStatus } from '../store';
+
+// Build-effect glyph + accent by archetype tag. First matching tag (in this priority
+// order) wins, so a card's most defining lane drives its icon. Presentation-only —
+// the sim emits tags, the HUD owns how they look.
+const EFFECT_STYLE: { tag: string; icon: string; accent: string }[] = [
+  { tag: 'burn', icon: '🔥', accent: '#ff7a3c' },
+  { tag: 'rage', icon: '⚡', accent: '#ff5a36' },
+  { tag: 'crit', icon: '🎯', accent: '#ffd23f' },
+  { tag: 'mobility', icon: '💨', accent: '#32d7ff' },
+  { tag: 'explosive', icon: '💥', accent: '#ff8a3c' },
+  { tag: 'aoe', icon: '💥', accent: '#ff8a3c' },
+  { tag: 'chain', icon: '⌁', accent: '#32d7ff' },
+  { tag: 'fire-rate', icon: '⟫', accent: '#ffd23f' },
+  { tag: 'risk', icon: '☠', accent: '#ff3b3b' },
+  { tag: 'defense', icon: '✚', accent: '#56e39f' },
+  { tag: 'damage', icon: '⚔', accent: '#ff5a36' },
+];
+const DEFAULT_STYLE = { icon: '◆', accent: '#f4e4d4' };
+
+function effectStyle(tags: readonly string[]): { icon: string; accent: string } {
+  for (const s of EFFECT_STYLE) if (tags.includes(s.tag)) return s;
+  return DEFAULT_STYLE;
+}
+
+/** A single build-effect chip. Conditionals light up when their condition is met
+ *  and dim when dormant; triggers are steady "equipped" procs. */
+function EffectChip({ effect }: { effect: EffectStatus }) {
+  const { icon, accent } = effectStyle(effect.tags);
+  const lit = effect.active;
+  const kindLabel = effect.kind === 'trigger' ? 'on proc' : lit ? 'active' : 'dormant';
+  return (
+    <div
+      title={`${effect.label}${effect.detail ? ` — ${effect.detail}` : ''} (${kindLabel})`}
+      className="relative flex h-9 w-9 items-center justify-center rounded border bg-pit/80 font-mono transition-opacity"
+      style={{
+        borderColor: lit ? accent : 'rgba(244,228,212,0.18)',
+        boxShadow: lit ? `0 0 10px ${accent}66, inset 0 0 0 1px rgba(7,5,4,0.8)` : undefined,
+        opacity: lit ? 1 : 0.42,
+      }}
+    >
+      <span
+        className="text-base leading-none"
+        style={{ color: lit ? accent : 'rgba(244,228,212,0.6)' }}
+      >
+        {icon}
+      </span>
+      {/* A trigger has no continuous state — mark it with a small steady pip so it
+          reads as "equipped proc", not a dormant conditional. */}
+      {effect.kind === 'trigger' ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full"
+          style={{ background: accent, boxShadow: `0 0 4px ${accent}` }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** The build-effect strip: one chip per drafted conditional/trigger, showing live
+ *  on/off state so the player can read which situational buffs are firing. */
+function EffectStrip({ effects }: { effects: EffectStatus[] }) {
+  if (effects.length === 0) return null;
+  return (
+    <div className="pointer-events-none flex max-w-[80vw] flex-wrap items-center justify-center gap-1.5">
+      {effects.map((e) => (
+        <EffectChip key={e.id} effect={e} />
+      ))}
+    </div>
+  );
+}
 
 function AbilitySlot({
   icon,
@@ -105,35 +176,40 @@ export function HotBar() {
   const autoShoot = useUiStore((s) => s.hud.autoShoot);
   const rage = useUiStore((s) => s.hud.rage);
   const rageMax = useUiStore((s) => s.hud.rageMax);
+  const effects = useUiStore((s) => s.hud.effects);
   // Sprint slot is "ready" while at least one charge is available; otherwise it
   // shows the next charge's refill sweep.
   const sprintProgress = charges > 0 ? 1 : sprintCd01;
   return (
-    <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-end gap-3">
-      {/* Kill-streak meter — appears while a streak is alive; brighter/hotter as it
+    <div className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+      {/* Build-effect strip — drafted conditionals/triggers + their live on/off state. */}
+      <EffectStrip effects={effects} />
+      <div className="flex items-end gap-3">
+        {/* Kill-streak meter — appears while a streak is alive; brighter/hotter as it
           climbs toward the cap. The rage/frenzy build reads off these stacks. */}
-      {rage > 0 ? <KillStreak rage={rage} rageMax={rageMax} /> : null}
-      <AbilitySlot
-        icon="✸"
-        keyLabel="SPACE"
-        name="Grenade — AoE knockback (Space / RMB)"
-        progress={grenade01}
-        accent="#ff5a36"
-      />
-      <AbilitySlot
-        icon="»"
-        keyLabel="SHIFT"
-        name="Sprint"
-        progress={sprintProgress}
-        accent="#32d7ff"
-        charges={charges}
-        maxCharges={sprintMax}
-      />
-      {autoShoot ? (
-        <div className="mb-1 self-center rounded-sm border border-toxic/70 bg-toxic/12 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-toxic">
-          Auto-fire
-        </div>
-      ) : null}
+        {rage > 0 ? <KillStreak rage={rage} rageMax={rageMax} /> : null}
+        <AbilitySlot
+          icon="✸"
+          keyLabel="SPACE"
+          name="Grenade — AoE knockback (Space / RMB)"
+          progress={grenade01}
+          accent="#ff5a36"
+        />
+        <AbilitySlot
+          icon="»"
+          keyLabel="SHIFT"
+          name="Sprint"
+          progress={sprintProgress}
+          accent="#32d7ff"
+          charges={charges}
+          maxCharges={sprintMax}
+        />
+        {autoShoot ? (
+          <div className="mb-1 self-center rounded-sm border border-toxic/70 bg-toxic/12 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-toxic">
+            Auto-fire
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
