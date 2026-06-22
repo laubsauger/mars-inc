@@ -226,6 +226,15 @@ export class BuildEffects {
     return (this.triggers.get(event)?.length ?? 0) > 0;
   }
 
+  /** Total dynamic build effects registered — conditionals + triggers + reactions.
+   *  Lets the draft classify a card as a plain stat-tune (zero dynamic effects) vs a
+   *  mechanical one (see draft-pool). Reactions count: a converter is build-defining. */
+  get size(): number {
+    let n = this.conditionals.length + this.reactions.size;
+    for (const list of this.triggers.values()) n += list.length;
+    return n;
+  }
+
   /** Combine all conditionals into one transient result (no per-call alloc beyond this). */
   evalConditionals(ctx: ConditionalCtx): ConditionalResult {
     let damageMult = 1;

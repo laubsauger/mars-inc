@@ -255,6 +255,17 @@ export interface DraftParams {
    *  each boss kill makes rarer tiers more likely (the run graduates a power tier).
    *  Doesn't touch availability/prerequisites — `level` here is purely a rarity dial. */
   rarityLevelBonus?: number | undefined;
+  /** Variety pass (T-variety). Plain stat-filler ids (computed in draft-pool) get
+   *  their weight ×= `damp` at common/uncommon, so early hands stop being three
+   *  near-identical "+10%" tunes — mechanical cards surface in their place. */
+  statFiller?: { ids: ReadonlySet<string>; damp: number } | undefined;
+  /** In-hand archetype spread: a candidate sharing a COMBAT tag with a card already
+   *  picked THIS hand has its weight ×= this (0..1). Spreads the 3 offered cards
+   *  across build lanes so a draft showcases options, not three of one archetype. */
+  diversityDamp?: number | undefined;
+  /** How many of the LAST slots roll synergy-free (and pity-free): a "wildcard" that
+   *  competes on rarity alone, so off-build cool cards surface and pivots are possible. */
+  wildcardSlots?: number | undefined;
 }
 
 /** Build-aware weight: base + tag synergy (its own tags AND any requires*Tags it
@@ -296,6 +307,7 @@ function weightOf(
   boost?: DraftBoost,
   tagBias?: Record<string, number>,
   rarityBias?: Record<string, number>,
+  ignoreSynergy = false,
 ): number {
   // Synergy is the SUM of owned tag counts, but capped so one deep archetype can't
   // run away and crowd the draft with a single family (the "all pets" problem).
@@ -309,6 +321,7 @@ function weightOf(
   if (u.requiresAllTags)
     for (const t of u.requiresAllTags) if (!NON_SYNERGY_TAGS.has(t)) synergy += counts.get(t) ?? 0;
   synergy = Math.min(synergy, SYNERGY_CAP); // cap the snowball — synergy biases, never dominates
+  if (ignoreSynergy) synergy = 0; // wildcard slot: compete on rarity base alone (surface off-build cards)
   let w =
     (u.baseWeight + synergy * u.synergyWeight * SYNERGY_SCALE) *
     rarityWeight(effectiveRarity(u, ownedLevel), level, luck, rarityBias);
@@ -360,30 +373,54 @@ export function rollDraft(
     pool = pool.filter((u) => params.rarityFilter!.has(effectiveRarity(u, taken(levels, u.id))));
   const picks: UpgradeDefinition[] = [];
 
+  const statFiller = params.statFiller;
+  const diversityDamp = params.diversityDamp ?? 1;
+  const wildcardSlots = params.wildcardSlots ?? 0;
+  // Combat tags already represented in this hand → drive the in-hand diversity damp.
+  const pickedTags = new Set<string>();
+  const combatTagsOf = (u: UpgradeDefinition): string[] =>
+    u.tags.filter((t) => !NON_SYNERGY_TAGS.has(t));
+
+  // Per-slot weight: the LAST `wildcardSlots` picks roll synergy-free + pity-free so
+  // off-build cards surface; stat-fillers are damped at common/uncommon; and any card
+  // sharing a lane with an already-picked card is damped to spread the hand.
+  const slotWeight = (u: UpgradeDefinition, wild: boolean): number => {
+    let w = weightOf(
+      u,
+      counts,
+      level,
+      luck,
+      taken(levels, u.id),
+      wild ? undefined : boost,
+      tagBias,
+      rarityBias,
+      wild,
+    );
+    if (statFiller && statFiller.ids.has(u.id)) {
+      const rr = effectiveRarity(u, taken(levels, u.id));
+      if (rr === 'common' || rr === 'uncommon') w *= statFiller.damp;
+    }
+    if (diversityDamp < 1 && combatTagsOf(u).some((t) => pickedTags.has(t))) w *= diversityDamp;
+    return w;
+  };
+
   while (picks.length < count && pool.length > 0) {
+    const wild = picks.length >= count - wildcardSlots;
     let total = 0;
-    for (const u of pool)
-      total += weightOf(u, counts, level, luck, taken(levels, u.id), boost, tagBias, rarityBias);
+    for (const u of pool) total += slotWeight(u, wild);
     let r = rng.next() * total;
     let idx = 0;
     for (let i = 0; i < pool.length; i++) {
-      r -= weightOf(
-        pool[i]!,
-        counts,
-        level,
-        luck,
-        taken(levels, pool[i]!.id),
-        boost,
-        tagBias,
-        rarityBias,
-      );
+      r -= slotWeight(pool[i]!, wild);
       if (r <= 0) {
         idx = i;
         break;
       }
     }
-    picks.push(pool[idx]!);
+    const pick = pool[idx]!;
+    picks.push(pick);
     pool.splice(idx, 1);
+    for (const t of combatTagsOf(pick)) pickedTags.add(t);
   }
   return picks;
 }

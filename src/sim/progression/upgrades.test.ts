@@ -296,3 +296,63 @@ describe('build-aware card pool (T51)', () => {
     expect(a).toBe(b);
   });
 });
+
+describe('draft variety levers (T-variety)', () => {
+  const mk = (
+    id: string,
+    tags: string[],
+    baseWeight: number,
+    synergyWeight = 0,
+  ): UpgradeDefinition => ({
+    id,
+    name: id,
+    description: '',
+    tags,
+    rarity: 'common',
+    maxLevel: 1,
+    baseWeight,
+    synergyWeight,
+    apply: () => {},
+  });
+
+  it('statFiller damp suppresses flagged ids (damp 0 → never offered)', () => {
+    const REG = [mk('fill', ['a'], 10), mk('mech', ['b'], 10)];
+    let withDamp = 0;
+    let plain = 0;
+    for (let s = 0; s < 200; s++) {
+      const damped = rollDraft(REG, {}, new Rng(s), {
+        count: 1,
+        statFiller: { ids: new Set(['fill']), damp: 0 },
+      });
+      if (damped[0]!.id === 'fill') withDamp++;
+      const base = rollDraft(REG, {}, new Rng(s), { count: 1 });
+      if (base[0]!.id === 'fill') plain++;
+    }
+    expect(withDamp).toBe(0); // damp 0 zeroes its weight
+    expect(plain).toBeGreaterThan(50); // unflagged, it shows ~half the time
+  });
+
+  it('wildcard slot ignores synergy → off-archetype card surfaces despite a deep build', () => {
+    // Own tag 'x' (via a taken card) so the x-synergy card snowballs; 'b' is off-build.
+    const REG = [mk('seed', ['x'], 1), mk('a', ['x'], 1, 100), mk('b', ['y'], 1)];
+    const levels = { seed: 1 };
+    const freq = (wildcardSlots: number): number => {
+      let b = 0;
+      for (let s = 0; s < 200; s++) {
+        const [pick] = rollDraft(REG, levels, new Rng(s), { count: 1, level: 5, wildcardSlots });
+        if (pick!.id === 'b') b++;
+      }
+      return b;
+    };
+    expect(freq(1)).toBeGreaterThan(freq(0) + 40); // synergy-free slot lifts the off-build card
+  });
+
+  it('hand diversity (damp 0) never offers two cards of the same lane together', () => {
+    const REG = [mk('a1', ['x'], 10), mk('a2', ['x'], 10), mk('b', ['y'], 10)];
+    for (let s = 0; s < 200; s++) {
+      const ids = rollDraft(REG, {}, new Rng(s), { count: 2, diversityDamp: 0 }).map((d) => d.id);
+      const bothX = ids.includes('a1') && ids.includes('a2');
+      expect(bothX).toBe(false);
+    }
+  });
+});

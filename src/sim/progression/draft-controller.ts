@@ -28,10 +28,14 @@ import {
   INTERESTING_RARITIES,
 } from './upgrades';
 import { previewUpgrade, type UpgradeChange } from './preview';
-import { DRAFT_POOL } from './draft-pool';
+import { DRAFT_POOL, STAT_FILLER_IDS } from './draft-pool';
 
-const MILESTONE_EVERY = 3; // every Nth level → a draft guaranteed an "interesting" card
-// (was 5 — early game felt repetitive; spice arrives sooner now)
+// Variety levers (T-variety). Drafts felt boring/expected because commons + plain
+// stat-fillers flooded every hand. These shape EVERY hand toward variety:
+const INTERESTING_FROM_LEVEL = 2; // from this level, every hand guarantees ≥1 uncommon+ card
+const STAT_FILLER_DAMP = 0.55; // plain "+X% stat" commons/uncommons weigh this much (surface mechanics)
+const HAND_DIVERSITY_DAMP = 0.3; // a card sharing a lane with one already in the hand → ×this (spread lanes)
+const WILDCARD_SLOTS = 1; // last slot rolls synergy-free → off-build cool cards surface, pivots possible
 const LEVELUP_DELAY = 0.55; // flourish window before the draft freezes the sim
 const STARTING_REROLLS = 2; // per-run draft rerolls (T41)
 const STARTING_BANISHES = 2; // per-run upgrade banishes (T41)
@@ -239,6 +243,21 @@ export class DraftController {
 
   // ── Rolling internals ───────────────────────────────────────────────────────
 
+  /** Shared variety levers for a roll of `need` fresh cards: damp plain stat-fillers,
+   *  spread the hand across lanes, and make the last slot a synergy-free wildcard —
+   *  while always keeping ≥1 normal (synergy-biased) slot. */
+  private varietyOpts(need: number): {
+    statFiller: { ids: ReadonlySet<string>; damp: number };
+    diversityDamp: number;
+    wildcardSlots: number;
+  } {
+    return {
+      statFiller: { ids: STAT_FILLER_IDS, damp: STAT_FILLER_DAMP },
+      diversityDamp: HAND_DIVERSITY_DAMP,
+      wildcardSlots: Math.min(WILDCARD_SLOTS, Math.max(0, need - 1)),
+    };
+  }
+
   private openDraft(): void {
     this.draft = this.rollFresh();
     if (this.draft.length === 0) {
@@ -278,17 +297,19 @@ export class DraftController {
             tagBias: this.deps.player.draftTagBias,
             rarityBias: this.deps.player.draftRarityBias,
             rarityLevelBonus: this.rarityLevelBonus(),
+            ...this.varietyOpts(need),
           })
         : [];
-    return this.ensureMilestone([...forced, ...fresh], exclude);
+    return this.ensureInteresting([...forced, ...fresh], exclude);
   }
 
-  /** Milestone draft (T-variety): every Nth level, guarantee the hand holds at least
-   *  one "interesting" (uncommon+) card — never an all-common parrot of +10% stats.
-   *  If the rolled hand is all common, swap a common slot for a rare+ pick. */
-  private ensureMilestone(hand: UpgradeDefinition[], exclude: Set<string>): UpgradeDefinition[] {
+  /** Every-draft variety floor (T-variety): from INTERESTING_FROM_LEVEL on, guarantee
+   *  the hand holds at least one "interesting" (uncommon+) card — never an all-common
+   *  parrot of +10% stats. If the rolled hand is all common, swap a common slot for a
+   *  rare+ pick (preferring mechanical over stat-filler via the same damp). */
+  private ensureInteresting(hand: UpgradeDefinition[], exclude: Set<string>): UpgradeDefinition[] {
     const lvl = this.deps.player.level;
-    if (lvl <= 0 || lvl % MILESTONE_EVERY !== 0) return hand;
+    if (lvl < INTERESTING_FROM_LEVEL) return hand;
     if (
       hand.some((d) =>
         INTERESTING_RARITIES.has(effectiveRarity(d, taken(this.upgradeLevels, d.id))),
@@ -304,6 +325,8 @@ export class DraftController {
       banished: shownIds,
       rarityFilter: INTERESTING_RARITIES,
       rarityLevelBonus: this.rarityLevelBonus(),
+      // Prefer a MECHANICAL interesting card over an uncommon stat-tune for the fill.
+      statFiller: { ids: STAT_FILLER_IDS, damp: STAT_FILLER_DAMP },
     });
     if (!pick) return hand; // pool had nothing rare+ left → keep the common hand (V11)
     // Replace a common slot (prefer the last, leave Lock-held slot 0 alone).
@@ -332,8 +355,9 @@ export class DraftController {
       tagBias: this.deps.player.draftTagBias,
       rarityBias: this.deps.player.draftRarityBias,
       rarityLevelBonus: this.rarityLevelBonus(),
+      ...this.varietyOpts(need),
     });
-    return [...kept, ...fresh];
+    return this.ensureInteresting([...kept, ...fresh], exclude);
   }
 
   /** How many OFFENSIVE upgrades the build owns (kill-power foundations). */
